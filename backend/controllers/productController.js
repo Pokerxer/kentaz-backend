@@ -5,7 +5,6 @@ const { v4: uuidv4 } = require('uuid');
 exports.getCategories = async (req, res) => {
   try {
     const categories = await Product.aggregate([
-      { $match: { $or: [{ status: 'published' }, { status: { $exists: false } }] } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
@@ -53,7 +52,7 @@ exports.getCategories = async (req, res) => {
 exports.getProducts = async (req, res) => {
   try {
     const { limit = 20, offset = 0, q, category, featured } = req.query;
-    let query = { $or: [{ status: 'published' }, { status: { $exists: false } }] };
+    let query = {};
 
     if (q) {
       query.$text = { $search: q };
