@@ -41,6 +41,20 @@ app.get('/api/store/categories', (req, res) => {
   res.json({ categories });
 });
 
+app.post('/api/seed/products', async (req, res) => {
+  try {
+    const products = req.body.products;
+    const created = [];
+    for (const product of products) {
+      const createdProduct = await Product.create(product);
+      created.push(createdProduct);
+    }
+    res.json({ message: `Created ${created.length} products`, products: created });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/store/regions', (req, res) => {
   res.json({
     regions: [{ id: 'reg_ngn', name: 'Nigeria', currency_code: 'NGN', tax_rate: 7.5 }]
