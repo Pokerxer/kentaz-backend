@@ -112,16 +112,16 @@ function AnimatedCounter({ value }: { value: string }) {
 
 function StatsSection() {
   return (
-    <section className="py-16 md:py-20 bg-gradient-to-b from-[#FAFAFA] to-[#F5F5F0]">
+    <section className="py-8 md:py-12 bg-gradient-to-b from-[#FAFAFA] to-[#F5F5F0]">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           {stats.map((stat, index) => (
             <ScrollReveal key={stat.label} direction="up" delay={index * 100}>
               <div className="text-center group">
-                <div className="text-3xl md:text-4xl lg:text-5xl font-bold mb-2 animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
+                <div className="text-2xl md:text-3xl lg:text-4xl font-bold mb-1 animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
                   <AnimatedCounter value={stat.value} />
                 </div>
-                <div className="text-[#6B6B6B] text-sm md:text-base font-medium tracking-wide">{stat.label}</div>
+                <div className="text-[#6B6B6B] text-xs md:text-sm font-medium">{stat.label}</div>
               </div>
             </ScrollReveal>
           ))}
