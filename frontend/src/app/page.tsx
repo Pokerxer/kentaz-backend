@@ -23,20 +23,17 @@ interface Product {
   ratings?: { avg: number; count: number };
 }
 
+interface Category {
+  name: string;
+  handle: string;
+  count: number;
+  image: string;
+  description: string;
+}
+
 function formatPrice(amount: number, currency: string = 'ngn'): string {
   return '₦' + amount.toLocaleString('en-NG');
 }
-
-const categories = [
-  { name: "Male Fashion", handle: "male-fashion", image: "https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600", count: 12, description: "Premium suits, casuals, and accessories for the modern gentleman" },
-  { name: "Female Fashion", handle: "female-fashion", image: "https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600", count: 18, description: "Elegant dresses, gowns, and contemporary styles for her" },
-  { name: "Luxury Hair", handle: "human-hair", image: "https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600", count: 8, description: "Premium virgin hair extensions and luxury wigs" },
-  { name: "Skincare", handle: "skincare", image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600", count: 15, description: "Luxury skincare and beauty products for radiant skin" },
-  { name: "Bags & Purses", handle: "bags", image: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600", count: 10, description: "Designer bags and statement pieces" },
-  { name: "Shoes", handle: "shoes", image: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600", count: 14, description: "Handcrafted footwear for every occasion" },
-  { name: "Accessories", handle: "accessories", image: "https://images.unsplash.com/photo-1611923134239-b9be5816e23c?w=600", count: 20, description: "Watches, jewelry, and premium accessories" },
-  { name: "Perfumes", handle: "perfumes", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?w=600", count: 9, description: "Signature fragrances that leave a lasting impression" },
-];
 
 const services = [
   {
@@ -216,6 +213,23 @@ function ServicesSection() {
 }
 
 function CategoriesSection() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+    fetch(`${apiUrl}/api/store/products/categories`)
+      .then(res => res.json())
+      .then(data => {
+        setCategories(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch categories:', err);
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <section className="py-16 md:py-24 bg-gradient-to-b from-white to-[#FAFAFA] overflow-hidden">
       <div className="container mx-auto px-4">
@@ -230,6 +244,13 @@ function CategoriesSection() {
           </div>
         </ScrollReveal>
 
+        {loading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className={`animate-pulse rounded-3xl ${i === 0 || i === 5 ? 'md:col-span-2 md:row-span-2 aspect-[4/3]' : 'aspect-[4/5]'}`} style={{ backgroundColor: '#F5F5F0' }} />
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           {categories.map((category, index) => (
             <ScrollReveal
@@ -313,6 +334,7 @@ function CategoriesSection() {
             </ScrollReveal>
           ))}
         </div>
+        )}
 
         <ScrollReveal delay={400}>
           <div className="mt-12 md:mt-16 text-center">
