@@ -83,7 +83,7 @@ export function usePaystack() {
     
     try {
       const paystack = window.PaystackPop.setup({
-        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || 'pk_test_6249143a976e1ed10700b4e35a1c6f65a2442be0',
+        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || 'pk_test_your_test_key_here',
         email: config.email,
         amount: config.amount * 100,
         firstname: config.firstName,
