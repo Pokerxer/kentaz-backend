@@ -176,7 +176,8 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               </div>
             )}
 
-            <div className="absolute bottom-4 left-4 right-4">
+            {/* Add to Cart button - visible on mobile, hover on desktop */}
+            <div className="absolute bottom-4 left-4 right-4 md:opacity-0 md:group-hover:opacity-100 md:translate-y-2 md:group-hover:translate-y-0 transition-all duration-300">
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -188,7 +189,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
                   }
                 }}
                 disabled={addedToCart || isOutOfStock}
-                className={`w-full py-3 rounded-lg font-medium text-sm transition-all duration-300 transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 ${
+                className={`w-full py-3 rounded-lg font-medium text-sm transition-all md:transform md:opacity-100 ${
                   addedToCart
                     ? 'bg-green-600 text-white'
                     : 'bg-white text-gray-900 hover:bg-gray-900 hover:text-white shadow-lg'
@@ -210,7 +211,8 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               </button>
             </div>
 
-            <div className="absolute top-4 right-4 flex flex-col gap-2 transition-all duration-300 transform translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100">
+            {/* Wishlist & Quick View - visible on mobile, hover on desktop */}
+            <div className="absolute top-4 right-4 flex flex-col gap-2 md:opacity-0 md:group-hover:opacity-100 md:translate-x-2 md:group-hover:translate-x-0 transition-all duration-300">
               <button
                 onClick={handleWishlist}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-md ${
