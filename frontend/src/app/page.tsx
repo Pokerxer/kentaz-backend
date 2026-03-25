@@ -211,8 +211,19 @@ function ServicesSection() {
   );
 }
 
+const defaultCategories = [
+  { name: "Male Fashion", handle: "Male-Fashion", count: 12, image: "https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600", description: "Premium suits, casuals, and accessories for the modern gentleman" },
+  { name: "Female Fashion", handle: "Female-Fashion", count: 18, image: "https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600", description: "Elegant dresses, gowns, and contemporary styles for her" },
+  { name: "Luxury Hair", handle: "Luxury-Hair", count: 8, image: "https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600", description: "Premium virgin hair extensions and luxury wigs" },
+  { name: "Skincare", handle: "Skincare", count: 15, image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600", description: "Luxury skincare and beauty products for radiant skin" },
+  { name: "Bags & Purses", handle: "Bags-&-Purses", count: 10, image: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600", description: "Designer bags and statement pieces" },
+  { name: "Shoes", handle: "Shoes", count: 14, image: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600", description: "Handcrafted footwear for every occasion" },
+  { name: "Accessories", handle: "Accessories", count: 20, image: "https://images.unsplash.com/photo-1611923134239-b9be5816e23c?w=600", description: "Watches, jewelry, and premium accessories" },
+  { name: "Perfumes", handle: "Perfumes", count: 9, image: "https://images.unsplash.com/photo-1541643600914-78b084683601?w=600", description: "Signature fragrances that leave a lasting impression" },
+];
+
 function CategoriesSection() {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -220,7 +231,9 @@ function CategoriesSection() {
     fetch(`${apiUrl}/api/store/products/categories`)
       .then(res => res.json())
       .then(data => {
-        setCategories(Array.isArray(data) ? data : []);
+        if (Array.isArray(data) && data.length > 0) {
+          setCategories(data);
+        }
         setLoading(false);
       })
       .catch(err => {
