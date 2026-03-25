@@ -64,16 +64,21 @@ exports.getProducts = async (req, res) => {
       query.featured = true;
     }
 
+    const limitNum = parseInt(limit) || 20;
+    const offsetNum = parseInt(offset) || 0;
+
     const products = await Product.find(query)
-      .skip(parseInt(offset))
-      .limit(parseInt(limit))
-      .sort({ createdAt: -1 });
+      .skip(offsetNum)
+      .limit(limitNum)
+      .sort({ createdAt: -1 })
+      .lean();
 
     const total = await Product.countDocuments(query);
 
-    res.json({ products, count: products.length, offset: parseInt(offset), total });
+    res.json({ products, count: products.length, offset: offsetNum, total });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getProducts error:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 };
 
