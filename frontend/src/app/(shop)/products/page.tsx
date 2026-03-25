@@ -149,14 +149,19 @@ function ProductsPage() {
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
     fetch(`${apiUrl}/api/store/products?limit=100`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.json();
+      })
       .then(data => {
-        setProducts(data.products || data || []);
+        const productsArray = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
+        setProducts(productsArray);
         setLoading(false);
       })
       .catch(err => {
         console.error('Failed to fetch products:', err);
         setError('Failed to load products');
+        setProducts([]);
         setLoading(false);
       });
   }, []);
@@ -178,8 +183,8 @@ function ProductsPage() {
   }, []);
 
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: products.length };
-    products.forEach(p => {
+    const counts: Record<string, number> = { all: (products || []).length };
+    (products || []).forEach(p => {
       const cat = p.category || 'other';
       counts[cat] = (counts[cat] || 0) + 1;
     });
@@ -187,7 +192,8 @@ function ProductsPage() {
   }, [products]);
 
   const filteredAndSortedProducts = useMemo(() => {
-    let result = [...products];
+    const productsList = products || [];
+    let result = [...productsList];
 
     if (activeCategory !== 'all') {
       result = result.filter(p => p.category === activeCategory);
