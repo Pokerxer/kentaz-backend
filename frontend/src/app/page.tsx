@@ -52,10 +52,10 @@ const services = [
 ];
 
 const stats = [
-  { value: "2.5K+", label: "Happy Customers" },
-  { value: "500+", label: "Products" },
-  { value: "30+", label: "Countries" },
-  { value: "4.9", label: "Average Rating" },
+  { value: "500+", label: "Happy Customers" },
+  { value: "100+", label: "Products" },
+  { value: "Abuja", label: "Nigeria" },
+  { value: "4.8", label: "Average Rating" },
 ];
 
 const testimonials = [
