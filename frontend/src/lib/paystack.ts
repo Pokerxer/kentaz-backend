@@ -119,7 +119,7 @@ export function usePaystack() {
   const verifyPayment = async (reference: string): Promise<boolean> => {
     try {
       console.log('Verifying payment with reference:', reference);
-      const response = await fetch('http://localhost:9000/api/payments/verify', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/payments/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
