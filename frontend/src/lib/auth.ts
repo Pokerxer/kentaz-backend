@@ -5,6 +5,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET || 'development-secret-change-in-production',
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
