@@ -10,11 +10,15 @@ const orderRoutes = require('./routes/orders');
 const bookingRoutes = require('./routes/bookings');
 const reviewRoutes = require('./routes/reviews');
 const wishlistRoutes = require('./routes/wishlist');
+const paymentRoutes = require('./routes/payments');
 
 const Product = require('./models/Product');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
+  credentials: true
+}));
 app.use(express.json());
 
 const PORT = process.env.PORT || 9000;
@@ -31,6 +35,7 @@ app.use('/api/store/orders', orderRoutes);
 app.use('/api/store/bookings', bookingRoutes);
 app.use('/api/store/reviews', reviewRoutes);
 app.use('/api/store/wishlist', wishlistRoutes);
+app.use('/api/payments', paymentRoutes);
 
 app.get('/api/store/categories', (req, res) => {
   const categories = [
