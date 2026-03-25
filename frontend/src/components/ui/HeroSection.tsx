@@ -42,6 +42,7 @@ const heroSlides = [
 ];
 
 function FloatingParticle({ delay, x, y, size }: { delay: number; x: number; y: number; size: number }) {
+  const duration = 4 + (size / 4);
   return (
     <div
       className="absolute rounded-full bg-[#C9A84C]/20 animate-float-gentle"
@@ -51,7 +52,7 @@ function FloatingParticle({ delay, x, y, size }: { delay: number; x: number; y: 
         width: `${size}px`,
         height: `${size}px`,
         animationDelay: `${delay}s`,
-        animationDuration: `${4 + Math.random() * 4}s`,
+        animationDuration: `${duration}s`,
       }}
     />
   );
@@ -111,14 +112,18 @@ export function HeroSection() {
   }, [startAutoPlay, isHovering]);
 
   const slide = heroSlides[currentSlide];
+  const [particles, setParticles] = useState<{id: number; delay: number; x: number; y: number; size: number}[]>([]);
 
-  const particles = Array.from({ length: 15 }, (_, i) => ({
-    id: i,
-    delay: Math.random() * 5,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    size: 4 + Math.random() * 12,
-  }));
+  useEffect(() => {
+    const newParticles = Array.from({ length: 15 }, (_, i) => ({
+      id: i,
+      delay: Math.random() * 5,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: 4 + Math.random() * 12,
+    }));
+    setParticles(newParticles);
+  }, []);
 
   return (
     <section
