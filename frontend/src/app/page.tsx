@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
 import { HeroSection } from "@/components/ui/HeroSection";
 import { QuickViewModal } from "@/components/cart/QuickViewModal";
-import { getFeaturedProducts } from "@/lib/api/products";
 import { useState, useEffect, useRef } from "react";
 
 interface Product {
@@ -361,8 +360,10 @@ function FeaturedProductsSection() {
   useEffect(() => {
     async function fetchProducts() {
       try {
-        const data = await getFeaturedProducts(6);
-        setProducts(data.products || []);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+        const res = await fetch(`${apiUrl}/api/store/products?limit=6`);
+        const data = await res.json();
+        setProducts(data.products || data || []);
       } catch (error) {
         console.error('Failed to fetch products:', error);
       } finally {
