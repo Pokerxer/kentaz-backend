@@ -363,9 +363,11 @@ function FeaturedProductsSection() {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
         const res = await fetch(`${apiUrl}/api/store/products?limit=6`);
         const data = await res.json();
-        setProducts(data.products || data || []);
+        const productsArray = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
+        setProducts(productsArray);
       } catch (error) {
         console.error('Failed to fetch products:', error);
+        setProducts([]);
       } finally {
         setLoading(false);
       }
