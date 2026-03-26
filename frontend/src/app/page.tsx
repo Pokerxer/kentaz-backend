@@ -6,7 +6,7 @@ import { ArrowRight, Star, Shield, Crown, Gem, Flower2, Phone, MapPin, Instagram
 import { Button } from "@/components/ui/Button";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
 import { HeroSection } from "@/components/ui/HeroSection";
-import { QuickViewModal } from "@/components/cart/QuickViewModal";
+import { QuickViewModal } from "@/components/shop/QuickViewModal";
 import { useState, useEffect, useRef } from "react";
 
 interface Product {

@@ -39,26 +39,7 @@ interface Product {
 }
 
 interface ProductCardProps {
-  product: {
-    id?: string;
-    _id?: string;
-    name?: string;
-    title?: string;
-    slug?: string;
-    handle?: string;
-    description?: string;
-    thumbnail?: string;
-    images?: { url: string }[];
-    variants?: ProductVariant[];
-    options?: { name: string; values: string[] }[];
-    category?: string;
-    tags?: string[] | { id?: string; value: string }[];
-    ratings?: { avg?: number; count?: number };
-    price?: { amount?: number };
-  };
-  showCompare?: boolean;
-  isComparing?: boolean;
-  onCompareToggle?: (product: any) => void;
+  product: any;
   onQuickView?: (product: any) => void;
 }
 
@@ -182,7 +163,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleAddToCart(e);
+                  onQuickView ? onQuickView(product) : handleAddToCart(e);
                 }}
                 disabled={addedToCart || isOutOfStock}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-md ${

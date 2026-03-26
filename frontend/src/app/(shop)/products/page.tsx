@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'rea
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, Grid3X3, List, X, SlidersHorizontal, ChevronDown, Star, ArrowUpDown, TrendingUp, Clock, Award, Flame } from 'lucide-react';
 import { ProductCard, ProductListView } from '@/components/shop/ProductCard';
-import { QuickViewModal } from '@/components/cart/QuickViewModal';
+import { QuickViewModal } from '@/components/shop/QuickViewModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProductContent } from '@/components/shop/ProductContent';
