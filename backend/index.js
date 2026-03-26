@@ -33,14 +33,14 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kentaz';
 const mongoOptions = {
   serverSelectionTimeoutMS: 60000,
   socketTimeoutMS: 60000,
-  maxPoolSize: 10,
-  minPoolSize: 1,
-  bufferCommands: false,
 };
 
 console.log('MONGO_URI:', MONGO_URI ? MONGO_URI.replace(/:[^:]+@/, ':****@') : 'not set');
 
-mongoose.connect(MONGO_URI, mongoOptions)
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 60000,
+  socketTimeoutMS: 60000,
+})
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
 
