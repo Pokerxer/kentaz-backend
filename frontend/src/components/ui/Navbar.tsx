@@ -9,6 +9,7 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { clearUser, setUser } from "@/store/userSlice";
 import { removeAuthToken } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
+import { WishlistSidebar } from "@/components/cart/WishlistSidebar";
 
 const navigation = [
   { name: "Products", href: "/products" },
@@ -122,17 +123,7 @@ export function Navbar() {
         </form>
 
         <div className="flex items-center gap-1 md:gap-2">
-          <Link
-            href="/account/wishlist"
-            className="relative p-2 md:p-3 text-[#2D2D2D] hover:text-[#C9A84C] transition-colors"
-          >
-            <Heart className="h-5 w-5" />
-            {wishlistItems.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-5 w-5 rounded-full bg-[#C9A84C] text-white text-[10px] font-bold flex items-center justify-center">
-                {wishlistItems.length}
-              </span>
-            )}
-          </Link>
+          <WishlistSidebar />
 
           <button
             onClick={openCart}
