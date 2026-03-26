@@ -30,14 +30,17 @@ app.use(express.json());
 const PORT = process.env.PORT || 9000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kentaz';
 
-console.log('MONGO_URI:', MONGO_URI ? MONGO_URI.replace(/:[^:]+@/, ':****@') : 'not set');
-
-mongoose.connect(MONGO_URI, {
-  serverSelectionTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
+const mongoOptions = {
+  serverSelectionTimeoutMS: 60000,
+  socketTimeoutMS: 60000,
   maxPoolSize: 10,
   minPoolSize: 1,
-})
+  bufferCommands: false,
+};
+
+console.log('MONGO_URI:', MONGO_URI ? MONGO_URI.replace(/:[^:]+@/, ':****@') : 'not set');
+
+mongoose.connect(MONGO_URI, mongoOptions)
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
 
