@@ -176,8 +176,8 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               </div>
             )}
 
-            {/* Add to Cart button - visible on mobile, hover on desktop */}
-            <div className="absolute bottom-4 left-4 right-4 md:opacity-0 md:group-hover:opacity-100 md:translate-y-2 md:group-hover:translate-y-0 transition-all duration-300">
+            {/* Wishlist & Add to Cart - top right */}
+            <div className="absolute top-4 right-4 flex flex-col gap-2 md:opacity-0 md:group-hover:opacity-100 md:translate-x-2 md:group-hover:translate-x-0 transition-all duration-300">
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -185,24 +185,22 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
                   handleAddToCart(e);
                 }}
                 disabled={addedToCart || isOutOfStock}
-                className={`w-full py-3 rounded-lg font-medium text-sm transition-all md:transform md:opacity-100 flex items-center justify-center ${
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-md ${
                   addedToCart
                     ? 'bg-green-600 text-white'
-                    : 'bg-white text-gray-900 hover:bg-gray-900 hover:text-white shadow-lg'
+                    : isOutOfStock
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-white text-gray-700 hover:bg-gray-900 hover:text-white'
                 }`}
+                aria-label={addedToCart ? 'Added to cart' : 'Add to cart'}
               >
                 {addedToCart ? (
-                  <Check className="h-5 w-5" />
-                ) : isOutOfStock ? (
-                  'Out of Stock'
+                  <Check className="h-4 w-4" />
                 ) : (
-                  <ShoppingCart className="h-5 w-5" />
+                  <ShoppingCart className="h-4 w-4" />
                 )}
               </button>
-            </div>
 
-            {/* Wishlist */}
-            <div className="absolute top-4 right-4 flex flex-col gap-2 md:opacity-0 md:group-hover:opacity-100 md:translate-x-2 md:group-hover:translate-x-0 transition-all duration-300">
               <button
                 onClick={handleWishlist}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-md ${
