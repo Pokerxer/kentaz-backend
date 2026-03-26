@@ -185,24 +185,18 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
                   handleAddToCart(e);
                 }}
                 disabled={addedToCart || isOutOfStock}
-                className={`w-full py-3 rounded-lg font-medium text-sm transition-all md:transform md:opacity-100 flex items-center justify-center gap-2 ${
+                className={`w-full py-3 rounded-lg font-medium text-sm transition-all md:transform md:opacity-100 flex items-center justify-center ${
                   addedToCart
                     ? 'bg-green-600 text-white'
                     : 'bg-white text-gray-900 hover:bg-gray-900 hover:text-white shadow-lg'
                 }`}
               >
                 {addedToCart ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Added
-                  </>
+                  <Check className="h-5 w-5" />
                 ) : isOutOfStock ? (
                   'Out of Stock'
                 ) : (
-                  <>
-                    <ShoppingCart className="h-4 w-4" />
-                    Add to Cart
-                  </>
+                  <ShoppingCart className="h-5 w-5" />
                 )}
               </button>
             </div>
