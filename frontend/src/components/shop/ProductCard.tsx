@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Heart, ShoppingCart, Check, Star, Eye } from 'lucide-react';
+import { Heart, ShoppingCart, Check, Star } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { addToWishlist, removeFromWishlist } from '@/store/wishlistSlice';
 import { addToCart } from '@/store/cartSlice';
@@ -182,36 +182,32 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (onQuickView) {
-                    onQuickView(product);
-                  } else {
-                    handleAddToCart(e);
-                  }
+                  handleAddToCart(e);
                 }}
                 disabled={addedToCart || isOutOfStock}
-                className={`w-full py-3 rounded-lg font-medium text-sm transition-all md:transform md:opacity-100 ${
+                className={`w-full py-3 rounded-lg font-medium text-sm transition-all md:transform md:opacity-100 flex items-center justify-center gap-2 ${
                   addedToCart
                     ? 'bg-green-600 text-white'
                     : 'bg-white text-gray-900 hover:bg-gray-900 hover:text-white shadow-lg'
                 }`}
               >
                 {addedToCart ? (
-                  <span className="flex items-center justify-center gap-2">
+                  <>
                     <Check className="h-4 w-4" />
                     Added
-                  </span>
+                  </>
                 ) : isOutOfStock ? (
                   'Out of Stock'
                 ) : (
-                  <span className="flex items-center justify-center gap-2">
+                  <>
                     <ShoppingCart className="h-4 w-4" />
                     Add to Cart
-                  </span>
+                  </>
                 )}
               </button>
             </div>
 
-            {/* Wishlist & Quick View - visible on mobile, hover on desktop */}
+            {/* Wishlist */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 md:opacity-0 md:group-hover:opacity-100 md:translate-x-2 md:group-hover:translate-x-0 transition-all duration-300">
               <button
                 onClick={handleWishlist}
@@ -224,16 +220,6 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               >
                 <Heart className={`h-4 w-4 ${isInWishlist ? 'fill-current' : ''}`} />
               </button>
-
-              {onQuickView && (
-                <button
-                  onClick={(e) => { e.preventDefault(); onQuickView(product); }}
-                  className="w-9 h-9 rounded-full bg-white text-gray-700 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-all shadow-md"
-                  aria-label="Quick view"
-                >
-                  <Eye className="h-4 w-4" />
-                </button>
-              )}
             </div>
           </div>
         </Link>
