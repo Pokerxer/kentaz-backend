@@ -125,10 +125,36 @@ exports.deleteProduct = async (req, res) => {
   }
 };
 
+exports.getAdminProductById = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.getAdminProducts = async (req, res) => {
   try {
-    const products = await Product.find().sort({ createdAt: -1 });
-    res.json(products);
+    const { page = 1, limit = 20, search, status, category } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    const filter = {};
+    if (search) filter.name = { $regex: search, $options: 'i' };
+    if (status) filter.status = status;
+    if (category) filter.category = category;
+
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum),
+      Product.countDocuments(filter),
+    ]);
+
+    res.json({ products, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

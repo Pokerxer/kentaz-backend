@@ -21,3 +21,11 @@ exports.adminOnly = async (req, res, next) => {
   }
   next();
 };
+
+// staff or admin can access POS
+exports.posAccess = async (req, res, next) => {
+  if (req.user.role !== 'staff' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'POS access required' });
+  }
+  next();
+};

@@ -1,93 +1,411 @@
 'use client';
 
-import { useState } from 'react';
-import { Sidebar } from '@/components/Sidebar';
-import { Header } from '@/components/Header';
-import { Plus, Search, Filter, Eye, Edit, Trash2, Copy, Package, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import Image from 'next/image';
+import {
+  Plus,
+  Search,
+  Eye,
+  Edit,
+  Trash2,
+  Loader2,
+  Package,
+  ChevronLeft,
+  ChevronRight,
+  AlertTriangle,
+  LayoutGrid,
+  LayoutList,
+} from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
+import { api, Product } from '@/lib/api';
+import { AdminLayout } from '@/components/AdminLayout';
 
-const products = [
-  { id: 'prod_001', title: 'Classic Slim Fit Denim Jeans', status: 'published', price: 15000, inventory: 45, thumbnail: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=200' },
-  { id: 'prod_002', title: 'Premium Cotton Polo Shirt', status: 'published', price: 8500, inventory: 120, thumbnail: 'https://images.unsplash.com/photo-1625910513413-5fc4e58c87e6?w=200' },
-  { id: 'prod_003', title: 'Luxury Virgin Hair Weave', status: 'published', price: 35000, inventory: 25, thumbnail: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=200' },
-  { id: 'prod_004', title: 'Designer Leather Handbag', status: 'published', price: 35000, inventory: 15, thumbnail: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=200' },
+const STATUS_FILTERS = [
+  { value: '', label: 'All' },
+  { value: 'published', label: 'Published' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'archived', label: 'Archived' },
 ];
 
 const statusColors: Record<string, string> = {
   published: 'bg-green-100 text-green-700',
-  draft: 'bg-yellow-100 text-yellow-700',
-  archived: 'bg-gray-100 text-gray-700',
+  draft: 'bg-amber-100 text-amber-700',
+  archived: 'bg-gray-100 text-gray-500',
 };
 
+const LIMIT = 20;
+
 export default function ProductsPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const filteredProducts = products.filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'grid'>('list');
+
+  const fetchProducts = useCallback(async (currentPage: number) => {
+    setLoading(true);
+    try {
+      const params: Record<string, any> = { page: currentPage, limit: LIMIT };
+      if (search) params.search = search;
+      if (statusFilter) params.status = statusFilter;
+      const data = await api.products.getAll(params);
+      const list = Array.isArray(data) ? (data as any) : (data.products ?? []);
+      setProducts(list);
+      setTotal(Array.isArray(data) ? list.length : (data.total ?? list.length));
+      setTotalPages(Array.isArray(data) ? 1 : (data.totalPages ?? 1));
+    } catch {
+      setMsg({ text: 'Failed to load products', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, [search, statusFilter]);
+
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
+  useEffect(() => { fetchProducts(page); }, [fetchProducts, page]);
+
+  const handleDelete = async (product: Product) => {
+    if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
+    setDeletingId(product._id);
+    try {
+      await api.products.delete(product._id);
+      setMsg({ text: `"${product.name}" deleted.`, type: 'success' });
+      fetchProducts(page);
+    } catch (err: any) {
+      setMsg({ text: err.message || 'Failed to delete product', type: 'error' });
+    } finally {
+      setDeletingId(null);
+      setTimeout(() => setMsg(null), 4000);
+    }
+  };
+
+  const getStockCount = (product: Product) =>
+    product.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0;
+
+  const getMinPrice = (product: Product) => {
+    const prices = product.variants?.map(v => v.price).filter(p => p > 0) || [];
+    return prices.length ? Math.min(...prices) : 0;
+  };
+
+  const getStockBadge = (product: Product) => {
+    const stock = getStockCount(product);
+    if (stock === 0) return { label: 'Out of stock', color: 'bg-red-100 text-red-600' };
+    if (stock <= 5) return { label: `Low stock`, color: 'bg-amber-100 text-amber-700' };
+    return null;
+  };
+
+  const Pagination = () =>
+    totalPages > 1 ? (
+      <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+        <p className="text-sm text-gray-500">Page {page} of {totalPages}</p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <div className="pl-64">
-        <Header />
-        <main className="p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-              <p className="text-gray-500">Manage your product inventory</p>
+    <AdminLayout>
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8 flex items-center justify-between animate-fade-in">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
+              <span className="w-2 h-8 bg-[#C9A84C] rounded-full" />
+              Products
+            </h1>
+            <p className="text-gray-500 mt-1 ml-5">Manage your product catalogue</p>
+          </div>
+          <Link
+            href="/products/new"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20"
+          >
+            <Plus className="h-4 w-4" />
+            Add Product
+          </Link>
+        </div>
+
+        {msg && (
+          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium border ${
+            msg.type === 'error'
+              ? 'bg-red-50 text-red-700 border-red-100'
+              : 'bg-green-50 text-green-700 border-green-100'
+          }`}>
+            {msg.text}
+          </div>
+        )}
+
+        {/* Filters + View Toggle */}
+        <div className="mb-5 flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50/50 hover:bg-gray-50 transition-all"
+            />
+          </div>
+          <div className="flex gap-2 flex-1">
+            {STATUS_FILTERS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  statusFilter === f.value
+                    ? 'bg-[#C9A84C] text-white shadow-md shadow-[#C9A84C]/20'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+            {/* View toggle */}
+            <div className="ml-auto flex items-center gap-1 border border-gray-200 rounded-xl p-1 bg-white">
+              <button
+                onClick={() => setView('list')}
+                className={`p-1.5 rounded-lg transition-all ${view === 'list' ? 'bg-[#C9A84C] text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                title="List view"
+              >
+                <LayoutList className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setView('grid')}
+                className={`p-1.5 rounded-lg transition-all ${view === 'grid' ? 'bg-[#C9A84C] text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                title="Grid view"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
             </div>
-            <button className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
-              <Plus className="h-4 w-4" /> Add Product
-            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="h-5 w-5 text-[#C9A84C]" />
+              Product Catalogue
+            </h2>
+            {!loading && <span className="text-sm text-gray-400">{total} products</span>}
           </div>
 
-          <div className="mb-6 flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input type="search" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-10 w-full rounded-lg border bg-white pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+          {/* Loading */}
+          {loading ? (
+            <div className="py-16 flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-[#C9A84C]" />
             </div>
-          </div>
-
-          <div className="rounded-lg border bg-white">
-            <table className="w-full">
-              <thead className="border-b bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inventory</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredProducts.map((product) => (
-                  <tr key={product.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-10 w-10 overflow-hidden rounded-lg bg-gray-100">
-                          <Image src={product.thumbnail} alt={product.title} fill className="object-cover" />
-                        </div>
-                        <p className="font-medium text-gray-900">{product.title}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-block rounded-full px-2 py-1 text-xs font-medium ${statusColors[product.status]}`}>{product.status}</span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-900">{formatPrice(product.price)}</td>
-                    <td className="px-6 py-4">{product.inventory} in stock</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button className="rounded-lg p-1.5 hover:bg-gray-100"><Eye className="h-4 w-4 text-gray-600" /></button>
-                        <button className="rounded-lg p-1.5 hover:bg-gray-100"><Edit className="h-4 w-4 text-gray-600" /></button>
-                        <button className="rounded-lg p-1.5 hover:bg-gray-100"><Trash2 className="h-4 w-4 text-gray-600" /></button>
-                      </div>
-                    </td>
+          ) : products.length === 0 ? (
+            <div className="py-16 text-center">
+              <Package className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium">No products found</p>
+              <p className="text-gray-400 text-sm mt-1">Try adjusting your filters or add a new product</p>
+              <Link
+                href="/products/new"
+                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-[#C9A84C] text-white rounded-xl text-sm font-medium hover:bg-[#B8953F] transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add Product
+              </Link>
+            </div>
+          ) : view === 'list' ? (
+            // ── List view ──────────────────────────────────────────────
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </main>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {products.map(product => {
+                    const stockBadge = getStockBadge(product);
+                    const isDeleting = deletingId === product._id;
+                    return (
+                      <tr
+                        key={product._id}
+                        className={`hover:bg-gray-50 transition-colors ${isDeleting ? 'opacity-50' : ''}`}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="relative h-10 w-10 overflow-hidden rounded-lg bg-gray-100 flex-shrink-0">
+                              {product.images?.[0]?.url ? (
+                                <Image src={product.images[0].url} alt={product.name} fill className="object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-gray-300">
+                                  <Package className="h-5 w-5" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{product.name}</p>
+                              {product.variants?.[0]?.sku ? (
+                                <p className="text-xs text-gray-400 font-mono">{product.variants[0].sku}</p>
+                              ) : (
+                                <p className="text-xs text-gray-400">{product.variants?.length ?? 0} variant{product.variants?.length !== 1 ? 's' : ''}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                            {product.category || 'Uncategorized'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {product.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          {formatPrice(getMinPrice(product))}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-700">{getStockCount(product)} units</span>
+                            {stockBadge && (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stockBadge.color}`}>
+                                <AlertTriangle className="h-3 w-3" />
+                                {stockBadge.label}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-1">
+                            <Link href={`/products/${product._id}`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" title="View">
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                            <Link href={`/products/${product._id}/edit`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#C9A84C] transition-colors" title="Edit">
+                              <Edit className="h-4 w-4" />
+                            </Link>
+                            <button
+                              onClick={() => handleDelete(product)}
+                              disabled={isDeleting}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
+                              title="Delete"
+                            >
+                              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            // ── Grid view ──────────────────────────────────────────────
+            <div className="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {products.map(product => {
+                const stockBadge = getStockBadge(product);
+                const isDeleting = deletingId === product._id;
+                return (
+                  <div
+                    key={product._id}
+                    className={`group relative bg-white rounded-2xl border border-gray-100 hover:border-[#C9A84C]/30 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col ${isDeleting ? 'opacity-50' : ''}`}
+                  >
+                    {/* Image */}
+                    <div className="relative aspect-square bg-gray-50 overflow-hidden">
+                      {product.images?.[0]?.url ? (
+                        <Image
+                          src={product.images[0].url}
+                          alt={product.name}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-gray-200">
+                          <Package className="h-10 w-10" />
+                        </div>
+                      )}
+
+                      {/* Status badge */}
+                      <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {product.status}
+                      </span>
+
+                      {/* Stock warning */}
+                      {stockBadge && (
+                        <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-0.5 ${stockBadge.color}`}>
+                          <AlertTriangle className="h-2.5 w-2.5" />
+                          {stockBadge.label}
+                        </span>
+                      )}
+
+                      {/* Action overlay */}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <Link
+                          href={`/products/${product._id}`}
+                          className="p-2 bg-white rounded-xl text-gray-700 hover:text-[#C9A84C] shadow-md transition-colors"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          href={`/products/${product._id}/edit`}
+                          className="p-2 bg-white rounded-xl text-gray-700 hover:text-[#C9A84C] shadow-md transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(product)}
+                          disabled={isDeleting}
+                          className="p-2 bg-white rounded-xl text-gray-700 hover:text-red-600 shadow-md transition-colors disabled:opacity-40"
+                          title="Delete"
+                        >
+                          {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Info */}
+                    <div className="p-3 flex flex-col gap-1 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 leading-tight line-clamp-2">{product.name}</p>
+                      <p className="text-xs text-gray-400">{product.category || 'Uncategorized'}</p>
+                      {product.variants?.[0]?.sku && (
+                        <p className="text-[10px] text-gray-400 font-mono truncate">{product.variants[0].sku}</p>
+                      )}
+                      <div className="mt-auto pt-2 flex items-center justify-between">
+                        <span className="text-sm font-bold text-[#C9A84C]">{formatPrice(getMinPrice(product))}</span>
+                        <span className="text-xs text-gray-400">{getStockCount(product)} units</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <Pagination />
+        </div>
       </div>
-    </div>
+    </AdminLayout>
   );
 }

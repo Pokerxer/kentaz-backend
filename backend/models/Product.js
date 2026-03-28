@@ -4,6 +4,9 @@ const variantSchema = new mongoose.Schema({
   size: String,
   color: String,
   price: { type: Number, required: true },
+  costPrice: { type: Number, default: 0 },
+  markup: { type: Number, default: 0 },
+  useMarkup: { type: Boolean, default: false },
   compareAtPrice: Number,
   stock: { type: Number, default: 0 },
   sku: String

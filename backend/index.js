@@ -11,6 +11,19 @@ const bookingRoutes = require('./routes/bookings');
 const reviewRoutes = require('./routes/reviews');
 const wishlistRoutes = require('./routes/wishlist');
 const paymentRoutes = require('./routes/payments');
+const userRoutes = require('./routes/users');
+const dashboardRoutes = require('./routes/dashboard');
+const categoryRoutes = require('./routes/categories');
+const inventoryRoutes = require('./routes/inventory');
+const purchaseRoutes = require('./routes/purchases');
+const posRoutes = require('./routes/pos');
+const staffRoutes = require('./routes/staff');
+const discountRoutes = require('./routes/discounts');
+const giftCardRoutes = require('./routes/giftCards');
+const shippingRoutes = require('./routes/shipping');
+const analyticsRoutes = require('./routes/analytics');
+const notificationRoutes = require('./routes/notifications');
+const reportRoutes = require('./routes/reports');
 
 const Product = require('./models/Product');
 
@@ -20,6 +33,7 @@ app.use(cors({
     'http://localhost:3000', 
     'http://localhost:3001', 
     'http://localhost:3002',
+    'http://localhost:7002',
     /^https:\/\/kentaz-.*\.vercel\.app$/,
     /^https:\/\/.*\.vercel\.app$/
   ],
@@ -52,15 +66,19 @@ app.use('/api/store/bookings', bookingRoutes);
 app.use('/api/store/reviews', reviewRoutes);
 app.use('/api/store/wishlist', wishlistRoutes);
 app.use('/api/payments', paymentRoutes);
-
-app.get('/api/store/categories', (req, res) => {
-  const categories = [
-    'Male Fashion', 'Female Fashion', 'Kiddies Fashion',
-    'Skincare', 'Luxury Hair', 'Bags & Purses',
-    'Shoes', 'Accessories', 'Perfumes', 'Gift Items'
-  ];
-  res.json({ categories });
-});
+app.use('/api/admin/users', userRoutes);
+app.use('/api/admin/dashboard', dashboardRoutes);
+app.use('/api/admin/categories', categoryRoutes);
+app.use('/api/admin/inventory', inventoryRoutes);
+app.use('/api/admin/purchases', purchaseRoutes);
+app.use('/api/pos', posRoutes);
+app.use('/api/admin/staff', staffRoutes);
+app.use('/api/admin/discounts', discountRoutes);
+app.use('/api/admin/gift-cards', giftCardRoutes);
+app.use('/api/admin/shipping', shippingRoutes);
+app.use('/api/admin/analytics', analyticsRoutes);
+app.use('/api/admin/notifications', notificationRoutes);
+app.use('/api/admin/reports', reportRoutes);
 
 app.post('/api/seed/products', async (req, res) => {
   try {
@@ -71,6 +89,32 @@ app.post('/api/seed/products', async (req, res) => {
       created.push(createdProduct);
     }
     res.json({ message: `Created ${created.length} products`, products: created });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/seed/admin', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const User = require('./models/User');
+    const { name, email, password } = req.body;
+    
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const admin = new User({
+      name: name || 'Admin',
+      email: email || 'admin@kentaz.com',
+      password: hashedPassword,
+      role: 'admin'
+    });
+    
+    await admin.save();
+    res.json({ message: 'Admin user created', user: { name: admin.name, email: admin.email, role: admin.role } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
