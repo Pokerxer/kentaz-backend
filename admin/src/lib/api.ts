@@ -691,6 +691,7 @@ export interface Address {
   country: string;
   postalCode?: string;
   isDefault?: boolean;
+  deliveryMethod?: 'standard' | 'express';
 }
 
 export interface Product {
