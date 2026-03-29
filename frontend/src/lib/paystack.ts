@@ -70,28 +70,36 @@ export function usePaystack() {
       return;
     }
 
+    if (!config.email || !config.amount || config.amount < 100) {
+      setError('Invalid payment configuration. Amount must be at least 100 kobo (₦1).');
+      return;
+    }
+
+    const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    if (!publicKey || publicKey === 'pk_test_your_test_key_here') {
+      setError('Paystack is not configured. Please check your environment variables.');
+      return;
+    }
+    
     const reference = `KENTAZ_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     setIsLoading(true);
     
-    // Debug log the config
+    const amountInKobo = Math.round(config.amount * 100);
     console.log('Paystack config:', {
-      ...config,
-      amount: config.amount * 100,
+      email: config.email,
+      amount: amountInKobo,
       reference
     });
     
     try {
       const paystack = window.PaystackPop.setup({
-        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || 'pk_test_your_test_key_here',
+        key: publicKey,
         email: config.email,
-        amount: config.amount * 100,
-        firstname: config.firstName,
-        lastname: config.lastName,
-        phone: config.phone,
+        amount: amountInKobo,
         reference,
         currency: 'NGN',
-        channels: ['card', 'bank', 'ussd', 'mobile_money'],
+        channels: ['card', 'bank', 'ussd', 'bank_transfer'],
         callback: (response: any) => {
           config.onSuccess({
             reference: response.reference,
@@ -114,7 +122,7 @@ export function usePaystack() {
       setIsLoading(false);
       setError('Failed to initialize payment. Please try again.');
     }
-  }, [items]);
+  }, []);
 
   const verifyPayment = async (reference: string): Promise<boolean> => {
     try {
