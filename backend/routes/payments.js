@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { verifyPayment, handleWebhook } = require('../controllers/paymentController');
+const { initializePayment, verifyPayment, handleWebhook } = require('../controllers/paymentController');
 const { auth } = require('../middleware/auth');
 
-// Verify payment (frontend initiated)
+// Initialize payment — returns Paystack authorizationUrl
+router.post('/initialize', auth, initializePayment);
+
+// Verify payment after redirect
 router.post('/verify', auth, verifyPayment);
 
-// Webhook endpoint (Paystack initiated)
+// Webhook — called by Paystack directly (no auth)
 router.post('/webhook', handleWebhook);
 
 module.exports = router;

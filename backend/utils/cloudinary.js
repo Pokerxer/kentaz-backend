@@ -1,13 +1,17 @@
 const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+// Configure at call time so env vars are always current (survives server restarts mid-session)
+function configure() {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
 async function uploadImage(filePath, folder = 'kentaz/products') {
+  configure();
   try {
     const result = await cloudinary.uploader.upload(filePath, {
       folder,
@@ -18,33 +22,30 @@ async function uploadImage(filePath, folder = 'kentaz/products') {
         { fetch_format: 'auto' },
       ],
     });
-    fs.unlinkSync(filePath);
-    return {
-      url: result.secure_url,
-      publicId: result.public_id,
-    };
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return { url: result.secure_url, publicId: result.public_id };
   } catch (error) {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     throw error;
   }
 }
 
 async function deleteImage(publicId) {
+  configure();
   try {
     await cloudinary.uploader.destroy(publicId);
   } catch (error) {
-    console.error('Error deleting image from Cloudinary:', error);
+    console.error('Cloudinary deleteImage error:', error.message);
   }
 }
 
 async function deleteImages(publicIds) {
   if (!publicIds || publicIds.length === 0) return;
+  configure();
   try {
     await cloudinary.api.delete_resources(publicIds);
   } catch (error) {
-    console.error('Error deleting images from Cloudinary:', error);
+    console.error('Cloudinary deleteImages error:', error.message);
   }
 }
 
@@ -56,10 +57,4 @@ function getOptimizedUrl(url, width = 600) {
   return url;
 }
 
-module.exports = {
-  cloudinary,
-  uploadImage,
-  deleteImage,
-  deleteImages,
-  getOptimizedUrl,
-};
+module.exports = { cloudinary, uploadImage, deleteImage, deleteImages, getOptimizedUrl };
