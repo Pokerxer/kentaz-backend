@@ -392,7 +392,7 @@ export default function EditProductPage() {
     images: [] as string[],
     tags: [] as string[],
     featured: false,
-    status: 'draft' as 'draft' | 'published',
+    status: 'draft' as 'draft' | 'published' | 'archived',
   });
 
   const [variants, setVariants] = useState<Variant[]>([{ ...EMPTY_VARIANT }]);

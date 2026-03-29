@@ -259,7 +259,7 @@ export default function QuantityAdjustmentPage() {
                             {stock.newStock}
                           </span>
                           {stock.newStock < 0 && (
-                            <AlertTriangle className="h-4 w-4 text-red-500" title="Cannot set stock below 0" />
+                            <span title="Cannot set stock below 0"><AlertTriangle className="h-4 w-4 text-red-500" /></span>
                           )}
                         </div>
                       </td>

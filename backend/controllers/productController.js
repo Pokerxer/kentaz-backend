@@ -1,6 +1,34 @@
 const Product = require('../models/Product');
 const Review = require('../models/Review');
 const { v4: uuidv4 } = require('uuid');
+const { uploadImage, deleteImage, deleteImages, getOptimizedUrl } = require('../utils/cloudinary');
+const multer = require('multer');
+const path = require('path');
+const os = require('os');
+
+const storage = multer.diskStorage({
+  destination: os.tmpdir(),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|webp|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Only image files are allowed'));
+  },
+});
+
+exports.upload = upload;
 
 exports.getCategories = async (req, res) => {
   try {
@@ -96,31 +124,82 @@ exports.getProduct = async (req, res) => {
 
 exports.createProduct = async (req, res) => {
   try {
-    const product = new Product(req.body);
-    if (!product.slug) {
-      product.slug = product.name.toLowerCase().replace(/\s+/g, '-') + '-' + uuidv4().slice(0, 8);
+    const productData = { ...req.body };
+    
+    if (req.files && req.files.length > 0) {
+      const uploadPromises = req.files.map(file => uploadImage(file.path));
+      const uploadedImages = await Promise.all(uploadPromises);
+      productData.images = uploadedImages.map(img => ({
+        url: img.url,
+        publicId: img.publicId,
+      }));
     }
+    
+    if (!productData.slug) {
+      productData.slug = productData.name.toLowerCase().replace(/\s+/g, '-') + '-' + uuidv4().slice(0, 8);
+    }
+    
+    const product = new Product(productData);
     await product.save();
     res.status(201).json(product);
   } catch (err) {
+    console.error('createProduct error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
 exports.updateProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const productData = { ...req.body };
+    
+    if (req.files && req.files.length > 0) {
+      if (product.images && product.images.length > 0) {
+        const publicIds = product.images
+          .filter(img => img.publicId)
+          .map(img => img.publicId);
+        if (publicIds.length > 0) {
+          await deleteImages(publicIds);
+        }
+      }
+      
+      const uploadPromises = req.files.map(file => uploadImage(file.path));
+      const uploadedImages = await Promise.all(uploadPromises);
+      productData.images = uploadedImages.map(img => ({
+        url: img.url,
+        publicId: img.publicId,
+      }));
+    }
+    
+    Object.assign(product, productData);
+    await product.save();
     res.json(product);
   } catch (err) {
+    console.error('updateProduct error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
 exports.deleteProduct = async (req, res) => {
   try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    if (product.images && product.images.length > 0) {
+      const publicIds = product.images
+        .filter(img => img.publicId)
+        .map(img => img.publicId);
+      if (publicIds.length > 0) {
+        await deleteImages(publicIds);
+      }
+    }
+
     await Product.findByIdAndDelete(req.params.id);
     res.json({ message: 'Product deleted' });
   } catch (err) {
+    console.error('deleteProduct error:', err);
     res.status(500).json({ error: err.message });
   }
 };

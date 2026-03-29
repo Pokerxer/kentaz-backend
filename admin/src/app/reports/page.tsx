@@ -187,6 +187,76 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Status picker ──────────────────────────────────────────────
+
+type StatusOption = { value: string; label: string; color: string; dot: string };
+
+const ORDER_STATUS_OPTIONS: StatusOption[] = [
+  { value: '',           label: 'All Statuses',   color: 'text-gray-600',    dot: 'bg-gray-400'    },
+  { value: 'pending',    label: 'Pending',         color: 'text-yellow-700',  dot: 'bg-yellow-400'  },
+  { value: 'processing', label: 'Processing',      color: 'text-blue-700',    dot: 'bg-blue-500'    },
+  { value: 'shipped',    label: 'Shipped',         color: 'text-purple-700',  dot: 'bg-purple-500'  },
+  { value: 'delivered',  label: 'Delivered',       color: 'text-emerald-700', dot: 'bg-emerald-500' },
+  { value: 'cancelled',  label: 'Cancelled',       color: 'text-red-700',     dot: 'bg-red-500'     },
+];
+
+const INV_FILTER_OPTIONS: StatusOption[] = [
+  { value: 'all', label: 'All Products',    color: 'text-gray-600',    dot: 'bg-gray-400'    },
+  { value: 'low', label: 'Low Stock (≤5)',  color: 'text-amber-700',   dot: 'bg-amber-400'   },
+  { value: 'out', label: 'Out of Stock',    color: 'text-red-700',     dot: 'bg-red-500'     },
+];
+
+function StatusPicker({ label, value, options, onChange }: {
+  label: string; value: string;
+  options: StatusOption[]; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.value === value) ?? options[0];
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <p className="text-xs font-medium text-gray-500 mb-1">{label}</p>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 h-9 px-3 rounded-xl border border-gray-200 bg-white text-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#C9A84C] min-w-[168px] transition-colors"
+      >
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${selected.dot}`} />
+        <span className={`flex-1 text-left font-medium ${selected.color}`}>{selected.label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1.5 left-0 w-full bg-white rounded-xl border border-gray-100 shadow-xl shadow-gray-200/60 py-1 overflow-hidden">
+          {options.map(opt => {
+            const active = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${active ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${opt.dot}`} />
+                <span className={`flex-1 text-left ${opt.color} font-medium`}>{opt.label}</span>
+                {active && <span className="text-[#C9A84C] text-xs font-bold">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TableSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div className="relative mb-4 max-w-xs">
@@ -994,37 +1064,22 @@ export default function ReportsPage() {
 
             {/* Orders: status filter */}
             {reportType === 'orders' && (
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-                <select
-                  value={orderStatus}
-                  onChange={e => setOrderStatus(e.target.value)}
-                  className="h-9 px-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]"
-                >
-                  <option value="">All statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="processing">Processing</option>
-                  <option value="shipped">Shipped</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
+              <StatusPicker
+                label="Status"
+                value={orderStatus}
+                options={ORDER_STATUS_OPTIONS}
+                onChange={setOrderStatus}
+              />
             )}
 
             {/* Inventory: stock filter */}
             {isInventory && (
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Stock Filter</label>
-                <select
-                  value={invFilter}
-                  onChange={e => setInvFilter(e.target.value as 'all' | 'low' | 'out')}
-                  className="h-9 px-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]"
-                >
-                  <option value="all">All products</option>
-                  <option value="low">Low stock only (≤5)</option>
-                  <option value="out">Out of stock only</option>
-                </select>
-              </div>
+              <StatusPicker
+                label="Stock Filter"
+                value={invFilter}
+                options={INV_FILTER_OPTIONS}
+                onChange={v => setInvFilter(v as 'all' | 'low' | 'out')}
+              />
             )}
 
             {/* Buttons */}
