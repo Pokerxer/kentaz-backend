@@ -97,9 +97,7 @@ export function usePaystack() {
         key: publicKey,
         email: config.email,
         amount: amountInKobo,
-        reference,
-        currency: 'NGN',
-        channels: ['card', 'bank', 'ussd', 'bank_transfer'],
+        ref: reference,
         callback: (response: any) => {
           config.onSuccess({
             reference: response.reference,
