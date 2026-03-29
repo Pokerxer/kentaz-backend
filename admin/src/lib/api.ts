@@ -684,6 +684,7 @@ export interface Address {
   lastName?: string;
   phone?: string;
   email?: string;
+  address?: string;
   street: string;
   city: string;
   state: string;
