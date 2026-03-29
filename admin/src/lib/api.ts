@@ -318,6 +318,29 @@ export const api = {
     },
   },
 
+  upload: {
+    image: async (file: File): Promise<{ url: string; publicId: string }> => {
+      const token = await getAuthToken();
+      const form = new FormData();
+      form.append('image', file);
+      const res = await fetch(`${API_URL}/api/admin/upload`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new ApiError(err.error || 'Upload failed', res.status);
+      }
+      return res.json();
+    },
+    deleteImage: (publicId: string) =>
+      request<{ message: string }>('/api/admin/upload', {
+        method: 'DELETE',
+        body: JSON.stringify({ publicId }),
+      }),
+  },
+
   analytics: {
     get: (period: string = '30d') =>
       request<AnalyticsData>(`/api/admin/analytics?period=${period}`),

@@ -28,6 +28,7 @@ import {
   Star,
   Eye,
   EyeOff,
+  Upload,
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { api } from '@/lib/api';
@@ -466,7 +467,9 @@ export default function NewProductPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
-  const [tagInput, setTagInput] = useState('' );
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -512,6 +515,24 @@ export default function NewProductPage() {
     }
   };
   const removeImage = (url: string) => setField('images', formData.images.filter(u => u !== url));
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploadingImage(true);
+    try {
+      for (const file of files) {
+        if (formData.images.length >= 10) break;
+        const result = await api.upload.image(file);
+        addImage(result.url);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Upload failed');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Tags
   const addTag = () => {
@@ -725,32 +746,55 @@ export default function NewProductPage() {
                     </div>
                   </div>
 
-                  {/* URL input */}
-                  {showUrlInput ? (
-                    <div className="flex gap-2">
-                      <input
-                        autoFocus type="url" placeholder="https://example.com/image.jpg"
-                        value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (imageUrlInput.trim()) { addImage(imageUrlInput.trim()); setImageUrlInput(''); setShowUrlInput(false); } } }}
-                        className={`${inputCls} flex-1`}
-                      />
-                      <button type="button"
-                        onClick={() => { if (imageUrlInput.trim()) { addImage(imageUrlInput.trim()); setImageUrlInput(''); setShowUrlInput(false); } }}
-                        className="px-4 py-2 bg-[#C9A84C] text-white rounded-xl text-sm font-medium hover:bg-[#B8953F] transition-colors">
-                        Add
-                      </button>
-                      <button type="button" onClick={() => { setShowUrlInput(false); setImageUrlInput(''); }}
-                        className="px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50 transition-colors">
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => setShowUrlInput(true)}
-                      className="flex items-center gap-1.5 text-sm text-[#C9A84C] hover:text-[#B8953F] font-medium transition-colors">
-                      <ImageIcon className="h-4 w-4" />
-                      Paste image URL
+                  {/* Upload + URL actions */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* File upload */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={formData.images.length >= 10}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage || formData.images.length >= 10}
+                      className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors disabled:opacity-50"
+                    >
+                      {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      {uploadingImage ? 'Uploading…' : 'Upload from device'}
                     </button>
-                  )}
+
+                    {/* URL input */}
+                    {showUrlInput ? (
+                      <div className="flex gap-2 w-full">
+                        <input
+                          autoFocus type="url" placeholder="https://example.com/image.jpg"
+                          value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (imageUrlInput.trim()) { addImage(imageUrlInput.trim()); setImageUrlInput(''); setShowUrlInput(false); } } }}
+                          className={`${inputCls} flex-1`}
+                        />
+                        <button type="button"
+                          onClick={() => { if (imageUrlInput.trim()) { addImage(imageUrlInput.trim()); setImageUrlInput(''); setShowUrlInput(false); } }}
+                          className="px-4 py-2 bg-[#C9A84C] text-white rounded-xl text-sm font-medium hover:bg-[#B8953F] transition-colors">
+                          Add
+                        </button>
+                        <button type="button" onClick={() => { setShowUrlInput(false); setImageUrlInput(''); }}
+                          className="px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setShowUrlInput(true)}
+                        className="flex items-center gap-1.5 text-sm text-[#C9A84C] hover:text-[#B8953F] font-medium transition-colors">
+                        <ImageIcon className="h-4 w-4" />
+                        Paste image URL
+                      </button>
+                    )}
+                  </div>
                 </div>
               </SectionCard>
 

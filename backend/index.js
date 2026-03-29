@@ -24,6 +24,7 @@ const shippingRoutes = require('./routes/shipping');
 const analyticsRoutes = require('./routes/analytics');
 const notificationRoutes = require('./routes/notifications');
 const reportRoutes = require('./routes/reports');
+const uploadRoutes = require('./routes/upload');
 
 const Product = require('./models/Product');
 
@@ -79,6 +80,7 @@ app.use('/api/admin/shipping', shippingRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/admin/notifications', notificationRoutes);
 app.use('/api/admin/reports', reportRoutes);
+app.use('/api/admin/upload', uploadRoutes);
 
 app.post('/api/seed/products', async (req, res) => {
   try {
