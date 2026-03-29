@@ -11,6 +11,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: '**.medusa-commerce.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
     ],
   },
 };
