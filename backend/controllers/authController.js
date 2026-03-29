@@ -44,10 +44,15 @@ exports.getMe = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, avatar, addresses } = req.body;
+    const { name, phone, avatar, addresses } = req.body;
+    const update = {};
+    if (name    !== undefined) update.name      = name;
+    if (phone   !== undefined) update.phone     = phone;
+    if (avatar  !== undefined) update.avatar    = avatar;
+    if (addresses !== undefined) update.addresses = addresses;
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      { name, avatar, addresses },
+      update,
       { new: true }
     ).select('-password');
     res.json(user);

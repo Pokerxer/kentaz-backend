@@ -6,7 +6,8 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['customer', 'admin', 'therapist', 'staff'], default: 'customer' },
   isActive: { type: Boolean, default: true },
-  pin: { type: String }, // optional 4-digit PIN for quick POS login
+  phone: { type: String },
+  pin: { type: String },
   avatar: { type: String },
   addresses: [{
     street: String,

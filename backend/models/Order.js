@@ -21,11 +21,17 @@ const orderSchema = new mongoose.Schema({
     default: 'pending'
   },
   shippingAddress: {
-    street: String,
+    firstName: String,
+    lastName: String,
+    email: String,
+    phone: String,
+    address: String,      // from checkout form (street address line)
+    street: String,       // legacy alias
     city: String,
     state: String,
     country: String,
-    postalCode: String
+    postalCode: String,
+    deliveryMethod: String,
   },
   paystackRef: String,
   paystackStatus: String

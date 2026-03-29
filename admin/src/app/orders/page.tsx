@@ -254,9 +254,19 @@ function OrderDetail({
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> Shipping Address
               </h3>
+              {(addr.firstName || addr.lastName) && (
+                <p className="text-sm font-semibold text-gray-900">{[addr.firstName, addr.lastName].filter(Boolean).join(' ')}</p>
+              )}
+              {addr.phone && <p className="text-xs text-gray-500">{addr.phone}</p>}
+              {addr.email && <p className="text-xs text-gray-500">{addr.email}</p>}
               <p className="text-sm text-gray-700 leading-relaxed">
-                {[addr.street, addr.city, addr.state, addr.country, addr.postalCode].filter(Boolean).join(', ')}
+                {[(addr.address || addr.street), addr.city, addr.state, addr.postalCode, addr.country || 'Nigeria'].filter(Boolean).join(', ')}
               </p>
+              {addr.deliveryMethod && (
+                <p className="text-xs text-gray-400 capitalize">
+                  {addr.deliveryMethod === 'express' ? 'Express delivery (1-2 days)' : 'Standard delivery (3-5 days)'}
+                </p>
+              )}
             </div>
           )}
 
