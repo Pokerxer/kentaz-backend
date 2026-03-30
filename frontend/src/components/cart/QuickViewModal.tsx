@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Minus, Plus, ShoppingCart, Check, Star, Truck, Shield, RotateCcw, ArrowRight } from 'lucide-react';
 import { useAppDispatch } from '@/store/hooks';
 import { addToCart } from '@/store/cartSlice';
+import { VariantPicker, findVariant, autoSelectVariant } from '@/components/shop/VariantPicker';
 
 interface ProductVariant {
   id?: string;
@@ -57,7 +58,8 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const dispatch = useAppDispatch();
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [addedToCart, setAddedToCart] = useState(false);
 
   useEffect(() => {
@@ -74,7 +76,9 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
       setSelectedImage(0);
       setQuantity(1);
       setAddedToCart(false);
-      setSelectedVariantIndex(0);
+      const { size, color } = autoSelectVariant(product.variants || []);
+      setSelectedSize(size);
+      setSelectedColor(color);
     }
   }, [product]);
 
@@ -90,7 +94,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   if (images.length === 0) images.push('https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600');
   while (images.length < 4) images.push(images[0]);
 
-  const selectedVariant = product.variants?.[selectedVariantIndex] || product.variants?.[0];
+  const selectedVariant = findVariant(product.variants || [], selectedSize, selectedColor) ?? product.variants?.[0];
   const price = selectedVariant?.price || product.variants?.[0]?.price || 0;
   const inventory = selectedVariant?.stock || product.variants?.[0]?.stock || 0;
   const isOutOfStock = inventory === 0;
@@ -267,42 +271,20 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                   </p>
 
                   {product.variants && product.variants.length > 1 && (
-                    <div className="space-y-4 mb-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm font-semibold text-gray-900">
-                          Select Variant
-                        </label>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {product.variants.map((variant, index) => {
-                          const isSelected = selectedVariantIndex === index;
-                          const isUnavailable = variant.stock === 0;
-
-                          return (
-                            <motion.button
-                              key={index}
-                              whileHover={!isUnavailable ? { scale: 1.05 } : {}}
-                              whileTap={!isUnavailable ? { scale: 0.95 } : {}}
-                              onClick={() => !isUnavailable && setSelectedVariantIndex(index)}
-                              disabled={isUnavailable}
-                              className={`min-w-[80px] px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
-                                isSelected
-                                  ? 'border-gray-900 bg-gray-900 text-white'
-                                  : isUnavailable
-                                  ? 'border-gray-100 text-gray-300 cursor-not-allowed line-through bg-gray-50'
-                                  : 'border-gray-200 text-gray-700 hover:border-gray-400'
-                              }`}
-                            >
-                              {variant.size && <div className="text-xs">{variant.size}</div>}
-                              {variant.color && <div className="text-xs">{variant.color}</div>}
-                              <div className={`text-xs ${isSelected ? 'text-gray-300' : 'text-gray-500'}`}>
-                                {formatPrice(variant.price)}
-                              </div>
-                            </motion.button>
-                          );
-                        })}
-                      </div>
+                    <div className="mb-6">
+                      <VariantPicker
+                        variants={product.variants}
+                        selectedSize={selectedSize}
+                        selectedColor={selectedColor}
+                        onSizeChange={size => {
+                          setSelectedSize(size);
+                          if (selectedColor) {
+                            const exists = product.variants?.some(v => v.size === size && v.color === selectedColor);
+                            if (!exists) setSelectedColor(null);
+                          }
+                        }}
+                        onColorChange={setSelectedColor}
+                      />
                     </div>
                   )}
 
