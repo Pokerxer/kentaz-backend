@@ -23,54 +23,93 @@ function calcChange(total: number, paid: number) {
 
 // ── Variant Picker Modal ───────────────────────────────────────
 
-function VariantModal({
-  product,
-  onSelect,
-  onClose,
-}: {
-  product: PosProduct;
-  onSelect: (vi: number) => void;
-  onClose: () => void;
-}) {
+const POS_COLOR_MAP: Record<string, string> = {
+  black: '#000000', white: '#FFFFFF', blue: '#1E40AF', navy: '#1E3A8A',
+  red: '#DC2626', tan: '#D2B48C', cognac: '#9A6324', burgundy: '#722F37',
+  nude: '#E3BC9A', brown: '#8B4513', pink: '#EC4899', green: '#059669',
+  yellow: '#FACC15', purple: '#7C3AED', gray: '#6B7280', grey: '#6B7280',
+  silver: '#C0C0C0', gold: '#FFD700', cream: '#FFFDD0', beige: '#F5F5DC',
+  orange: '#F97316', emerald: '#10B981', khaki: '#C3B091', camel: '#C19A6B',
+  olive: '#808000', teal: '#008080', coral: '#FF6B6B', lavender: '#967BB6',
+};
+function posColorHex(name: string) { return POS_COLOR_MAP[name.toLowerCase().trim()] || '#9CA3AF'; }
+function posIsLight(name: string) { return ['white', 'cream', 'beige', 'nude', 'yellow', 'silver', 'ivory'].some(c => name.toLowerCase().includes(c)); }
+
+function VariantModal({ product, onSelect, onClose }: { product: PosProduct; onSelect: (vi: number) => void; onClose: () => void; }) {
+  const variants = product.variants;
+  const hasSizes = variants.some(v => v.size);
+  const hasColors = variants.some(v => v.color);
+  const allSizes = variants.filter(v => v.size).map(v => v.size!);
+  const allColors = variants.filter(v => v.color).map(v => v.color!);
+  const uniqueSizes = hasSizes ? Array.from(new Set(allSizes)) : [];
+  const uniqueColors = hasColors ? Array.from(new Set(allColors)) : [];
+  const firstAvailableSize = uniqueSizes.find(s => variants.some(v => v.size === s && (v.stock ?? 0) > 0)) ?? uniqueSizes[0] ?? null;
+
+  const [selectedSize, setSelectedSize] = useState<string | null>(firstAvailableSize);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+
+  const sizeColorsAll = variants.filter(v => v.size === selectedSize && v.color).map(v => v.color!);
+  const colorsForSize = hasSizes && selectedSize ? Array.from(new Set(sizeColorsAll)) : uniqueColors;
+
+  useEffect(() => {
+    const first = colorsForSize.find(c => {
+      const v = variants.find(vv => (selectedSize ? vv.size === selectedSize : true) && vv.color === c);
+      return v && (v.stock ?? 0) > 0;
+    }) ?? colorsForSize[0] ?? null;
+    setSelectedColor(first);
+  }, [selectedSize]);
+
+  const matchedIdx = variants.findIndex(v => {
+    const sizeOk = !hasSizes || !selectedSize || v.size === selectedSize;
+    const colorOk = !hasColors || !selectedColor || v.color === selectedColor;
+    return sizeOk && colorOk;
+  });
+  const matched = matchedIdx >= 0 ? variants[matchedIdx] : null;
+  const canAdd = matched && (matched.stock ?? 0) > 0;
+  const sizeInStock = (s: string) => variants.some(v => v.size === s && (v.stock ?? 0) > 0);
+  const colorInStock = (c: string) => { const v = variants.find(vv => (selectedSize ? vv.size === selectedSize : true) && vv.color === c); return v ? (v.stock ?? 0) > 0 : false; };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <div>
-            <h3 className="font-bold text-gray-900 text-sm">{product.name}</h3>
-            <p className="text-xs text-gray-500">Choose a variant</p>
-          </div>
+          <div><h3 className="font-bold text-gray-900 text-sm">{product.name}</h3><p className="text-xs text-gray-500">Choose a variant to add to cart</p></div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
         </div>
-        <div className="p-4 grid grid-cols-1 gap-2 max-h-72 overflow-y-auto">
-          {product.variants.map((v, i) => {
-            const label = [v.size, v.color].filter(Boolean).join(' / ') || `Variant ${i + 1}`;
-            const outOfStock = (v.stock ?? 0) <= 0;
-            return (
-              <button
-                key={i}
-                onClick={() => !outOfStock && onSelect(i)}
-                disabled={outOfStock}
-                className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition ${
-                  outOfStock
-                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                    : 'border-gray-200 hover:border-[#C9A84C] hover:bg-amber-50'
-                }`}
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{label}</p>
-                  {v.sku && <p className="text-xs text-gray-400">{v.sku}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-gray-900">{formatPrice(v.price)}</p>
-                  {outOfStock
-                    ? <p className="text-xs text-red-500">Out of stock</p>
-                    : <p className="text-xs text-gray-500">Stock: {v.stock}</p>
-                  }
-                </div>
-              </button>
-            );
-          })}
+        <div className="p-5 space-y-5">
+          {hasSizes && uniqueSizes.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">Size {selectedSize && <span className="ml-1.5 text-gray-900 normal-case font-bold">{selectedSize}</span>}</p>
+              <div className="flex flex-wrap gap-2">
+                {uniqueSizes.map(s => {
+                  const inStock = sizeInStock(s);
+                  const selected = selectedSize === s;
+                  return <button key={s} type="button" onClick={() => inStock && setSelectedSize(s)} className={`relative px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${selected ? 'border-gray-900 bg-gray-900 text-white' : inStock ? 'border-gray-200 text-gray-700 hover:border-[#C9A84C] hover:bg-amber-50' : 'border-gray-100 text-gray-300 bg-gray-50 cursor-not-allowed'}`}>{s}{!inStock && <svg className="absolute inset-0 w-full h-full rounded-xl" viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="5" y1="95" x2="95" y2="5" stroke="#D1D5DB" strokeWidth="2" /></svg>}</button>;
+                })}
+              </div>
+            </div>
+          )}
+          {hasColors && colorsForSize.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">Color {selectedColor && <span className="ml-1.5 text-gray-900 normal-case font-bold capitalize">{selectedColor}</span>}</p>
+              <div className="flex flex-wrap gap-3">
+                {colorsForSize.map(c => {
+                  const inStock = colorInStock(c);
+                  const selected = selectedColor === c;
+                  const hex = posColorHex(c);
+                  const light = posIsLight(c);
+                  return <button key={c} type="button" onClick={() => inStock && setSelectedColor(c)} title={c.charAt(0).toUpperCase() + c.slice(1)} className={`relative w-9 h-9 rounded-full border-2 transition-all ${selected ? 'border-gray-900 ring-2 ring-gray-900 ring-offset-2' : inStock ? light ? 'border-gray-300 hover:border-gray-600' : 'border-transparent hover:border-gray-400' : 'border-gray-200 opacity-40 cursor-not-allowed'}`} style={{ backgroundColor: hex }}>{!inStock && <svg className="absolute inset-0 w-full h-full rounded-full" viewBox="0 0 36 36"><line x1="4" y1="32" x2="32" y2="4" stroke="rgba(0,0,0,0.35)" strokeWidth="2.5" /></svg>}</button>;
+                })}
+              </div>
+            </div>
+          )}
+          {matched && (
+            <div className={`flex items-center justify-between px-4 py-3 rounded-xl border ${canAdd ? 'border-[#C9A84C]/40 bg-amber-50/60' : 'border-red-100 bg-red-50/60'}`}>
+              <div><p className="text-sm font-semibold text-gray-900">{[matched.size, matched.color].filter(Boolean).join(' · ') || 'Default'}</p>{matched.sku && <p className="text-xs text-gray-400 font-mono">{matched.sku}</p>}</div>
+              <div className="text-right"><p className="text-sm font-bold text-gray-900">{formatPrice(matched.price)}</p>{canAdd ? <p className="text-xs text-green-600 font-medium">{matched.stock} in stock</p> : <p className="text-xs text-red-500 font-medium">Out of stock</p>}</div>
+            </div>
+          )}
+          <button onClick={() => canAdd && onSelect(matchedIdx)} disabled={!canAdd} className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${canAdd ? 'bg-gray-900 text-white hover:bg-[#C9A84C] hover:shadow-lg hover:shadow-[#C9A84C]/20' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{canAdd ? 'Add to Cart' : 'Out of Stock'}</button>
         </div>
       </div>
     </div>

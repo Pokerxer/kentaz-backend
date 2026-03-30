@@ -57,6 +57,18 @@ const EMPTY_VARIANT: Variant = {
 const popularSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '36', '38', '40', '42', '44', '46'];
 const popularColors = ['Black', 'White', 'Navy', 'Brown', 'Beige', 'Grey', 'Red', 'Blue', 'Green', 'Gold', 'Pink', 'Purple'];
 
+const COLOR_MAP: Record<string, string> = {
+  black: '#000000', white: '#FFFFFF', blue: '#1E40AF', navy: '#1E3A8A',
+  red: '#DC2626', tan: '#D2B48C', cognac: '#9A6324', burgundy: '#722F37',
+  nude: '#E3BC9A', brown: '#8B4513', pink: '#EC4899', green: '#059669',
+  yellow: '#FACC15', purple: '#7C3AED', gray: '#6B7280', grey: '#6B7280',
+  silver: '#C0C0C0', gold: '#FFD700', cream: '#FFFDD0', beige: '#F5F5DC',
+  orange: '#F97316', emerald: '#10B981', khaki: '#C3B091', camel: '#C19A6B',
+  olive: '#808000', teal: '#008080', coral: '#FF6B6B', lavender: '#967BB6',
+};
+function getColorHex(name: string) { return COLOR_MAP[name.toLowerCase().trim()] || '#9CA3AF'; }
+function isLightColor(name: string) { return ['white', 'cream', 'beige', 'nude', 'yellow', 'silver', 'ivory'].some(c => name.toLowerCase().includes(c)); }
+
 const STOCK_IMAGES = [
   'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400',
   'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400',
@@ -81,6 +93,27 @@ function generateSku(productName: string, variant: Variant, index: number) {
 function calcMargin(cost: number, price: number) {
   if (!cost || !price || price <= cost) return null;
   return Math.round(((price - cost) / price) * 100);
+}
+
+// ─── Variant Builder ──────────────────────────────────────────────────────────
+function VariantBuilder({ onGenerate }: { onGenerate: (sizes: string[], colors: string[]) => void; }) {
+  const [sizeInput, setSizeInput] = useState('');
+  const [colorInput, setColorInput] = useState('');
+  const [sizes, setSizes] = useState<string[]>([]);
+  const [colors, setColors] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const addSize = (val: string) => { const v = val.trim(); if (v && !sizes.includes(v)) setSizes(s => [...s, v]); setSizeInput(''); };
+  const addColor = (val: string) => { const v = val.trim(); if (v && !colors.includes(v)) setColors(c => [...c, v]); setColorInput(''); };
+  const combos = Math.max(sizes.length > 0 && colors.length > 0 ? sizes.length * colors.length : sizes.length || colors.length || 0, 0);
+  if (!open) return (<button type="button" onClick={() => setOpen(true)} className="flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-[#C9A84C]/40 rounded-xl text-sm text-[#C9A84C] hover:border-[#C9A84C] hover:bg-[#C9A84C]/5 font-medium transition-all w-full justify-center"><Sparkles className="h-4 w-4" /> Generate variants from sizes & colors</button>);
+  return (
+    <div className="border border-[#C9A84C]/30 bg-amber-50/30 rounded-xl p-4 space-y-4">
+      <div className="flex items-center justify-between"><p className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#C9A84C]" /> Variant Builder</p><button type="button" onClick={() => setOpen(false)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><X className="h-4 w-4" /></button></div>
+      <div><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sizes</p><div className="flex flex-wrap gap-1.5 mb-2">{sizes.map(s => (<span key={s} className="flex items-center gap-1 px-3 py-1.5 bg-gray-900 text-white text-xs font-semibold rounded-lg">{s}<button type="button" onClick={() => setSizes(prev => prev.filter(x => x !== s))} className="hover:text-red-300"><X className="h-3 w-3" /></button></span>))}</div><div className="flex flex-wrap gap-1.5 mb-2">{popularSizes.filter(s => !sizes.includes(s)).map(s => (<button key={s} type="button" onClick={() => addSize(s)} className="px-2.5 py-1 border border-gray-200 rounded-lg text-xs text-gray-600 hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors bg-white">+ {s}</button>))}</div><div className="flex gap-2"><input type="text" value={sizeInput} onChange={e => setSizeInput(e.target.value)} placeholder="Custom size…" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSize(sizeInput); } }} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white" /><button type="button" onClick={() => addSize(sizeInput)} disabled={!sizeInput.trim()} className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium disabled:opacity-40">Add</button></div></div>
+      <div><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Colors</p><div className="flex flex-wrap gap-2 mb-2">{colors.map(c => { const hex = getColorHex(c); const light = isLightColor(c); return (<span key={c} className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 border border-gray-200 bg-white rounded-lg text-xs font-medium text-gray-700"><span className={`w-4 h-4 rounded-full border flex-shrink-0 ${light ? 'border-gray-300' : 'border-transparent'}`} style={{ backgroundColor: hex }} />{c}<button type="button" onClick={() => setColors(prev => prev.filter(x => x !== c))} className="hover:text-red-500 ml-0.5"><X className="h-3 w-3" /></button></span>); })}</div><div className="flex flex-wrap gap-1.5 mb-2">{popularColors.filter(c => !colors.includes(c)).map(c => { const hex = getColorHex(c); const light = isLightColor(c); return (<button key={c} type="button" onClick={() => addColor(c)} className="flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 rounded-lg text-xs text-gray-600 hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors bg-white"><span className={`w-3 h-3 rounded-full border flex-shrink-0 ${light ? 'border-gray-300' : 'border-transparent'}`} style={{ backgroundColor: hex }} />+ {c}</button>); })}</div><div className="flex gap-2 items-center"><input type="text" value={colorInput} onChange={e => setColorInput(e.target.value)} placeholder="Custom color…" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addColor(colorInput); } }} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white" />{colorInput.trim() && <span className={`w-7 h-7 rounded-full border flex-shrink-0 ${isLightColor(colorInput) ? 'border-gray-300' : 'border-transparent'}`} style={{ backgroundColor: getColorHex(colorInput) }} />}<button type="button" onClick={() => addColor(colorInput)} disabled={!colorInput.trim()} className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium disabled:opacity-40">Add</button></div></div>
+      <button type="button" disabled={combos === 0} onClick={() => { onGenerate(sizes, colors); setOpen(false); }} className="w-full py-3 bg-[#C9A84C] text-white rounded-xl text-sm font-bold hover:bg-[#B8953F] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"><Layers className="h-4 w-4" />{combos > 0 ? `Generate ${combos} variant${combos !== 1 ? 's' : ''}` : 'Add sizes or colors above'}</button>
+    </div>
+  );
 }
 
 // ─── Subcomponents ────────────────────────────────────────────────────────────
@@ -508,6 +541,21 @@ export default function NewProductPage() {
     dirty();
   };
 
+  const generateVariants = (sizes: string[], colors: string[]) => {
+    const combos: Variant[] = [];
+    if (sizes.length > 0 && colors.length > 0) { for (const size of sizes) for (const color of colors) combos.push({ ...EMPTY_VARIANT, size, color }); }
+    else if (sizes.length > 0) { for (const size of sizes) combos.push({ ...EMPTY_VARIANT, size }); }
+    else if (colors.length > 0) { for (const color of colors) combos.push({ ...EMPTY_VARIANT, color }); }
+    if (combos.length > 0) {
+      setVariants(prev => {
+        const existing = prev.filter(v => v.price > 0 || v.stock > 0 || v.sku);
+        const newCombos = combos.filter(c => !existing.some(e => e.size === c.size && e.color === c.color));
+        return [...existing, ...newCombos];
+      });
+      dirty();
+    }
+  };
+
   // Images
   const addImage = (url: string) => {
     if (!formData.images.includes(url) && formData.images.length < 10) {
@@ -805,7 +853,8 @@ export default function NewProductPage() {
                 title="Variants & Pricing"
                 subtitle={`${variants.length} variant${variants.length !== 1 ? 's' : ''} · ${priceRange || 'No prices set'}`}
               >
-                <div className="pt-1">
+                <div className="pt-1 space-y-4">
+                  <VariantBuilder onGenerate={generateVariants} />
                   {/* Desktop table */}
                   <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200">
                     <table className="w-full text-sm">
