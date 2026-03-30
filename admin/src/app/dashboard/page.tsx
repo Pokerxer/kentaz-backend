@@ -76,50 +76,218 @@ const paymentIcon: Record<string, React.ElementType> = {
   cash: Banknote, card: CreditCard, transfer: ArrowLeftRight,
 };
 
-// ── sparkline (pure CSS bars) ────────────────────────────────────
+// ── Enhanced Revenue Chart ──────────────────────────────────────
 
-function MiniChart({ data }: { data: DashboardTrendDay[] }) {
+function RevenueChart({ data }: { data: DashboardTrendDay[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const max = Math.max(...data.map(d => d.totalRev), 1);
+  const total = data.reduce((sum, d) => sum + d.totalRev, 0);
+
   return (
-    <div className="flex items-end gap-1 h-20">
-      {data.map((d, i) => {
-        const h = Math.max(4, Math.round((d.totalRev / max) * 80));
-        const isToday = i === data.length - 1;
-        return (
-          <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative">
+    <div className="relative">
+      {/* Chart area */}
+      <div className="flex items-end gap-2 h-48 relative">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#C9A84C]/5 to-transparent rounded-lg" />
+
+        {data.map((d, i) => {
+          const h = Math.max(4, (d.totalRev / max) * 180);
+          const isToday = i === data.length - 1;
+          const isHovered = hoveredIndex === i;
+          const barWidth = 100 / data.length - 2;
+
+          return (
             <div
-              className={`w-full rounded-t transition-all ${isToday ? 'bg-gradient-to-t from-[#C9A84C] to-[#E5C77A]' : 'bg-gray-200 group-hover:bg-[#C9A84C]/40'}`}
-              style={{ height: `${h}px` }}
-            />
-            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] rounded px-1.5 py-0.5 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10">
-              {d.label}<br />{formatPrice(d.totalRev)}
+              key={d.date}
+              className="flex-1 flex flex-col items-center justify-end group relative"
+              style={{ height: '100%' }}
+              onMouseEnter={() => setHoveredIndex(i)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            >
+              {/* Tooltip */}
+              <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-20 transition-all duration-200 ${
+                isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'
+              }`}>
+                <p className="font-semibold">{d.label}</p>
+                <p className="text-[#C9A84C]">{formatPrice(d.totalRev)}</p>
+                <p className="text-white/60 text-[10px]">{Math.round((d.totalRev / total) * 100)}% of total</p>
+                {/* Arrow */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+              </div>
+
+              {/* Bar */}
+              <div
+                className={`w-full rounded-t-lg transition-all duration-500 relative overflow-hidden ${
+                  isToday
+                    ? 'bg-gradient-to-t from-[#C9A84C] to-[#E5C77A] shadow-lg shadow-[#C9A84C]/30'
+                    : isHovered
+                    ? 'bg-[#C9A84C]'
+                    : 'bg-gray-200 group-hover:bg-[#C9A84C]/60'
+                }`}
+                style={{
+                  height: `${h}px`,
+                  transitionDelay: `${i * 50}ms`,
+                }}
+              >
+                {/* Shine effect */}
+                {isToday && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shine" />
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {/* X-axis labels */}
+      <div className="flex justify-between mt-2 px-1">
+        {data.map((d, i) => (
+          <span
+            key={d.date}
+            className={`flex-1 text-center text-[10px] transition-colors ${
+              hoveredIndex === i ? 'text-gray-900 font-medium' : 'text-gray-400'
+            }`}
+          >
+            {d.label.split(' ')[0]}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
-// Simple category chart (horizontal bars)
-function CategoryChart({ data }: { data: { category: string; revenue: number }[] }) {
-  const max = Math.max(...data.map(d => d.revenue), 1);
-  const colors = ['bg-[#C9A84C]', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500'];
+// ── Donut Chart for Categories ───────────────────────────────────
+
+function DonutChart({ data }: { data: { category: string; revenue: number }[] }) {
+  const total = data.reduce((sum, d) => sum + d.revenue, 0);
+  const colors = ['#C9A84C', '#3B82F6', '#10B981', '#8B5CF6', '#EC4899', '#F97316'];
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  let accumulated = 0;
 
   return (
-    <div className="space-y-2">
-      {data.slice(0, 5).map((d, i) => (
-        <div key={d.category} className="flex items-center gap-3">
-          <span className="w-20 text-xs text-gray-500 truncate">{d.category}</span>
-          <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full ${colors[i % colors.length]} rounded-full transition-all duration-700`}
-              style={{ width: `${Math.max(4, (d.revenue / max) * 100)}%` }}
-            />
-          </div>
-          <span className="text-xs font-semibold text-gray-700 w-16 text-right">{formatPrice(d.revenue)}</span>
+    <div className="flex items-center gap-6">
+      {/* Donut */}
+      <div className="relative w-40 h-40 flex-shrink-0">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle cx="50" cy="50" r={radius} fill="none" stroke="#f3f4f6" strokeWidth="12" />
+
+          {/* Data segments */}
+          {data.map((d, i) => {
+            const pct = d.revenue / total;
+            const offset = accumulated / total;
+            accumulated += d.revenue;
+
+            return (
+              <circle
+                key={d.category}
+                cx="50"
+                cy="50"
+                r={radius}
+                fill="none"
+                stroke={colors[i % colors.length]}
+                strokeWidth="12"
+                strokeDasharray={`${pct * circumference} ${circumference}`}
+                strokeDashoffset={`${-offset * circumference}`}
+                className="transition-all duration-700"
+                style={{ transitionDelay: `${i * 100}ms` }}
+              />
+            );
+          })}
+        </svg>
+
+        {/* Center text */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <p className="text-xs text-gray-500">Total</p>
+          <p className="text-lg font-black text-gray-900">{formatPrice(total)}</p>
         </div>
-      ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex-1 space-y-2">
+        {data.map((d, i) => (
+          <div key={d.category} className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+              <span className="text-xs text-gray-600">{d.category}</span>
+            </div>
+            <span className="text-xs font-semibold text-gray-900">{Math.round((d.revenue / total) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Order Status Ring Chart ──────────────────────────────────────
+
+function StatusRingChart({ breakdown }: { breakdown: Record<string, number> }) {
+  const total = Object.values(breakdown).reduce((a, b) => a + b, 0) || 1;
+  const statusOrder = ['delivered', 'shipped', 'processing', 'pending', 'cancelled'] as const;
+  const colors: Record<string, string> = {
+    delivered: '#10B981',
+    shipped: '#8B5CF6',
+    processing: '#3B82F6',
+    pending: '#F59E0B',
+    cancelled: '#EF4444',
+  };
+  const labels: Record<string, string> = {
+    delivered: 'Delivered',
+    shipped: 'Shipped',
+    processing: 'Processing',
+    pending: 'Pending',
+    cancelled: 'Cancelled',
+  };
+
+  let accumulated = 0;
+
+  return (
+    <div className="space-y-3">
+      {/* Mini ring chart */}
+      <div className="relative w-24 h-24 mx-auto">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
+          {statusOrder.map(status => {
+            const count = breakdown[status] || 0;
+            if (count === 0) return null;
+            const pct = count / total;
+            const offset = accumulated / total;
+            accumulated += count;
+            return (
+              <circle
+                key={status}
+                cx="50"
+                cy="50"
+                r="40"
+                fill="none"
+                stroke={colors[status]}
+                strokeWidth="12"
+                strokeDasharray={`${pct * 251.2} ${251.2}`}
+                strokeDashoffset={`${-offset * 251.2}`}
+              />
+            );
+          })}
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p className="text-xl font-black text-gray-900">{total}</p>
+        </div>
+      </div>
+
+      {/* Status legend */}
+      <div className="grid grid-cols-2 gap-2">
+        {statusOrder.map(status => {
+          const count = breakdown[status] || 0;
+          if (count === 0) return null;
+          return (
+            <div key={status} className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors[status] }} />
+              <span className="text-xs text-gray-600">{labels[status]}</span>
+              <span className="text-xs font-semibold text-gray-900 ml-auto">{count}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -343,12 +511,7 @@ export default function DashboardPage() {
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300" /> Past</span>
                 </div>
               </div>
-              <MiniChart data={s.trend} />
-              <div className="flex justify-between mt-1">
-                {s.trend.map(d => (
-                  <span key={d.date} className="flex-1 text-center text-[10px] text-gray-400">{d.label.split(' ')[0]}</span>
-                ))}
-              </div>
+              <RevenueChart data={s.trend} />
 
               {/* Quick stats row */}
               <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-3 gap-4">
@@ -375,7 +538,7 @@ export default function DashboardPage() {
                 </h2>
                 <Link href="/products" className="text-xs text-[#C9A84C] hover:underline font-medium">View all</Link>
               </div>
-              <CategoryChart data={categoryData} />
+              <DonutChart data={categoryData} />
             </div>
           </div>
 
@@ -387,28 +550,7 @@ export default function DashboardPage() {
                 <h2 className="font-bold text-gray-900">Order Pipeline</h2>
                 <Link href="/orders" className="text-xs text-[#C9A84C] hover:underline font-medium">View all</Link>
               </div>
-              <div className="space-y-3">
-                {(['pending', 'processing', 'shipped', 'delivered', 'cancelled'] as const).map(status => {
-                  const cfg = orderStatusConfig[status];
-                  const count = s.orders.statusBreakdown[status] ?? 0;
-                  const total = Object.values(s.orders.statusBreakdown).reduce((a, b) => a + b, 0) || 1;
-                  const pctBar = Math.round((count / total) * 100);
-                  return (
-                    <div key={status}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <cfg.icon className={`w-3.5 h-3.5 ${cfg.color}`} />
-                          <span className="text-sm text-gray-700">{cfg.label}</span>
-                        </div>
-                        <span className="text-sm font-bold text-gray-900">{count}</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${cfg.bg.replace('100', '400')}`} style={{ width: `${pctBar}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <StatusRingChart breakdown={s.orders.statusBreakdown} />
 
               {/* Bookings mini */}
               <div className="mt-4 pt-4 border-t border-gray-100">
