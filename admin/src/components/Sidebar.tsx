@@ -90,12 +90,13 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed top-0 left-0 z-40 h-screen w-64 border-r bg-white transition-transform duration-300 ease-out",
+        "fixed top-0 left-0 z-40 h-screen w-64 border-r bg-white transition-transform duration-300 ease-out flex flex-col",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="flex h-16 items-center justify-between border-b border-gray-100 px-4 lg:px-6">
-          <Link 
-            href="/dashboard" 
+        {/* Header */}
+        <div className="flex-shrink-0 h-16 flex items-center justify-between border-b border-gray-100 px-4 lg:px-6">
+          <Link
+            href="/dashboard"
             className="flex items-center gap-2 transition-transform hover:scale-105"
             onClick={() => setSidebarOpen(false)}
           >
@@ -107,7 +108,7 @@ export function Sidebar() {
               <span className="block text-[10px] text-[#C9A84C] font-medium -mt-1">Admin</span>
             </div>
           </Link>
-          <button 
+          <button
             onClick={() => setSidebarOpen(false)}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
             title="Close sidebar"
@@ -129,7 +130,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        <nav className="space-y-1 p-4 overflow-y-auto h-[calc(100vh-8rem)] lg:h-[calc(100vh-4rem)]">
+        <nav className="space-y-1 p-4 overflow-y-auto h-[calc(100vh-12rem)] lg:h-[calc(100vh-8rem)] custom-scrollbar">
           {navigation.map((item, index) => {
             if (item.hasDropdown) {
               return (
@@ -212,11 +213,10 @@ export function Sidebar() {
         </nav>
 
         {/* Logout button - mobile */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-100 bg-white lg:hidden">
+        <div className="lg:hidden p-4 border-t border-gray-100 bg-white flex-shrink-0">
           <button
             onClick={() => {
               setSidebarOpen(false);
-              // Handle logout - redirect to login
               window.location.href = '/login';
             }}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
@@ -227,7 +227,7 @@ export function Sidebar() {
         </div>
 
         {/* Desktop footer */}
-        <div className="hidden lg:block absolute bottom-0 left-0 right-0 p-4 border-t border-gray-100 bg-white">
+        <div className="hidden lg:block p-4 border-t border-gray-100 bg-white flex-shrink-0">
           <div className="rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 p-4 text-white">
             <p className="text-xs font-medium">Kentaz Admin</p>
             <p className="text-[10px] text-gray-400">v1.0.0 · Luxury. Lifestyle. Wellness.</p>
