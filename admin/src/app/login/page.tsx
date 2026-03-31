@@ -15,9 +15,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    
+
     try {
       await login(email, password);
+
+      // Set cookie for middleware (must be done client-side for middleware to read it)
+      const token = localStorage.getItem('admin_token');
+      if (token) {
+        // Use a small timeout to ensure the cookie is set before navigation
+        document.cookie = `admin_token=${token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+      }
+
       router.push('/dashboard');
     } catch {
       // Error is handled in the store

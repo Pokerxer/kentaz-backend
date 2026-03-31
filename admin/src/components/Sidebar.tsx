@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAdminStore } from '@/store/admin-store';
+import { useAuthStore } from '@/store/auth-store';
 import {
   LayoutDashboard,
   Package,
@@ -36,6 +37,7 @@ import {
   UserCog,
   Receipt,
   Percent,
+  ShieldCheck,
 } from 'lucide-react';
 
 const productsSubMenu = [
@@ -46,36 +48,76 @@ const productsSubMenu = [
   { name: 'Stock Count', href: '/products/stock-count', icon: ClipboardList },
 ];
 
-const navigation = [
+// Role-based navigation access
+// admin: all access
+// staff: POS, sales, orders, inventory, products
+// therapist: bookings only
+
+type NavItem = {
+  name: string;
+  href: string;
+  icon: any;
+  hasDropdown?: boolean;
+  external?: boolean;
+  roles?: string[]; // undefined means all roles can access
+};
+
+const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Point of Sale', href: '/pos/dashboard', icon: Monitor, external: true },
   { name: 'POS Sales', href: '/pos/sales', icon: Receipt, external: true },
-  { name: 'Products', href: '/products', icon: Package, hasDropdown: true },
-  { name: 'Inventory', href: '/inventory', icon: Box },
-  { name: 'Purchases', href: '/purchases', icon: ShoppingBag },
+  { name: 'Products', href: '/products', icon: Package, hasDropdown: true, roles: ['admin'] },
+  { name: 'Inventory', href: '/inventory', icon: Box, roles: ['admin'] },
+  { name: 'Purchases', href: '/purchases', icon: ShoppingBag, roles: ['admin'] },
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Bookings', href: '/bookings', icon: Calendar },
-  { name: 'Customers', href: '/customers', icon: Users },
-  { name: 'Staff', href: '/staff', icon: UserCog },
-  { name: 'Categories', href: '/categories', icon: Tags },
-  { name: 'Discounts', href: '/discounts', icon: Percent },
-  { name: 'Gift Cards', href: '/gift-cards', icon: CreditCard },
-  { name: 'Shipping', href: '/shipping', icon: Truck },
-  { name: 'Reviews', href: '/reviews', icon: MessageSquare },
-  { name: 'Wishlists', href: '/wishlists', icon: Heart },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Customers', href: '/customers', icon: Users, roles: ['admin'] },
+  { name: 'Users', href: '/users', icon: ShieldCheck, roles: ['admin'] },
+  { name: 'Staff', href: '/staff', icon: UserCog, roles: ['admin'] },
+  { name: 'Categories', href: '/categories', icon: Tags, roles: ['admin'] },
+  { name: 'Discounts', href: '/discounts', icon: Percent, roles: ['admin'] },
+  { name: 'Gift Cards', href: '/gift-cards', icon: CreditCard, roles: ['admin'] },
+  { name: 'Shipping', href: '/shipping', icon: Truck, roles: ['admin'] },
+  { name: 'Reviews', href: '/reviews', icon: MessageSquare, roles: ['admin'] },
+  { name: 'Wishlists', href: '/wishlists', icon: Heart, roles: ['admin'] },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['admin'] },
   { name: 'Notifications', href: '/notifications', icon: Bell },
-  { name: 'Announcements', href: '/announcements', icon: Megaphone },
-  { name: 'Reports', href: '/reports', icon: FileText },
+  { name: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['admin'] },
+  { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'] },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useAdminStore();
+  const { user, logout } = useAuthStore();
+  const userRole = user?.role || 'customer';
+  const userPermissions = user?.permissions || [];
+
+  // Filter navigation based on user role AND custom permissions
+  // Admin gets full access, others need explicit permissions
+  const filteredNav = navigation.filter(item => {
+    // Admin always gets full access
+    if (userRole === 'admin') return true;
+
+    // If no custom permissions, fall back to role-based access
+    if (!item.roles) return true;
+    if (userPermissions.length === 0) {
+      return item.roles.includes(userRole);
+    }
+
+    // Check custom permissions - grant access if user has permission for this route
+    // Match by href or by route prefix (e.g., '/products' covers '/products/new')
+    return userPermissions.some(perm => {
+      if (perm === item.href) return true;
+      if (item.href.startsWith(perm + '/')) return true;
+      return false;
+    });
+  });
+
   const isProductsActive = pathname.startsWith('/products') || pathname.startsWith('/inventory') || pathname.startsWith('/purchases');
   const isProductsPage = pathname === '/products' || pathname.startsWith('/products/') || pathname.startsWith('/inventory') || pathname.startsWith('/purchases');
-  
+
   const [productsDropdownOpen, setProductsDropdownOpen] = useState(isProductsActive);
 
   return (
@@ -121,17 +163,17 @@ export function Sidebar() {
         <div className="lg:hidden p-4 border-b border-gray-100">
           <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#B8953F] flex items-center justify-center shadow-md">
-              <span className="text-white font-medium">A</span>
+              <span className="text-white font-medium">{user?.name?.charAt(0).toUpperCase() || 'U'}</span>
             </div>
             <div>
-              <p className="text-sm font-medium">Admin User</p>
-              <p className="text-xs text-gray-500">admin@kentaz.com</p>
+              <p className="text-sm font-medium">{user?.name || 'User'}</p>
+              <p className="text-xs text-gray-500 capitalize">{user?.role || 'User'}</p>
             </div>
           </div>
         </div>
 
-        <nav className="space-y-1 p-4 overflow-y-auto h-[calc(100vh-12rem)] lg:h-[calc(100vh-8rem)] custom-scrollbar">
-          {navigation.map((item, index) => {
+        <nav className="space-y-1 p-4 overflow-y-auto flex-1 custom-scrollbar">
+          {filteredNav.map((item, index) => {
             if (item.hasDropdown) {
               return (
                 <div key={item.name}>
@@ -216,6 +258,8 @@ export function Sidebar() {
         <div className="lg:hidden p-4 border-t border-gray-100 bg-white flex-shrink-0">
           <button
             onClick={() => {
+              document.cookie = 'admin_token=; path=/; max-age=0';
+              logout();
               setSidebarOpen(false);
               window.location.href = '/login';
             }}
@@ -227,11 +271,22 @@ export function Sidebar() {
         </div>
 
         {/* Desktop footer */}
-        <div className="hidden lg:block p-4 border-t border-gray-100 bg-white flex-shrink-0">
+        <div className="hidden lg:block p-4 border-t border-gray-100 bg-white flex-shrink-0 space-y-3">
           <div className="rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 p-4 text-white">
-            <p className="text-xs font-medium">Kentaz Admin</p>
-            <p className="text-[10px] text-gray-400">v1.0.0 · Luxury. Lifestyle. Wellness.</p>
+            <p className="text-xs font-medium">{user?.name || 'User'}</p>
+            <p className="text-[10px] text-gray-400 capitalize">{user?.role || 'Staff'} · Kentaz</p>
           </div>
+          <button
+            onClick={() => {
+              document.cookie = 'admin_token=; path=/; max-age=0';
+              logout();
+              window.location.href = '/login';
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+            Logout
+          </button>
         </div>
       </aside>
     </>

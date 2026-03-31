@@ -75,4 +75,66 @@ router.patch('/:id/toggle-active', auth, adminOnly, async (req, res) => {
   }
 });
 
+// Update user role
+router.patch('/:id/role', auth, adminOnly, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['customer', 'admin', 'therapist', 'staff'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Prevent removing own admin role
+    if (req.user.id && req.user.id.toString() === req.params.id && role !== 'admin') {
+      return res.status(400).json({ error: 'Cannot remove your own admin role' });
+    }
+
+    user.role = role;
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete user
+router.delete('/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Prevent self-delete
+    if (req.user.id && req.user.id.toString() === req.params.id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update user permissions
+router.patch('/:id/permissions', auth, adminOnly, async (req, res) => {
+  try {
+    const { permissions } = req.body;
+
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({ error: 'Permissions must be an array' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.permissions = permissions;
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

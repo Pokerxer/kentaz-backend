@@ -9,6 +9,12 @@ const userSchema = new mongoose.Schema({
   phone: { type: String },
   pin: { type: String },
   avatar: { type: String },
+  // Route permissions - stores which routes the user can access
+  // If null/empty, uses role-based defaults
+  permissions: {
+    type: [String],
+    default: []
+  },
   addresses: [{
     street: String,
     city: String,

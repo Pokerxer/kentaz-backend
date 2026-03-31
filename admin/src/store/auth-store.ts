@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { api, User } from '@/lib/api';
+import { api, type User } from '@/lib/api';
 
 interface AuthState {
   user: User | null;
@@ -25,16 +25,17 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await api.auth.login(email, password);
-          
-          if (response.user.role !== 'admin') {
-            throw new Error('Access denied. Admin role required.');
+
+          // Allow admin, staff, and therapist roles
+          if (!['admin', 'staff', 'therapist'].includes(response.user.role)) {
+            throw new Error('Access denied. Admin, Staff, or Therapist role required.');
           }
-          
+
           localStorage.setItem('admin_token', response.token);
-          set({ 
-            user: response.user, 
-            isAuthenticated: true, 
-            isLoading: false 
+          set({
+            user: response.user,
+            isAuthenticated: true,
+            isLoading: false
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : 'Login failed';
@@ -58,7 +59,8 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const user = await api.auth.getMe();
-          if (user.role !== 'admin') {
+          // Allow admin, staff, and therapist roles
+          if (!['admin', 'staff', 'therapist'].includes(user.role)) {
             get().logout();
             return;
           }

@@ -243,6 +243,21 @@ export const api = {
 
     toggleActive: (id: string) =>
       request<{ isActive: boolean }>(`/api/admin/users/${id}/toggle-active`, { method: 'PATCH' }),
+
+    updateRole: (id: string, role: 'customer' | 'admin' | 'therapist' | 'staff') =>
+      request<User>(`/api/admin/users/${id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      }),
+
+    updatePermissions: (id: string, permissions: string[]) =>
+      request<User>(`/api/admin/users/${id}/permissions`, {
+        method: 'PATCH',
+        body: JSON.stringify({ permissions }),
+      }),
+
+    delete: (id: string) =>
+      request<{ message: string }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
   },
   
   bookings: {
@@ -650,6 +665,7 @@ export interface User {
   role: 'customer' | 'admin' | 'therapist' | 'staff';
   isActive?: boolean;
   avatar?: string;
+  permissions?: string[]; // Custom route permissions
   addresses?: Address[];
   wishlist?: string[];
   createdAt: string;
