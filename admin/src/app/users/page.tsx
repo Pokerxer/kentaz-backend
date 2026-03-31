@@ -59,7 +59,7 @@ function RoleBadge({ role }: { role: string }) {
   const config: Record<string, { bg: string; text: string; icon: any }> = {
     admin: { bg: 'bg-purple-100', text: 'text-purple-700', icon: ShieldCheck },
     staff: { bg: 'bg-blue-100', text: 'text-blue-700', icon: UserCog },
-    therapist: { bg: 'bg-teal-100', text: 'text-teal-700', icon: User },
+    therapist: { bg: 'bg-teal-100', text: 'text-teal-700', icon: UserIcon },
     customer: { bg: 'bg-gray-100', text: 'text-gray-600', icon: Users },
   };
   const { bg, text, icon: Icon } = config[role] || config.customer;
