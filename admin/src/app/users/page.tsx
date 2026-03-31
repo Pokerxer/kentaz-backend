@@ -145,7 +145,7 @@ function UserModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Access Level</label>
             <div className="grid grid-cols-2 gap-2">
-              {['customer', 'staff', 'therapist', 'admin'].map((r) => (
+              {(['customer', 'staff', 'therapist', 'admin'] as const).map((r) => (
                 <button
                   key={r}
                   type="button"
