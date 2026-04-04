@@ -5,7 +5,7 @@ const User = require('../models/User');
 
 exports.createBooking = async (req, res) => {
   try {
-    const { serviceType, therapistId, date, timeSlot, duration, amount, notes, sessionType } = req.body;
+    const { serviceType, therapistId, date, timeSlot, duration, amount, notes, sessionType, intake } = req.body;
     const booking = new Booking({
       user: req.user.id,
       serviceType,
@@ -16,6 +16,7 @@ exports.createBooking = async (req, res) => {
       amount,
       notes,
       sessionType: sessionType || 'in-person',
+      intake: intake || undefined,
     });
     await booking.save();
     const populated = await Booking.findById(booking._id)
@@ -163,7 +164,7 @@ exports.getTherapists = async (req, res) => {
       // All active therapists serve therapy
     }
     const therapists = await User.find(query)
-      .select('name avatar role')
+      .select('name avatar role specialization bio yearsExp approachTags')
       .sort({ name: 1 })
       .lean();
     res.json(therapists);

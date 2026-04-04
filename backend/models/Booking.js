@@ -20,6 +20,12 @@ const bookingSchema = new mongoose.Schema({
   },
   amount: { type: Number, required: true },
   notes: String,
+  // Therapy intake questionnaire answers
+  intake: {
+    reason: String,          // e.g. 'anxiety', 'depression', 'relationships', 'trauma', 'grief', 'other'
+    firstTime: Boolean,
+    approach: String,        // e.g. 'cbt', 'talk', 'holistic', 'no_preference'
+  },
   sessionType: {
     type: String,
     enum: ['in-person', 'online'],
