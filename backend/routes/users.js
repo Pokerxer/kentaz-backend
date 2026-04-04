@@ -17,7 +17,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
       ];
     }
 
-    const [users, total] = await Promise.all([
+    const [users, total, roleAgg, activeCount] = await Promise.all([
       User.find(query)
         .select('-password')
         .sort({ createdAt: -1 })
@@ -25,9 +25,20 @@ router.get('/', auth, adminOnly, async (req, res) => {
         .limit(parseInt(limit))
         .lean(),
       User.countDocuments(query),
+      User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
+      User.countDocuments({ isActive: { $ne: false } }),
     ]);
 
-    res.json({ users, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
+    const roleCounts = Object.fromEntries(roleAgg.map(r => [r._id, r.count]));
+
+    res.json({
+      users,
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
+      roleCounts,
+      activeCount,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

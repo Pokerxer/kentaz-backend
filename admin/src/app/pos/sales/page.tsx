@@ -9,7 +9,7 @@ import {
   Printer, RefreshCw, AlertCircle, ShoppingBag, User, X,
   FileText, RotateCcw, Minus, Plus, Package,
 } from 'lucide-react';
-import { posApi, getPosUser } from '@/lib/posApi';
+import { posApi, getPosUser, hasPosPermission, POS_PERMS } from '@/lib/posApi';
 import type { Sale, SaleItem, PosUser } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 
@@ -41,10 +41,12 @@ function OrderDetail({
   sale: initialSale,
   onClose,
   onUpdated,
+  currentUser,
 }: {
   sale: Sale;
   onClose?: () => void;
   onUpdated: (updated: Sale, refundRecord?: Sale) => void;
+  currentUser?: PosUser;
 }) {
   const [sale, setSale] = useState(initialSale);
   const [refundQtys, setRefundQtys] = useState<Record<number, number>>({});
@@ -119,16 +121,66 @@ function OrderDetail({
   }
 
   function printReceipt() {
-    const content = printRef.current?.innerHTML;
-    if (!content) return;
-    const w = window.open('', '_blank', 'width=400,height=600');
+    const saleData = sale;
+    const w = window.open('', '_blank', 'width=350,height=600');
     if (!w) return;
-    w.document.write(`<html><head><title>Receipt</title><style>
-      body{font-family:monospace;font-size:12px;padding:16px;max-width:300px;margin:0 auto}
-      h2{text-align:center;font-size:16px;margin:0 0 4px}
-      .center{text-align:center} .bold{font-weight:bold} .line{border-top:1px dashed #999;margin:8px 0}
-      table{width:100%;border-collapse:collapse} td{padding:2px 0} .right{text-align:right}
-    </style></head><body>${content}</body></html>`);
+
+    const itemsHtml = saleData.items.map(item => `
+      <tr>
+        <td style="padding: 3px 0;">
+          <div style="font-weight: 500;">${item.productName}</div>
+          ${item.variantLabel ? `<div style="font-size: 10px; color: #666;">${item.variantLabel}</div>` : ''}
+          <div style="font-size: 10px; color: #888;">${item.quantity} × ₦${item.price.toLocaleString()}</div>
+        </td>
+        <td style="text-align: right; font-weight: 600;">₦${item.total.toLocaleString()}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Receipt - ${saleData.receiptNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; font-size: 12px; color: #111; }
+          .header { text-align: center; padding-bottom: 10px; border-bottom: 1px dashed #333; margin-bottom: 10px; }
+          .header h1 { font-size: 18px; font-weight: 800; letter-spacing: 1px; }
+          .header .receipt-no { font-size: 10px; font-family: monospace; color: #444; margin-top: 4px; }
+          .header .date { font-size: 10px; color: #888; margin-top: 2px; }
+          table { width: 100%; border-collapse: collapse; }
+          .totals { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
+          .totals-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
+          .totals-row.total { font-weight: 700; font-size: 14px; border-top: 2px solid #111; margin-top: 4px; padding-top: 6px; }
+          .totals-row.discount { color: #dc2626; }
+          .totals-row.change { background: #dcfce7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
+          .footer { text-align: center; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #333; font-size: 10px; color: #888; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>KENTAZ</h1>
+          <div class="receipt-no">${saleData.receiptNumber}</div>
+          <div class="date">${new Date(saleData.createdAt).toLocaleString()}</div>
+        </div>
+        <table>${itemsHtml}</table>
+        <div class="totals">
+          <div class="totals-row"><span>Subtotal</span><span>₦${saleData.subtotal.toLocaleString()}</span></div>
+          ${saleData.discountAmount > 0 ? `<div class="totals-row discount"><span>Discount</span><span>-₦${saleData.discountAmount.toLocaleString()}</span></div>` : ''}
+          <div class="totals-row total"><span>TOTAL</span><span>₦${saleData.total.toLocaleString()}</span></div>
+          <div class="totals-row"><span>Payment (${saleData.paymentMethod})</span><span>₦${saleData.amountPaid.toLocaleString()}</span></div>
+          ${saleData.change > 0 ? `<div class="totals-row change"><span>Change</span><span>₦${saleData.change.toLocaleString()}</span></div>` : ''}
+        </div>
+        <div class="footer">
+          <div>Cashier: ${saleData.cashierName || saleData.cashier?.name}</div>
+          <div style="margin-top: 4px;">Thank you for shopping at Kentaz!</div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    w.document.write(html);
     w.document.close();
     w.print();
   }
@@ -188,7 +240,13 @@ function OrderDetail({
   }
 
   const isRefundRecord = sale.type === 'refund';
-  const canRefund = !isRefundRecord && sale.status === 'completed' && sale.items.some(item => (item.quantity - (item.refundedQty || 0)) > 0);
+  const canRefund = hasPosPermission(currentUser ?? null, POS_PERMS.REFUND)
+    && !isRefundRecord
+    && sale.status === 'completed'
+    && sale.items.some(item => (item.quantity - (item.refundedQty || 0)) > 0);
+  const canVoid = hasPosPermission(currentUser ?? null, POS_PERMS.VOID)
+    && sale.status === 'completed'
+    && sale.type !== 'refund';
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -226,7 +284,7 @@ function OrderDetail({
               <RotateCcw className="w-3.5 h-3.5" /> Refund
             </button>
           )}
-          {sale.status === 'completed' && (
+          {canVoid && (
             <button
               onClick={() => setShowVoidModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition"
@@ -752,7 +810,7 @@ export default function PosOrdersPage() {
         {/* ── Right: Order Detail (desktop) ── */}
         <div className="hidden lg:flex flex-1 overflow-hidden">
           {selectedSale ? (
-            <OrderDetail key={selectedSale._id} sale={selectedSale} onUpdated={handleUpdated} />
+            <OrderDetail key={selectedSale._id} sale={selectedSale} onUpdated={handleUpdated} currentUser={user} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
               <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
@@ -774,6 +832,7 @@ export default function PosOrdersPage() {
             sale={selectedSale}
             onClose={() => setShowMobileDetail(false)}
             onUpdated={handleUpdated}
+            currentUser={user}
           />
         </div>
       )}

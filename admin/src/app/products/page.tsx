@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -37,12 +38,13 @@ const statusColors: Record<string, string> = {
 const LIMIT = 20;
 
 export default function ProductsPage() {
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('');
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);

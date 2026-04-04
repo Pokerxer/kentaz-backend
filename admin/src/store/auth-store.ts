@@ -32,6 +32,9 @@ export const useAuthStore = create<AuthState>()(
           }
 
           localStorage.setItem('admin_token', response.token);
+          // Sync token to cookie so the edge middleware can read it
+          const maxAge = 60 * 60 * 24 * 7; // 7 days
+          document.cookie = `admin_token=${response.token}; path=/; max-age=${maxAge}; samesite=lax`;
           set({
             user: response.user,
             isAuthenticated: true,
@@ -46,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         localStorage.removeItem('admin_token');
+        document.cookie = 'admin_token=; path=/; max-age=0';
         set({ user: null, isAuthenticated: false, error: null });
       },
 

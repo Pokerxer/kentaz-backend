@@ -87,6 +87,9 @@ export const posApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  toggleFavorite: (productId: string) =>
+    posRequest<{ isFavorite: boolean }>(`/api/pos/products/${productId}/favorite`, { method: 'PUT' }),
 };
 
 function adminToken() {
@@ -131,6 +134,21 @@ export interface PosUser {
   email: string;
   role: 'staff' | 'admin';
   avatar?: string;
+  permissions?: string[];
+}
+
+// POS action permission keys
+export const POS_PERMS = {
+  PRICE_OVERRIDE: 'pos:price_override',
+  REFUND:         'pos:refund',
+  VOID:           'pos:void',
+} as const;
+
+/** Returns true if the user is admin OR has the specified POS permission */
+export function hasPosPermission(user: PosUser | null, perm: string): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  return user.permissions?.includes(perm) ?? false;
 }
 
 export interface PosVariant {
@@ -151,6 +169,10 @@ export interface PosProduct {
   variants: PosVariant[];
   tags: string[];
   featured: boolean;
+  barcode?: string;
+  isFavorite?: boolean;
+  ageRestricted?: boolean;
+  minStock?: number;
 }
 
 export interface CartItem {

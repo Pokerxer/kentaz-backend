@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAdminStore } from '@/store/admin-store';
 import { useAuthStore } from '@/store/auth-store';
+import { canAccessPath } from '@/components/AuthProvider';
 import {
   LayoutDashboard,
   Package,
@@ -25,7 +26,6 @@ import {
   LogOut,
   Calendar,
   Box,
-  Menu,
   Plus,
   List,
   Upload,
@@ -38,20 +38,17 @@ import {
   Receipt,
   Percent,
   ShieldCheck,
+  Key,
+  Lock,
 } from 'lucide-react';
 
 const productsSubMenu = [
-  { name: 'All Products', href: '/products', icon: List },
-  { name: 'Add Product', href: '/products/new', icon: Plus },
-  { name: 'Import Products', href: '/products/import', icon: Upload },
-  { name: 'Quantity Adjustment', href: '/products/adjustment', icon: ArrowUpDown },
-  { name: 'Stock Count', href: '/products/stock-count', icon: ClipboardList },
+  { name: 'All Products',        href: '/products',             icon: List },
+  { name: 'Add Product',         href: '/products/new',         icon: Plus },
+  { name: 'Import Products',     href: '/products/import',      icon: Upload },
+  { name: 'Quantity Adjustment', href: '/products/adjustment',  icon: ArrowUpDown },
+  { name: 'Stock Count',         href: '/products/stock-count', icon: ClipboardList },
 ];
-
-// Role-based navigation access
-// admin: all access
-// staff: POS, sales, orders, inventory, products
-// therapist: bookings only
 
 type NavItem = {
   name: string;
@@ -59,72 +56,76 @@ type NavItem = {
   icon: any;
   hasDropdown?: boolean;
   external?: boolean;
-  roles?: string[]; // undefined means all roles can access
+  /** undefined = accessible to all authenticated users */
+  roles?: string[];
 };
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Point of Sale', href: '/pos/dashboard', icon: Monitor, external: true },
-  { name: 'POS Sales', href: '/pos/sales', icon: Receipt, external: true },
-  { name: 'Products', href: '/products', icon: Package, hasDropdown: true, roles: ['admin'] },
-  { name: 'Inventory', href: '/inventory', icon: Box, roles: ['admin'] },
-  { name: 'Purchases', href: '/purchases', icon: ShoppingBag, roles: ['admin'] },
-  { name: 'Orders', href: '/orders', icon: ShoppingCart },
-  { name: 'Bookings', href: '/bookings', icon: Calendar },
-  { name: 'Customers', href: '/customers', icon: Users, roles: ['admin'] },
-  { name: 'Users', href: '/users', icon: ShieldCheck, roles: ['admin'] },
-  { name: 'Staff', href: '/staff', icon: UserCog, roles: ['admin'] },
-  { name: 'Categories', href: '/categories', icon: Tags, roles: ['admin'] },
-  { name: 'Discounts', href: '/discounts', icon: Percent, roles: ['admin'] },
-  { name: 'Gift Cards', href: '/gift-cards', icon: CreditCard, roles: ['admin'] },
-  { name: 'Shipping', href: '/shipping', icon: Truck, roles: ['admin'] },
-  { name: 'Reviews', href: '/reviews', icon: MessageSquare, roles: ['admin'] },
-  { name: 'Wishlists', href: '/wishlists', icon: Heart, roles: ['admin'] },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['admin'] },
-  { name: 'Notifications', href: '/notifications', icon: Bell },
-  { name: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['admin'] },
-  { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'] },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
+  { name: 'Point of Sale',href: '/pos/dashboard',icon: Monitor,       external: true },
+  { name: 'POS Sales',    href: '/pos/sales',    icon: Receipt,       external: true },
+  { name: 'Products',     href: '/products',     icon: Package,       hasDropdown: true, roles: ['admin'] },
+  { name: 'Inventory',    href: '/inventory',    icon: Box,           roles: ['admin'] },
+  { name: 'Purchases',    href: '/purchases',    icon: ShoppingBag,   roles: ['admin'] },
+  { name: 'Orders',       href: '/orders',       icon: ShoppingCart },
+  { name: 'Bookings',     href: '/bookings',     icon: Calendar },
+  { name: 'Customers',    href: '/customers',    icon: Users,         roles: ['admin'] },
+  { name: 'Users',        href: '/users',        icon: ShieldCheck,   roles: ['admin'] },
+  { name: 'Staff',        href: '/staff',        icon: UserCog,       roles: ['admin'] },
+  { name: 'Categories',   href: '/categories',   icon: Tags,          roles: ['admin'] },
+  { name: 'Discounts',    href: '/discounts',    icon: Percent,       roles: ['admin'] },
+  { name: 'Gift Cards',   href: '/gift-cards',   icon: CreditCard,    roles: ['admin'] },
+  { name: 'Shipping',     href: '/shipping',     icon: Truck,         roles: ['admin'] },
+  { name: 'Reviews',      href: '/reviews',      icon: MessageSquare, roles: ['admin'] },
+  { name: 'Wishlists',    href: '/wishlists',    icon: Heart,         roles: ['admin'] },
+  { name: 'Analytics',    href: '/analytics',    icon: BarChart3,     roles: ['admin'] },
+  { name: 'Notifications',href: '/notifications',icon: Bell },
+  { name: 'Announcements',href: '/announcements',icon: Megaphone,     roles: ['admin'] },
+  { name: 'Reports',      href: '/reports',      icon: FileText,      roles: ['admin'] },
+  { name: 'Settings',     href: '/settings',     icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useAdminStore();
   const { user, logout } = useAuthStore();
-  const userRole = user?.role || 'customer';
-  const userPermissions = user?.permissions || [];
+  const userRole = user?.role ?? 'customer';
+  const userPermissions = user?.permissions ?? [];
 
-  // Filter navigation based on user role AND custom permissions
-  // Admin gets full access, others need explicit permissions
+  // Determine which nav items the current user can see
   const filteredNav = navigation.filter(item => {
-    // Admin always gets full access
     if (userRole === 'admin') return true;
-
-    // If no custom permissions, fall back to role-based access
+    // No role restriction — everyone sees it
     if (!item.roles) return true;
-    if (userPermissions.length === 0) {
-      return item.roles.includes(userRole);
+    // Has role restriction: check custom permissions first, then role membership
+    if (userPermissions.length > 0) {
+      return userPermissions.some(perm => item.href === perm || item.href.startsWith(perm + '/'));
     }
-
-    // Check custom permissions - grant access if user has permission for this route
-    // Match by href or by route prefix (e.g., '/products' covers '/products/new')
-    return userPermissions.some(perm => {
-      if (perm === item.href) return true;
-      if (item.href.startsWith(perm + '/')) return true;
-      return false;
-    });
+    return item.roles.includes(userRole);
   });
 
   const isProductsActive = pathname.startsWith('/products') || pathname.startsWith('/inventory') || pathname.startsWith('/purchases');
-  const isProductsPage = pathname === '/products' || pathname.startsWith('/products/') || pathname.startsWith('/inventory') || pathname.startsWith('/purchases');
+  const isProductsPage   = pathname === '/products' || pathname.startsWith('/products/') || pathname.startsWith('/inventory') || pathname.startsWith('/purchases');
 
   const [productsDropdownOpen, setProductsDropdownOpen] = useState(isProductsActive);
+
+  function handleLogout() {
+    document.cookie = 'admin_token=; path=/; max-age=0';
+    logout();
+    window.location.href = '/login';
+  }
+
+  const permCount = userPermissions.length;
+  const accessLabel =
+    userRole === 'admin'   ? 'Full access' :
+    permCount > 0          ? `${permCount} custom route${permCount !== 1 ? 's' : ''}` :
+                             'Role defaults';
 
   return (
     <>
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden animate-fade-in"
           onClick={() => setSidebarOpen(false)}
         />
@@ -132,10 +133,10 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed top-0 left-0 z-40 h-screen w-64 border-r bg-white transition-transform duration-300 ease-out flex flex-col",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        'fixed top-0 left-0 z-40 h-screen w-64 border-r bg-white transition-transform duration-300 ease-out flex flex-col',
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
-        {/* Header */}
+        {/* Logo */}
         <div className="flex-shrink-0 h-16 flex items-center justify-between border-b border-gray-100 px-4 lg:px-6">
           <Link
             href="/dashboard"
@@ -153,26 +154,33 @@ export function Sidebar() {
           <button
             onClick={() => setSidebarOpen(false)}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Close sidebar"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        
-        {/* User info - visible on mobile */}
+
+        {/* Mobile user card */}
         <div className="lg:hidden p-4 border-b border-gray-100">
           <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#B8953F] flex items-center justify-center shadow-md">
-              <span className="text-white font-medium">{user?.name?.charAt(0).toUpperCase() || 'U'}</span>
+            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#B8953F] flex items-center justify-center shadow-md flex-shrink-0">
+              <span className="text-white font-medium">{user?.name?.charAt(0).toUpperCase() ?? 'U'}</span>
             </div>
-            <div>
-              <p className="text-sm font-medium">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500 capitalize">{user?.role || 'User'}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{user?.name ?? 'User'}</p>
+              <p className="text-xs text-gray-500 capitalize flex items-center gap-1">
+                {userRole === 'admin'
+                  ? <><ShieldCheck className="w-3 h-3 text-purple-500" /> Admin</>
+                  : permCount > 0
+                  ? <><Key className="w-3 h-3 text-amber-500" /> {accessLabel}</>
+                  : <><Lock className="w-3 h-3 text-gray-400" /> {userRole}</>
+                }
+              </p>
             </div>
           </div>
         </div>
 
-        <nav className="space-y-1 p-4 overflow-y-auto flex-1 custom-scrollbar">
+        {/* Nav */}
+        <nav className="space-y-0.5 p-3 overflow-y-auto flex-1 custom-scrollbar">
           {filteredNav.map((item, index) => {
             if (item.hasDropdown) {
               return (
@@ -187,21 +195,15 @@ export function Sidebar() {
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <item.icon className={cn(
-                        "h-5 w-5 transition-transform duration-200",
-                        isProductsPage ? "text-[#C9A84C]" : ""
-                      )} />
+                      <item.icon className={cn('h-5 w-5', isProductsPage ? 'text-[#C9A84C]' : '')} />
                       {item.name}
                     </div>
-                    <ChevronDown className={cn(
-                      "h-4 w-4 transition-transform duration-200",
-                      productsDropdownOpen ? "rotate-180" : ""
-                    )} />
+                    <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', productsDropdownOpen ? 'rotate-180' : '')} />
                   </button>
-                  
+
                   {productsDropdownOpen && (
-                    <div className="mt-1 ml-3 space-y-1 animate-fade-in">
-                      {productsSubMenu.map((subItem) => {
+                    <div className="mt-0.5 ml-3 space-y-0.5 animate-fade-in">
+                      {productsSubMenu.map(subItem => {
                         const isSubActive = pathname === subItem.href;
                         return (
                           <Link
@@ -225,9 +227,10 @@ export function Sidebar() {
                 </div>
               );
             }
-            
+
             const isActive = pathname === item.href ||
               (!item.external && item.href !== '/dashboard' && pathname.startsWith(item.href));
+
             return (
               <Link
                 key={item.name}
@@ -236,33 +239,23 @@ export function Sidebar() {
                 className={cn(
                   'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-gradient-to-r from-[#C9A84C]/10 to-[#C9A84C]/5 text-[#C9A84C] border-l-3 border-[#C9A84C]'
+                    ? 'bg-gradient-to-r from-[#C9A84C]/10 to-[#C9A84C]/5 text-[#C9A84C]'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 )}
-                style={{ animationDelay: `${index * 30}ms` }}
+                style={{ animationDelay: `${index * 20}ms` }}
               >
-                <item.icon className={cn(
-                  "h-5 w-5 transition-transform duration-200",
-                  isActive ? "text-[#C9A84C]" : "group-hover:scale-110"
-                )} />
+                <item.icon className={cn('h-5 w-5', isActive ? 'text-[#C9A84C]' : '')} />
                 {item.name}
-                {isActive && (
-                  <div className="ml-auto h-1.5 w-1.5 rounded-full bg-[#C9A84C]" />
-                )}
+                {isActive && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-[#C9A84C]" />}
               </Link>
             );
           })}
         </nav>
 
-        {/* Logout button - mobile */}
+        {/* Mobile logout */}
         <div className="lg:hidden p-4 border-t border-gray-100 bg-white flex-shrink-0">
           <button
-            onClick={() => {
-              document.cookie = 'admin_token=; path=/; max-age=0';
-              logout();
-              setSidebarOpen(false);
-              window.location.href = '/login';
-            }}
+            onClick={() => { setSidebarOpen(false); handleLogout(); }}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
             <LogOut className="h-5 w-5" />
@@ -272,16 +265,20 @@ export function Sidebar() {
 
         {/* Desktop footer */}
         <div className="hidden lg:block p-4 border-t border-gray-100 bg-white flex-shrink-0 space-y-3">
-          <div className="rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 p-4 text-white">
-            <p className="text-xs font-medium">{user?.name || 'User'}</p>
-            <p className="text-[10px] text-gray-400 capitalize">{user?.role || 'Staff'} · Kentaz</p>
+          <div className="rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 p-3.5 text-white">
+            <div className="flex items-center justify-between mb-0.5">
+              <p className="text-xs font-semibold truncate">{user?.name ?? 'User'}</p>
+              {userRole === 'admin'
+                ? <ShieldCheck className="w-3.5 h-3.5 text-purple-300 flex-shrink-0" />
+                : permCount > 0
+                ? <Key className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
+                : <Lock className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+              }
+            </div>
+            <p className="text-[10px] text-gray-400 capitalize">{userRole} · {accessLabel}</p>
           </div>
           <button
-            onClick={() => {
-              document.cookie = 'admin_token=; path=/; max-age=0';
-              logout();
-              window.location.href = '/login';
-            }}
+            onClick={handleLogout}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
             <LogOut className="h-4 w-4" />

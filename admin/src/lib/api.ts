@@ -87,6 +87,18 @@ export const api = {
         method: 'DELETE',
       }),
 
+    parseCSV: (csv: string) =>
+      request<{ products: Record<string, string>[]; count: number }>('/api/admin/products/parse-csv', {
+        method: 'POST',
+        body: JSON.stringify({ csv }),
+      }),
+
+    import: (products: Record<string, string>[]) =>
+      request<{ success: number; failed: number; errors: string[] }>('/api/admin/products/import', {
+        method: 'POST',
+        body: JSON.stringify({ products }),
+      }),
+
     getSalesStats: (id: string) =>
       request<{
         totalSold: number;
@@ -235,7 +247,7 @@ export const api = {
     getAll: (params?: { page?: number; limit?: number; role?: string; search?: string }) => {
       const filtered = Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== ''));
       const query = new URLSearchParams(filtered as Record<string, string>).toString();
-      return request<{ users: User[]; total: number; totalPages: number }>(`/api/admin/users?${query}`);
+      return request<{ users: User[]; total: number; totalPages: number; roleCounts?: Record<string, number>; activeCount?: number }>(`/api/admin/users?${query}`);
     },
 
     getById: (id: string) =>

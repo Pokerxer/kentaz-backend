@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Search, Loader2, User, MapPin, ShoppingCart,
   Calendar, Package, CheckCircle, Clock, XCircle, Truck,
@@ -234,12 +235,14 @@ function CustomerDetail({
 }
 
 export default function CustomersPage() {
+  const searchParams = useSearchParams();
   const [customers,  setCustomers]  = useState<UserType[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [total,      setTotal]      = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page,       setPage]       = useState(1);
-  const [search,     setSearch]     = useState('');
+  const [search,     setSearch]     = useState(() => searchParams.get('search') || '');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [selected,   setSelected]   = useState<UserType | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>();
   const LIMIT = 25;
@@ -259,6 +262,7 @@ export default function CustomersPage() {
   useEffect(() => { fetchCustomers(page); }, [fetchCustomers, page]);
 
   function handleSearchChange(val: string) {
+    setSearchInput(val);
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => setSearch(val), 350);
   }
@@ -289,6 +293,7 @@ export default function CustomersPage() {
               <input
                 type="text"
                 placeholder="Search by name or email…"
+                value={searchInput}
                 onChange={e => handleSearchChange(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50"
               />

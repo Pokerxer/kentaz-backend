@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search, Package, Truck, CheckCircle, Clock, XCircle,
@@ -294,13 +295,15 @@ function OrderDetail({
 // ── Main page ─────────────────────────────────────────────────────
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [total,        setTotal]        = useState(0);
   const [totalPages,   setTotalPages]   = useState(1);
   const [page,         setPage]         = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [search,       setSearch]       = useState('');
+  const [search,       setSearch]       = useState(() => searchParams.get('search') || '');
+  const [searchInput,  setSearchInput]  = useState(() => searchParams.get('search') || '');
   const [startDate,    setStartDate]    = useState('');
   const [endDate,      setEndDate]      = useState('');
   const [statusCounts, setStatusCounts] = useState<OrderStatusCounts>({});
@@ -333,6 +336,7 @@ export default function OrdersPage() {
   useEffect(() => { fetchOrders(page); }, [fetchOrders, page]);
 
   function handleSearchChange(val: string) {
+    setSearchInput(val);
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => setSearch(val), 350);
   }
@@ -382,6 +386,7 @@ export default function OrdersPage() {
               <input
                 type="text"
                 placeholder="Search by customer, email or order ID…"
+                value={searchInput}
                 onChange={e => handleSearchChange(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50"
               />
