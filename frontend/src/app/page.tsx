@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Star, Shield, Crown, Gem, Flower2, Phone, MapPin, Instagram, MessageCircle, Brain, Mic, Heart, Eye, Sparkles } from "lucide-react";
+import { ArrowRight, Star, Shield, Brain, Mic, Heart, Eye, Sparkles, Flame, TrendingUp, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
 import { HeroSection } from "@/components/ui/HeroSection";
@@ -212,11 +212,11 @@ function ServicesSection() {
 }
 
 const defaultCategories = [
-  { name: "Male Fashion", handle: "Male-Fashion", count: 12, image: "https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600", description: "Premium suits, casuals, and accessories for the modern gentleman" },
-  { name: "Female Fashion", handle: "Female-Fashion", count: 18, image: "https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600", description: "Elegant dresses, gowns, and contemporary styles for her" },
-  { name: "Luxury Hair", handle: "Luxury-Hair", count: 8, image: "https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600", description: "Premium virgin hair extensions and luxury wigs" },
+  { name: "Female Fashion", handle: "Female Fashion", count: 18, image: "https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600", description: "Elegant dresses, gowns, and contemporary styles for her" },
+  { name: "Male Fashion", handle: "Male Fashion", count: 12, image: "https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600", description: "Premium suits, casuals, and accessories for the modern gentleman" },
+  { name: "Luxury Hair", handle: "Luxury Hair", count: 8, image: "https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600", description: "Premium virgin hair extensions and luxury wigs" },
   { name: "Skincare", handle: "Skincare", count: 15, image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600", description: "Luxury skincare and beauty products for radiant skin" },
-  { name: "Bags & Purses", handle: "Bags-&-Purses", count: 10, image: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600", description: "Designer bags and statement pieces" },
+  { name: "Bags & Purses", handle: "Bags & Purses", count: 10, image: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600", description: "Designer bags and statement pieces" },
   { name: "Shoes", handle: "Shoes", count: 14, image: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600", description: "Handcrafted footwear for every occasion" },
   { name: "Accessories", handle: "Accessories", count: 20, image: "https://images.unsplash.com/photo-1611923134239-b9be5816e23c?w=600", description: "Watches, jewelry, and premium accessories" },
   { name: "Perfumes", handle: "Perfumes", count: 9, image: "https://images.unsplash.com/photo-1541643600914-78b084683601?w=600", description: "Signature fragrances that leave a lasting impression" },
@@ -236,11 +236,11 @@ function CategoriesSection() {
         }
         setLoading(false);
       })
-      .catch(err => {
-        console.error('Failed to fetch categories:', err);
-        setLoading(false);
-      });
+      .catch(() => setLoading(false));
   }, []);
+
+  // Show top 6 most populated categories
+  const featured = categories.slice(0, 6);
 
   return (
     <section className="py-16 md:py-24 bg-gradient-to-b from-white to-[#FAFAFA] overflow-hidden">
@@ -251,105 +251,111 @@ function CategoriesSection() {
               <Sparkles className="h-4 w-4" />
               Curated Collections
             </div>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A] mb-4">Shop by Category</h2>
-            <p className="text-[#6B6B6B] text-base max-w-2xl mx-auto">Explore our exquisite range of luxury fashion, beauty, and lifestyle products</p>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A] mb-4">Featured Categories</h2>
+            <p className="text-[#6B6B6B] text-base max-w-2xl mx-auto">
+              Explore our exquisite range of luxury fashion, beauty, and lifestyle products
+            </p>
           </div>
         </ScrollReveal>
 
         {loading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className={`animate-pulse rounded-3xl ${i === 0 || i === 5 ? 'md:col-span-2 md:row-span-2 aspect-[4/3]' : 'aspect-[4/5]'}`} style={{ backgroundColor: '#F5F5F0' }} />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className={`animate-pulse rounded-3xl bg-[#F5F5F0] ${i === 0 ? 'md:col-span-2 md:row-span-2 aspect-[4/3]' : 'aspect-square'}`}
+              />
             ))}
           </div>
         ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          {categories.map((category, index) => (
-            <ScrollReveal
-              key={category.name}
-              direction="up"
-              delay={index * 80}
-              className={index === 0 || index === 5 ? "md:col-span-2 md:row-span-2" : ""}
-            >
-              <Link
-                href={`/products?collection=${category.handle}`}
-                className={`group relative block overflow-hidden rounded-3xl ${
-                  index === 0 || index === 5 ? "aspect-[4/3]" : "aspect-[4/5]"
-                }`}
-              >
-                {/* Background Image */}
-                <div className="absolute inset-0">
-                  <Image
-                    src={category.image}
-                    alt={category.name}
-                    fill
-                    className="object-cover transition-all duration-1000 ease-out group-hover:scale-125"
-                  />
-                </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
+            {featured.map((category, index) => {
+              const isBig = index === 0;
+              return (
+                <ScrollReveal
+                  key={category.name}
+                  direction="up"
+                  delay={index * 70}
+                  className={isBig ? "col-span-2 md:col-span-2 md:row-span-2" : ""}
+                >
+                  <Link
+                    href={`/products?collection=${encodeURIComponent(category.handle)}`}
+                    className={`group relative block overflow-hidden rounded-3xl shadow-lg hover:shadow-2xl transition-shadow duration-500 ${
+                      isBig ? "aspect-[16/9] md:aspect-[4/3]" : "aspect-square"
+                    }`}
+                  >
+                    <Image
+                      src={category.image}
+                      alt={category.name}
+                      fill
+                      className="object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+                    />
 
-                {/* Multi-layer Gradient */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10 opacity-80 group-hover:opacity-90 transition-opacity duration-500" />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-700" />
+                    {/* Gradient overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
-                {/* Glass Morphism Overlay */}
-                <div className="absolute inset-0 bg-white/0 group-hover:bg-white/5 transition-colors duration-500" />
+                    {/* Gold shimmer on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-tr from-[#C9A84C]/0 via-[#C9A84C]/0 to-[#C9A84C]/0 group-hover:from-[#C9A84C]/20 group-hover:via-transparent group-hover:to-transparent transition-all duration-700" />
 
-                {/* Animated Border */}
-                <div className="absolute inset-0 rounded-3xl border border-white/20 group-hover:border-[#C9A84C]/60 group-hover:shadow-[0_0_30px_rgba(201,168,76,0.2)] transition-all duration-500" />
-                
-                {/* Corner Accents */}
-                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-white/40 rounded-tl-3xl group-hover:border-[#C9A84C] group-hover:w-full group-hover:h-full group-hover:rounded-3xl group-hover:border-0 group-hover:bg-[#C9A84C]/5 transition-all duration-700" />
+                    {/* Border glow */}
+                    <div className="absolute inset-0 rounded-3xl ring-1 ring-white/10 group-hover:ring-[#C9A84C]/50 group-hover:shadow-[inset_0_0_40px_rgba(201,168,76,0.08)] transition-all duration-500" />
 
-                {/* Content */}
-                <div className="absolute inset-0 flex flex-col justify-end p-5 md:p-6">
-                  <div className="transform transition-all duration-500 group-hover:-translate-y-2">
-                    {/* Animated Line */}
-                    <div className="w-12 h-0.5 bg-[#C9A84C] mb-4 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-700 ease-out" />
-
-                    {/* Product Count Badge */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-semibold tracking-widest uppercase text-white bg-white/10 backdrop-blur-md rounded-full border border-white/10 group-hover:bg-[#C9A84C] group-hover:text-black group-hover:border-[#C9A84C] transition-all duration-300">
-                        <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse" />
-                        {category.count} Products
+                    {/* Top badge */}
+                    <div className="absolute top-3 left-3 md:top-4 md:left-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold tracking-widest uppercase text-white/90 bg-black/30 backdrop-blur-md rounded-full border border-white/10 group-hover:bg-[#C9A84C] group-hover:text-black group-hover:border-[#C9A84C] transition-all duration-300">
+                        <span className="w-1 h-1 bg-current rounded-full" />
+                        {category.count} items
                       </span>
                     </div>
 
-                    {/* Category Name */}
-                    <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-white mb-2 group-hover:text-[#E8D48A] transition-colors duration-300 leading-tight">
-                      {category.name}
-                    </h3>
-
-                    {/* Description */}
-                    <p className="text-white/60 text-xs mb-4 line-clamp-2 transform opacity-0 group-hover:opacity-100 transition-all duration-500 delay-100">
-                      {category.description}
-                    </p>
-
-                    {/* Explore Link */}
-                    <div className="flex items-center gap-2 text-white/0 group-hover:text-white/90 transition-all duration-500 delay-150">
-                      <span className="text-xs font-medium tracking-wide flex items-center gap-2">
-                        Shop Now
-                        <span className="w-5 h-px bg-current" />
-                      </span>
-                      <ArrowRight className="h-3.5 w-3.5 transform group-hover:translate-x-2 transition-transform duration-300" />
+                    {/* Content */}
+                    <div className="absolute inset-0 flex flex-col justify-end p-4 md:p-6">
+                      <div className="transform transition-transform duration-500 group-hover:-translate-y-1">
+                        <div className="w-8 h-0.5 bg-[#C9A84C] mb-3 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500" />
+                        <h3 className={`font-bold text-white group-hover:text-[#E8D48A] transition-colors duration-300 leading-tight mb-1 ${
+                          isBig ? "text-xl md:text-2xl lg:text-3xl" : "text-base md:text-lg"
+                        }`}>
+                          {category.name}
+                        </h3>
+                        {isBig && (
+                          <p className="text-white/60 text-sm line-clamp-2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
+                            {category.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-1.5 text-white/0 group-hover:text-[#C9A84C] transition-all duration-500 delay-100">
+                          <span className="text-xs font-semibold tracking-wide">Shop Now</span>
+                          <ArrowRight className="h-3.5 w-3.5 transform group-hover:translate-x-1 transition-transform duration-300" />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </Link>
+                </ScrollReveal>
+              );
+            })}
+          </div>
+        )}
 
-                {/* Floating Icon on Hover */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-[#C9A84C]/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 delay-100 transform scale-50 group-hover:scale-100">
-                  <ArrowRight className="h-6 w-6 text-[#C9A84C]" />
-                </div>
-
-                {/* Bottom Shine */}
-                <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-[#C9A84C]/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-              </Link>
-            </ScrollReveal>
-          ))}
-        </div>
+        {/* All categories pill strip */}
+        {!loading && categories.length > 6 && (
+          <ScrollReveal delay={300}>
+            <div className="mt-8 flex flex-wrap gap-2 justify-center">
+              {categories.slice(6).map(cat => (
+                <Link
+                  key={cat.name}
+                  href={`/products?collection=${encodeURIComponent(cat.handle)}`}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white border border-[#E5E5E5] text-[#1A1A1A] text-sm font-medium hover:border-[#C9A84C] hover:text-[#C9A84C] hover:shadow-md transition-all duration-300"
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  {cat.name}
+                  <span className="text-xs text-[#9B9B9B]">({cat.count})</span>
+                </Link>
+              ))}
+            </div>
+          </ScrollReveal>
         )}
 
         <ScrollReveal delay={400}>
-          <div className="mt-12 md:mt-16 text-center">
+          <div className="mt-10 md:mt-14 text-center">
             <Link
               href="/products"
               className="group inline-flex items-center gap-3 px-8 py-4 rounded-full bg-[#1A1A1A] text-white font-medium hover:bg-[#C9A84C] hover:text-black transition-all duration-300 shadow-lg shadow-[#1A1A1A]/20 hover:shadow-[#C9A84C]/30"
@@ -374,10 +380,17 @@ function FeaturedProductsSection() {
     async function fetchProducts() {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
-        const res = await fetch(`${apiUrl}/api/store/products?limit=6`);
+        // Fetch products explicitly marked as featured
+        const res = await fetch(`${apiUrl}/api/store/products?featured=true&limit=6`);
         const data = await res.json();
-        const productsArray = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
-        setProducts(productsArray);
+        let arr = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
+        // Fallback to latest products if no featured ones are set
+        if (arr.length === 0) {
+          const fallback = await fetch(`${apiUrl}/api/store/products?limit=6`);
+          const fd = await fallback.json();
+          arr = Array.isArray(fd) ? fd : (Array.isArray(fd.products) ? fd.products : []);
+        }
+        setProducts(arr);
       } catch (error) {
         console.error('Failed to fetch products:', error);
         setProducts([]);
@@ -500,6 +513,181 @@ function FeaturedProductsSection() {
   );
 }
 
+function TrendingProductsSection() {
+  const [products, setProducts] = useState<any[]>([]);
+  const [quickViewProduct, setQuickViewProduct] = useState<any>(null);
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function fetchTrending() {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+        const res = await fetch(`${apiUrl}/api/store/products/trending?limit=8`);
+        const data = await res.json();
+        const arr = Array.isArray(data.products) ? data.products : [];
+        setProducts(arr);
+      } catch {
+        setProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchTrending();
+  }, []);
+
+  if (!loading && products.length === 0) return null;
+
+  return (
+    <section className="py-16 md:py-24 bg-[#0F0F0F] overflow-hidden">
+      <div className="container mx-auto px-4">
+        <ScrollReveal>
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10 md:mb-14">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 text-orange-400 text-xs font-semibold tracking-widest uppercase mb-4">
+                <Flame className="h-3.5 w-3.5" />
+                Hot Right Now
+              </div>
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-2">Trending Products</h2>
+              <p className="text-white/40 text-sm md:text-base">Most loved by our customers this season</p>
+            </div>
+            <Link
+              href="/products?sort=bestselling"
+              className="flex items-center gap-2 text-[#C9A84C] hover:gap-3 transition-all font-medium group text-sm"
+            >
+              <TrendingUp className="h-4 w-4" />
+              See All Trends
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </ScrollReveal>
+
+        {loading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="animate-pulse rounded-2xl bg-white/5 aspect-[3/4]" />
+            ))}
+          </div>
+        ) : (
+          <>
+            {/* Mobile: horizontal scroll */}
+            <div
+              ref={scrollRef}
+              className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide md:hidden"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {products.map((product, index) => (
+                <div key={product._id} className="flex-none w-44 snap-start">
+                  <TrendingCard
+                    product={product}
+                    rank={index + 1}
+                    onQuickView={() => { setQuickViewProduct(product); setIsQuickViewOpen(true); }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: 4-column grid */}
+            <div className="hidden md:grid grid-cols-4 gap-5">
+              {products.map((product, index) => (
+                <ScrollReveal key={product._id} direction="up" delay={index * 60}>
+                  <TrendingCard
+                    product={product}
+                    rank={index + 1}
+                    onQuickView={() => { setQuickViewProduct(product); setIsQuickViewOpen(true); }}
+                  />
+                </ScrollReveal>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <QuickViewModal
+        product={quickViewProduct}
+        isOpen={isQuickViewOpen}
+        onClose={() => setIsQuickViewOpen(false)}
+      />
+    </section>
+  );
+}
+
+function TrendingCard({ product, rank, onQuickView }: { product: any; rank: number; onQuickView: () => void }) {
+  const price = product.variants?.[0]?.price || 0;
+  const image = product.images?.[0]?.url || '/placeholder.jpg';
+  const isTopThree = rank <= 3;
+
+  return (
+    <Link href={`/products/${product.slug}`} className="group block">
+      <div className="relative rounded-2xl overflow-hidden bg-white/5 hover:bg-white/8 border border-white/5 hover:border-[#C9A84C]/30 transition-all duration-500 transform hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(201,168,76,0.15)]">
+        {/* Image */}
+        <div className="relative aspect-[3/4] overflow-hidden">
+          <Image
+            src={image}
+            alt={product.name}
+            fill
+            className="object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+          {/* Rank badge */}
+          <div className={`absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow-lg ${
+            rank === 1 ? 'bg-[#FFD700] text-black' :
+            rank === 2 ? 'bg-[#C0C0C0] text-black' :
+            rank === 3 ? 'bg-[#CD7F32] text-white' :
+            'bg-white/20 backdrop-blur-sm text-white'
+          }`}>
+            #{rank}
+          </div>
+
+          {/* Hot badge for top 3 */}
+          {isTopThree && (
+            <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/90 text-white text-[10px] font-bold tracking-wide">
+              <Flame className="h-2.5 w-2.5" />
+              Hot
+            </div>
+          )}
+
+          {/* Sold count */}
+          {product.totalSold > 0 && (
+            <div className="absolute bottom-3 left-3 text-white/70 text-[10px] font-medium">
+              {product.totalSold} sold
+            </div>
+          )}
+
+          {/* Quick view */}
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(); }}
+            className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-[#C9A84C] border border-white/20"
+          >
+            <Eye className="h-3.5 w-3.5 text-white" />
+          </button>
+        </div>
+
+        {/* Info */}
+        <div className="p-3">
+          <p className="text-white/50 text-[10px] uppercase tracking-widest mb-1">{product.category}</p>
+          <h3 className="text-white text-sm font-semibold line-clamp-2 group-hover:text-[#E8D48A] transition-colors duration-300 leading-snug mb-2">
+            {product.name}
+          </h3>
+          <div className="flex items-center justify-between">
+            <span className="text-[#C9A84C] font-bold text-sm">
+              ₦{price.toLocaleString('en-NG')}
+            </span>
+            {product.ratings?.avg > 0 && (
+              <div className="flex items-center gap-0.5">
+                <Star className="h-3 w-3 fill-[#C9A84C] text-[#C9A84C]" />
+                <span className="text-white/50 text-[10px]">{product.ratings.avg.toFixed(1)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 function TestimonialsSection() {
   return (
     <section className="py-16 md:py-24 bg-[#FAFAFA]">
@@ -550,6 +738,7 @@ export default function Home() {
       <ServicesSection />
       <CategoriesSection />
       <FeaturedProductsSection />
+      <TrendingProductsSection />
       <TestimonialsSection />
     </div>
   );

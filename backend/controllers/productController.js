@@ -32,11 +32,17 @@ exports.upload = upload;
 
 exports.getCategories = async (req, res) => {
   try {
+    // Aggregate by category, get count and a sample product image per category
     const categories = await Product.aggregate([
-      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $match: { 'images.0': { $exists: true } } },
+      { $group: {
+          _id: '$category',
+          count: { $sum: 1 },
+          sampleImage: { $first: { $arrayElemAt: ['$images.url', 0] } }
+      }},
       { $sort: { count: -1 } }
     ]);
-    
+
     const categoryImages = {
       'Male Fashion': 'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600',
       'Female Fashion': 'https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600',
@@ -49,7 +55,7 @@ exports.getCategories = async (req, res) => {
       'Perfumes': 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=600',
       'Gift Items': 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?w=600'
     };
-    
+
     const categoryDescriptions = {
       'Male Fashion': 'Premium suits, casuals, and accessories for the modern gentleman',
       'Female Fashion': 'Elegant dresses, gowns, and contemporary styles for her',
@@ -62,17 +68,52 @@ exports.getCategories = async (req, res) => {
       'Perfumes': 'Signature fragrances that leave a lasting impression',
       'Gift Items': 'Perfect gifts for every occasion'
     };
-    
+
     const result = categories.map(cat => ({
       name: cat._id || 'Other',
-      handle: (cat._id || 'other').toLowerCase().replace(/\s+/g, '-'),
+      // handle matches exact category name so frontend filtering works
+      handle: cat._id || 'Other',
       count: cat.count,
-      image: categoryImages[cat._id] || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600',
+      // prefer a real product image, fall back to curated Unsplash
+      image: cat.sampleImage || categoryImages[cat._id] || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600',
       description: categoryDescriptions[cat._id] || 'Explore our collection'
     }));
-    
+
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getTrendingProducts = async (req, res) => {
+  try {
+    const Sale = require('../models/Sale');
+    const limit = parseInt(req.query.limit) || 8;
+
+    // Aggregate top-sold products from completed sales
+    const trending = await Sale.aggregate([
+      { $match: { type: 'sale', status: 'completed' } },
+      { $unwind: '$items' },
+      { $group: { _id: '$items.product', totalSold: { $sum: '$items.quantity' } } },
+      { $sort: { totalSold: -1 } },
+      { $limit: limit },
+      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+      { $unwind: '$product' },
+      { $replaceRoot: { newRoot: { $mergeObjects: ['$product', { totalSold: '$totalSold' }] } } }
+    ]);
+
+    if (trending.length >= 4) {
+      return res.json({ products: trending, total: trending.length, source: 'sales' });
+    }
+
+    // Fallback: featured products
+    let products = await Product.find({ featured: true }).sort({ createdAt: -1 }).limit(limit).lean();
+    if (products.length < 4) {
+      products = await Product.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+    }
+    res.json({ products: products.map(p => ({ ...p, totalSold: 0 })), total: products.length, source: 'fallback' });
+  } catch (err) {
+    console.error('getTrendingProducts error:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -234,6 +275,133 @@ exports.getAdminProducts = async (req, res) => {
     ]);
 
     res.json({ products, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Simple CSV parser
+function parseCSV(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+  const rows = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim().replace(/['"]/g, ''));
+    const row = {};
+    headers.forEach((header, idx) => {
+      row[header] = values[idx] || '';
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+// POST /api/admin/products/import - Bulk import products
+exports.importProducts = async (req, res) => {
+  try {
+    const { products } = req.body;
+
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ error: 'No products to import' });
+    }
+
+    const results = { success: 0, failed: 0, errors: [] };
+
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+
+      // Validation
+      if (!p.name || !p.name.trim()) {
+        results.failed++;
+        results.errors.push(`Row ${i + 1}: Missing product name`);
+        continue;
+      }
+      if (!p.category || !p.category.trim()) {
+        results.failed++;
+        results.errors.push(`Row ${i + 1}: Missing category`);
+        continue;
+      }
+      if (!p.price || isNaN(parseFloat(p.price))) {
+        results.failed++;
+        results.errors.push(`Row ${i + 1}: Invalid or missing price`);
+        continue;
+      }
+
+      const price = parseFloat(p.price);
+      const stock = p.stock ? parseInt(p.stock) : 0;
+      const costPrice = p.cost_price ? parseFloat(p.cost_price) : price * 0.6;
+
+      // Build variants
+      const variants = [];
+      if (p.size || p.color) {
+        variants.push({
+          size: p.size || 'Default',
+          color: p.color || 'Default',
+          price,
+          costPrice,
+          stock,
+          sku: p.sku || '',
+        });
+      } else {
+        // Default variant
+        variants.push({
+          size: 'Default',
+          color: 'Default',
+          price,
+          costPrice,
+          stock,
+          sku: p.sku || '',
+        });
+      }
+
+      // Check for duplicate
+      const existing = await Product.findOne({ name: { $regex: new RegExp(`^${p.name}$`, 'i') } });
+      if (existing) {
+        // Update existing
+        existing.description = p.description || existing.description;
+        existing.category = p.category || existing.category;
+        existing.variants = variants;
+        if (p.image_url) existing.images = [{ url: p.image_url }];
+        existing.status = p.status === 'draft' ? 'draft' : 'published';
+        await existing.save();
+        results.success++;
+      } else {
+        // Create new
+        await Product.create({
+          name: p.name,
+          slug: p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+          description: p.description || '',
+          category: p.category,
+          status: p.status === 'draft' ? 'draft' : 'published',
+          images: p.image_url ? [{ url: p.image_url }] : [],
+          variants,
+          tags: p.tags ? p.tags.split(';').map(t => t.trim()) : [],
+        });
+        results.success++;
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/admin/products/parse-csv - Parse CSV for preview
+exports.parseCSV = async (req, res) => {
+  try {
+    const { csv } = req.body;
+
+    if (!csv) {
+      return res.status(400).json({ error: 'CSV content is required' });
+    }
+
+    const products = parseCSV(csv);
+    res.json({ products, count: products.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
