@@ -3,9 +3,12 @@ const Sale = require('../models/Sale');
 const Inventory = require('../models/Inventory');
 const Register = require('../models/Register');
 const CashMovement = require('../models/CashMovement');
+const Customer = require('../models/Customer');
+const OfflineSale = require('../models/OfflineSale');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { trackSale } = require('./customerController');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kentaz-super-secret-jwt';
 
@@ -25,7 +28,7 @@ exports.posLogin = async (req, res) => {
 
     const token = jwt.sign({ id: user._id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '12h' });
     res.json({
-      user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar },
+      user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, permissions: user.permissions || [] },
       token,
     });
   } catch (err) {
@@ -36,17 +39,54 @@ exports.posLogin = async (req, res) => {
 // GET /api/pos/products
 exports.getPosProducts = async (req, res) => {
   try {
-    const { search, category } = req.query;
+    const { search, category, favorites, barcode } = req.query;
     const filter = { status: 'published' };
-    if (search) filter.name = { $regex: search, $options: 'i' };
+
+    // Search by name, barcode, or SKU
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { barcode: { $regex: search, $options: 'i' } },
+        { 'variants.sku': { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Filter by barcode specifically
+    if (barcode) {
+      filter.$or = [
+        { barcode: barcode },
+        { 'variants.sku': barcode },
+      ];
+    }
+
     if (category) filter.category = category;
 
+    // Filter favorites only
+    if (favorites === 'true') {
+      filter.isFavorite = true;
+    }
+
     const products = await Product.find(filter)
-      .select('name slug category images variants tags featured')
-      .sort({ name: 1 })
+      .select('name slug category images variants tags featured barcode isFavorite ageRestricted minStock')
+      .sort({ isFavorite: -1, name: 1 })
       .lean();
 
     res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// PUT /api/pos/products/:id/favorite - toggle favorite
+exports.toggleFavorite = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    product.isFavorite = !product.isFavorite;
+    await product.save();
+
+    res.json({ isFavorite: product.isFavorite });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -62,9 +102,13 @@ exports.createSale = async (req, res) => {
       discount = 0,
       discountType = 'percent',
       paymentMethod = 'cash',
+      splitPayments,
       amountPaid = 0,
       customerName,
       customerPhone,
+      customerId,
+      loyaltyPointsToRedeem = 0,
+      ageVerified = false,
       notes,
     } = req.body;
 
@@ -163,8 +207,34 @@ exports.createSale = async (req, res) => {
         ? Math.round((subtotal * discount) / 100 * 100) / 100
         : discount;
     }
-    const total = Math.max(0, subtotal - discountAmount);
-    const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
+
+    // Handle loyalty points redemption (100 points = ₦1)
+    let loyaltyDiscount = 0;
+    if (loyaltyPointsToRedeem > 0 && customerPhone) {
+      const customer = await Customer.findOne({ phone: customerPhone });
+      if (customer && customer.loyaltyPoints >= loyaltyPointsToRedeem) {
+        loyaltyDiscount = loyaltyPointsToRedeem / 100;
+        customer.loyaltyPoints -= loyaltyPointsToRedeem;
+        customer.pointsRedeemed += loyaltyPointsToRedeem;
+        await customer.save();
+      }
+    }
+
+    const total = Math.max(0, subtotal - discountAmount - loyaltyDiscount);
+
+    // Handle split payments
+    let finalAmountPaid = total;
+    let finalChange = 0;
+    let finalPaymentMethod = paymentMethod;
+
+    if (paymentMethod === 'split' && splitPayments && splitPayments.length > 0) {
+      const totalPaid = splitPayments.reduce((s, p) => s + p.amount, 0);
+      finalAmountPaid = totalPaid;
+      finalChange = Math.max(0, totalPaid - total);
+    } else if (paymentMethod === 'cash') {
+      finalAmountPaid = amountPaid;
+      finalChange = Math.max(0, amountPaid - total);
+    }
 
     const sale = new Sale({
       items: saleItems,
@@ -173,17 +243,25 @@ exports.createSale = async (req, res) => {
       discountType,
       discountAmount,
       total,
-      paymentMethod,
-      amountPaid: paymentMethod === 'cash' ? amountPaid : total,
-      change,
+      paymentMethod: finalPaymentMethod,
+      splitPayments: paymentMethod === 'split' ? splitPayments : undefined,
+      amountPaid: finalAmountPaid,
+      change: finalChange,
       customerName: customerName || undefined,
       customerPhone: customerPhone || undefined,
+      ageVerified,
+      ageVerifiedAt: ageVerified ? new Date() : undefined,
       notes: notes || undefined,
       cashier: req.user.id,
       cashierName: req.user.name,
       register: req.body.registerId || undefined,
     });
     await sale.save();
+
+    // Track loyalty points if customer provided
+    if (customerPhone) {
+      await trackSale(sale);
+    }
 
     // Back-fill receipt number on inventory records
     await Inventory.updateMany(
@@ -569,8 +647,8 @@ exports.refundSaleItems = async (req, res) => {
 exports.getRegisterSessions = async (req, res) => {
   try {
     const { limit = 20 } = req.query;
+    // Admin and staff can see all sessions
     const filter = {};
-    if (req.user.role === 'staff') filter.cashier = req.user.id;
 
     const sessions = await Register.find(filter)
       .sort({ createdAt: -1 })
@@ -596,8 +674,8 @@ exports.getRegisterSessions = async (req, res) => {
 // POST /api/pos/register/open
 exports.openRegister = async (req, res) => {
   try {
-    // Only one open register per cashier at a time
-    const existing = await Register.findOne({ cashier: req.user.id, status: 'open' });
+    // Only one open register allowed at a time (global, not per user)
+    const existing = await Register.findOne({ status: 'open' });
     if (existing) return res.json(existing);
 
     const { openingBalance = 0 } = req.body;
@@ -615,7 +693,8 @@ exports.openRegister = async (req, res) => {
 // GET /api/pos/register/current
 exports.getCurrentRegister = async (req, res) => {
   try {
-    const register = await Register.findOne({ cashier: req.user.id, status: 'open' }).sort({ createdAt: -1 });
+    // Get any open register (admin/staff can access the open session)
+    const register = await Register.findOne({ status: 'open' }).sort({ createdAt: -1 });
     if (!register) return res.json(null);
     res.json(register);
   } catch (err) {
@@ -728,7 +807,7 @@ exports.closeRegister = async (req, res) => {
     register.closedAt = new Date();
     register.closingBalance = countedCash;
     register.expectedCash = expectedCash;
-    register.difference = countedCash - expectedCash;
+    register.difference = countedCash - register.openingBalance;
     register.totalSales = sales.length;
     register.totalRevenue = totalRevenue;
     register.totalCash = totalCash;
@@ -783,6 +862,184 @@ exports.getProductSalesStats = async (req, res) => {
     const grossProfit = totalRevenue - totalCost;
 
     res.json({ totalSold, totalReturned, netSold, totalRevenue, totalCost, grossProfit, byVariant: variantMap });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ── Offline Mode ────────────────────────────────────────────────
+
+// POST /api/pos/offline/queue - Queue sale for later sync
+exports.queueOfflineSale = async (req, res) => {
+  try {
+    const { items, subtotal, discount, discountType, discountAmount, total, paymentMethod, amountPaid, change, customerName, customerPhone, notes, deviceId } = req.body;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'At least one item is required' });
+    }
+
+    const offlineSale = await OfflineSale.create({
+      items,
+      subtotal,
+      discount,
+      discountType,
+      discountAmount,
+      total,
+      paymentMethod,
+      amountPaid,
+      change,
+      customerName,
+      customerPhone,
+      notes,
+      cashierId: req.user.id,
+      cashierName: req.user.name,
+      deviceId,
+      status: 'pending',
+    });
+
+    res.status(201).json({ queued: true, offlineSaleId: offlineSale._id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/pos/offline/queue - Get queued offline sales for this device/cashier
+exports.getOfflineQueue = async (req, res) => {
+  try {
+    const { deviceId } = req.query;
+    const filter = { status: 'pending' };
+    if (deviceId) filter.deviceId = deviceId;
+    if (req.user.role === 'staff') filter.cashierId = req.user.id;
+
+    const queue = await OfflineSale.find(filter).sort({ createdAt: 1 });
+    res.json(queue);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/pos/offline/sync - Sync all queued sales
+exports.syncOfflineSales = async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+
+    const pendingSales = await OfflineSale.find({
+      status: 'pending',
+      ...(deviceId ? { deviceId } : {}),
+      ...(req.user.role === 'staff' ? { cashierId: req.user.id } : {}),
+    });
+
+    const synced = [];
+    const failed = [];
+
+    for (const offlineSale of pendingSales) {
+      try {
+        // Process each queued sale like a normal sale
+        const saleItems = [];
+        let hasError = false;
+
+        for (const item of offlineSale.items) {
+          const product = await Product.findById(item.productId);
+          if (!product) {
+            hasError = true;
+            offlineSale.error = `Product not found: ${item.productId}`;
+            continue;
+          }
+
+          const vi = item.variantIndex ?? 0;
+          const variant = product.variants[vi];
+          if (!variant) {
+            hasError = true;
+            offlineSale.error = `Invalid variant: ${vi}`;
+            continue;
+          }
+
+          const currentStock = variant.stock ?? 0;
+          if (currentStock < item.quantity) {
+            hasError = true;
+            offlineSale.error = `Insufficient stock`;
+            continue;
+          }
+
+          // Deduct stock
+          product.variants[vi].stock = currentStock - item.quantity;
+          await product.save();
+
+          saleItems.push({
+            product: product._id,
+            productName: product.name,
+            variantIndex: vi,
+            variantLabel: [variant.size, variant.color].filter(Boolean).join(' / '),
+            quantity: item.quantity,
+            price: item.price,
+            costPrice: variant.costPrice || 0,
+            total: item.total,
+          });
+        }
+
+        if (hasError) {
+          offlineSale.status = 'failed';
+          await offlineSale.save();
+          failed.push(offlineSale._id);
+          continue;
+        }
+
+        // Create actual sale
+        const sale = new Sale({
+          items: saleItems,
+          subtotal: offlineSale.subtotal,
+          discount: offlineSale.discount,
+          discountType: offlineSale.discountType,
+          discountAmount: offlineSale.discountAmount,
+          total: offlineSale.total,
+          paymentMethod: offlineSale.paymentMethod,
+          amountPaid: offlineSale.amountPaid,
+          change: offlineSale.change,
+          customerName: offlineSale.customerName,
+          customerPhone: offlineSale.customerPhone,
+          notes: offlineSale.notes,
+          cashier: offlineSale.cashierId,
+          cashierName: offlineSale.cashierName,
+          status: 'completed',
+        });
+
+        await sale.save();
+
+        // Track loyalty
+        if (offlineSale.customerPhone) {
+          await trackSale(sale);
+        }
+
+        offlineSale.status = 'synced';
+        offlineSale.syncedAt = new Date();
+        await offlineSale.save();
+
+        synced.push({ offlineId: offlineSale._id, saleId: sale._id });
+      } catch (err) {
+        offlineSale.error = err.message;
+        offlineSale.status = 'failed';
+        await offlineSale.save();
+        failed.push(offlineSale._id);
+      }
+    }
+
+    res.json({ synced, failed, total: pendingSales.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/pos/offline/queue/:id - Remove from queue without syncing
+exports.deleteOfflineSale = async (req, res) => {
+  try {
+    const sale = await OfflineSale.findOne({
+      _id: req.params.id,
+      status: 'pending',
+    });
+    if (!sale) return res.status(404).json({ error: 'Queued sale not found' });
+
+    await sale.deleteOne();
+    res.json({ message: 'Removed from queue' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

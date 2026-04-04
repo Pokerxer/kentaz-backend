@@ -543,7 +543,7 @@ export default function PosDashboard() {
                         </td>
                         <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
                           {session.closedAt
-                            ? new Date(session.closedAt).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
+                            ? new Date(session.closedAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
                             : '—'}
                         </td>
                         <td className="px-5 py-3 font-semibold text-gray-900">{salesCount}</td>
@@ -731,7 +731,7 @@ export default function PosDashboard() {
                   <p className="text-sm text-gray-500 mt-1">Session has ended. Have a great day!</p>
                 </div>
                 <button
-                  onClick={() => setShowCloseRegister(false)}
+                  onClick={() => { setShowCloseRegister(false); router.replace('/pos/dashboard'); }}
                   className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-semibold"
                 >
                   Done

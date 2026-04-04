@@ -25,18 +25,21 @@ const analyticsRoutes = require('./routes/analytics');
 const notificationRoutes = require('./routes/notifications');
 const reportRoutes = require('./routes/reports');
 const uploadRoutes = require('./routes/upload');
+const receiptRoutes = require('./routes/receipts');
+const customerRoutes = require('./routes/customers');
+const bundleRoutes = require('./routes/bundles');
 
 const Product = require('./models/Product');
 
 const app = express();
 app.use(cors({
   origin: [
-    'http://localhost:3000', 
-    'http://localhost:3001', 
+    'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:3002',
     'http://localhost:7002',
-    /^https:\/\/kentaz-.*\.vercel\.app$/,
-    /^https:\/\/.*\.vercel\.app$/
+    'https://admin.kentazemporium.com',
+    'https://www.kentazemporium.com'
   ],
   credentials: true
 }));
@@ -81,6 +84,9 @@ app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/admin/notifications', notificationRoutes);
 app.use('/api/admin/reports', reportRoutes);
 app.use('/api/admin/upload', uploadRoutes);
+app.use('/api/receipts', receiptRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/bundles', bundleRoutes);
 
 app.post('/api/seed/products', async (req, res) => {
   try {
