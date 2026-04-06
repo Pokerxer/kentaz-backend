@@ -32,15 +32,19 @@ const bundleRoutes = require('./routes/bundles');
 const Product = require('./models/Product');
 
 const app = express();
+
+// CORS configuration - support both static origins and env variable
+const corsOrigin = process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:7002',
+  'https://admin.kentazemporium.com',
+  'https://www.kentazemporium.com'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-    'http://localhost:7002',
-    'https://admin.kentazemporium.com',
-    'https://www.kentazemporium.com'
-  ],
+  origin: corsOrigin,
   credentials: true
 }));
 app.use(express.json());
