@@ -8,6 +8,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Kentaz Admin',
   description: 'Kentaz E-commerce Admin Dashboard',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
@@ -17,6 +18,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <meta name="theme-color" content="#C9A84C" />
+      </head>
       <body className={inter.className}>
         <AuthProvider>{children}</AuthProvider>
       </body>

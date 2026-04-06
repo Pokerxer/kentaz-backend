@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShoppingBag, Eye, EyeOff, Loader2, LayoutGrid } from 'lucide-react';
+import Link from 'next/link';
+import { ShoppingBag, Eye, EyeOff, Loader2, LayoutGrid, Home } from 'lucide-react';
 import { posApi, savePosSession, getPosUser } from '@/lib/posApi';
 
 export default function PosLoginPage() {
@@ -114,6 +115,14 @@ export default function PosLoginPage() {
         <p className="text-center text-gray-600 text-xs mt-6">
           Contact your admin if you can't log in.
         </p>
+
+        <Link
+          href="/dashboard"
+          className="mt-4 w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+        >
+          <Home className="w-4 h-4" />
+          Go to Admin Dashboard
+        </Link>
       </div>
       </div>
     </div>

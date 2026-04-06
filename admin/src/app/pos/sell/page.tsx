@@ -9,11 +9,14 @@ import {
   Package, History, Users, Tag, LayoutGrid, FileText,
   RefreshCw, XCircle, Gift, ClipboardList, UserPlus,
   Menu, ArrowDownCircle, ArrowUpCircle, Monitor, Lock,
-  DollarSign, TrendingUp, ChevronRight, ScanBarcode,
+  DollarSign, TrendingUp, ChevronRight, ScanBarcode, Wifi, WifiOff,
 } from 'lucide-react';
 import { posApi, getPosUser, clearPosSession, hasPosPermission, POS_PERMS } from '@/lib/posApi';
-import type { PosProduct, PosUser, CartItem, Sale, Register, RegisterReport } from '@/lib/posApi';
+import type { PosProduct, PosUser, CartItem, Sale, Register, RegisterReport, CreateSaleInput } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { savePendingSale, getPendingSalesCount, getPendingSales, updateSaleStatus } from '@/lib/offlineStorage';
+import { syncPendingSales, addSyncListener } from '@/lib/syncManager';
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -524,6 +527,50 @@ export default function PosPage() {
   const [mobileView, setMobileView] = useState<'products' | 'cart'>('products');
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Offline support
+  const { isOnline, wasOffline } = useNetworkStatus();
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+
+  // Check pending sales count and setup sync listener
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkPending = async () => {
+      if (typeof window !== 'undefined' && isMounted) {
+        const count = await getPendingSalesCount();
+        setPendingCount(count);
+      }
+    };
+    checkPending();
+
+    const unsubscribe = addSyncListener(() => {
+      if (isMounted) {
+        checkPending();
+        setSyncStatus('success');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Auto-sync when back online
+  useEffect(() => {
+    if (wasOffline && isOnline && pendingCount > 0) {
+      setSyncStatus('syncing');
+      syncPendingSales().then(({ synced, failed }) => {
+        if (failed > 0) {
+          setSyncStatus('error');
+          setTimeout(() => setSyncStatus('idle'), 5000);
+        }
+      });
+    }
+  }, [isOnline, wasOffline]);
+
   // Multi-cart helpers
   function getActiveCart(): CartOrder | undefined {
     return carts.find(c => c.id === activeCartId);
@@ -796,36 +843,77 @@ export default function PosPage() {
   }) {
     setProcessing(true);
     setError('');
+
+    const saleData: CreateSaleInput = {
+      items: cart.map(i => {
+        const variantPrice = i.product.variants[i.variantIndex]?.price;
+        return {
+          productId: i.product._id,
+          variantIndex: i.variantIndex,
+          quantity: i.quantity,
+          // Only send customPrice if cashier actually changed it
+          ...(i.price !== variantPrice ? { customPrice: i.price } : {}),
+        };
+      }),
+      ...payData,
+      // Cart-level overrides (pre-filled but can be changed in PaymentModal)
+      customerName: payData.customerName || customer?.name || '',
+      customerPhone: payData.customerPhone || customer?.phone || '',
+      notes: payData.notes || orderNote,
+      registerId: register?._id,
+    };
+
     try {
-      const sale = await posApi.createSale({
-        items: cart.map(i => {
-          const variantPrice = i.product.variants[i.variantIndex]?.price;
-          return {
-            productId: i.product._id,
-            variantIndex: i.variantIndex,
-            quantity: i.quantity,
-            // Only send customPrice if cashier actually changed it
-            ...(i.price !== variantPrice ? { customPrice: i.price } : {}),
-          };
-        }),
-        ...payData,
-        // Cart-level overrides (pre-filled but can be changed in PaymentModal)
-        customerName: payData.customerName || customer?.name || '',
-        customerPhone: payData.customerPhone || customer?.phone || '',
-        notes: payData.notes || orderNote,
-        registerId: register?._id,
-      });
-      setCompletedSale(sale);
-      setShowPayment(false);
-      setActiveCartItems([]);
-      setSelectedCartItemIdx(null);
-      setNumpadInput('');
-      setActiveCartDiscount(0);
-      setActiveCartCustomer(null);
-      setActiveCartNote('');
-      loadProducts();
+      if (navigator.onLine) {
+        // Online: create sale normally
+        const sale = await posApi.createSale(saleData);
+        setCompletedSale(sale);
+        setShowPayment(false);
+        setActiveCartItems([]);
+        setSelectedCartItemIdx(null);
+        setNumpadInput('');
+        setActiveCartDiscount(0);
+        setActiveCartCustomer(null);
+        setActiveCartNote('');
+        loadProducts();
+      } else {
+        // Offline: save to local storage
+        await savePendingSale(saleData);
+        setPendingCount(prev => prev + 1);
+        setShowPayment(false);
+        setActiveCartItems([]);
+        setSelectedCartItemIdx(null);
+        setNumpadInput('');
+        setActiveCartDiscount(0);
+        setActiveCartCustomer(null);
+        setActiveCartNote('');
+        setError('');
+        // Show a success message but not the receipt since it wasn't created
+        alert('Sale saved offline. Will sync when back online.');
+        loadProducts();
+      }
     } catch (err: any) {
-      setError(err.message);
+      // If online request fails, try offline fallback
+      if (navigator.onLine) {
+        // Still online but request failed - try offline storage
+        try {
+          await savePendingSale(saleData);
+          setPendingCount(prev => prev + 1);
+          setShowPayment(false);
+          setActiveCartItems([]);
+          setSelectedCartItemIdx(null);
+          setNumpadInput('');
+          setActiveCartDiscount(0);
+          setActiveCartCustomer(null);
+          setActiveCartNote('');
+          alert('Sale saved offline due to error. Will sync when back online.');
+          loadProducts();
+        } catch {
+          setError(err.message);
+        }
+      } else {
+        setError(err.message);
+      }
     } finally {
       setProcessing(false);
     }
@@ -862,6 +950,34 @@ export default function PosPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Offline status indicator */}
+          {!isOnline ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-semibold">
+              <WifiOff className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Offline</span>
+              {pendingCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[10px]">
+                  {pendingCount}
+                </span>
+              )}
+            </div>
+          ) : syncStatus === 'syncing' ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 text-xs font-semibold">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span className="hidden sm:inline">Syncing...</span>
+            </div>
+          ) : syncStatus === 'success' ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-xs font-semibold">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Synced!</span>
+            </div>
+          ) : syncStatus === 'error' ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs font-semibold">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sync Failed</span>
+            </div>
+          ) : null}
+
           {/* Register status badge */}
           <button
             onClick={() => register ? setShowMenu(true) : setShowOpenRegister(true)}
@@ -1680,6 +1796,38 @@ export default function PosPage() {
                   <ChevronRight className="w-4 h-4 text-gray-500 ml-auto" />
                 </button>
               ))}
+
+              {/* Sync offline sales button */}
+              {pendingCount > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!navigator.onLine) {
+                      alert('Cannot sync while offline');
+                      return;
+                    }
+                    setSyncStatus('syncing');
+                    const { synced, failed } = await syncPendingSales();
+                    if (failed > 0) {
+                      setSyncStatus('error');
+                      alert(`Sync complete: ${synced} succeeded, ${failed} failed`);
+                    } else {
+                      setSyncStatus('success');
+                    }
+                    setShowMenu(false);
+                  }}
+                  disabled={syncStatus === 'syncing' || !navigator.onLine}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/10 transition text-left disabled:opacity-50"
+                >
+                  <div className="flex-shrink-0">
+                    <RefreshCw className={`w-5 h-5 text-blue-400 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Sync Offline Sales</p>
+                    <p className="text-xs text-gray-400">{pendingCount} pending</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-500 ml-auto" />
+                </button>
+              )}
             </nav>
 
             {/* Logout */}

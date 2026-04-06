@@ -21,6 +21,16 @@ export function clearPosSession() {
   localStorage.removeItem('pos_user');
 }
 
+export function getDeviceId(): string {
+  if (typeof window === 'undefined') return 'server';
+  let deviceId = localStorage.getItem('pos_device_id');
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem('pos_device_id', deviceId);
+  }
+  return deviceId;
+}
+
 async function posRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getPosToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -308,3 +318,26 @@ export interface RegisterReport {
   movements: CashMovement[];
   sales: Sale[];  // all (sales + refunds), populated
 }
+
+// Offline API for queueing sales when offline
+export const offlineApi = {
+  queueSale: (data: CreateSaleInput, deviceId: string) =>
+    posRequest<{ queued: true; offlineSaleId: string }>('/api/pos/offline/queue', {
+      method: 'POST',
+      body: JSON.stringify({ ...data, deviceId }),
+    }),
+
+  getQueue: (deviceId?: string) => {
+    const query = deviceId ? `?deviceId=${deviceId}` : '';
+    return posRequest<any[]>(`/api/pos/offline/queue${query}`);
+  },
+
+  syncAll: (deviceId: string) =>
+    posRequest<{ synced: number; failed: number }>('/api/pos/offline/sync', {
+      method: 'POST',
+      body: JSON.stringify({ deviceId }),
+    }),
+
+  deleteFromQueue: (id: string) =>
+    posRequest<{ message: string }>(`/api/pos/offline/queue/${id}`, { method: 'DELETE' }),
+};
