@@ -28,9 +28,18 @@ const productSchema = new mongoose.Schema({
   ratings: {
     avg: { type: Number, default: 0 },
     count: { type: Number, default: 0 }
-  }
+  },
+  // POS-specific fields
+  barcode: String,
+  isFavorite: { type: Boolean, default: false },
+  minStock: { type: Number, default: 5 }, // Low stock threshold
+  ageRestricted: { type: Boolean, default: false },
+  ageVerificationRequired: { type: Boolean, default: false },
 }, { timestamps: true });
 
 productSchema.index({ name: 'text', description: 'text' });
+productSchema.index({ barcode: 1 });
+productSchema.index({ 'variants.sku': 1 });
+productSchema.index({ isFavorite: 1, status: 1 });
 
 module.exports = mongoose.model('Product', productSchema);

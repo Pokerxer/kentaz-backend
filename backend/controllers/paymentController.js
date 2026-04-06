@@ -1,6 +1,39 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const Order = require('../models/Order');
+const User = require('../models/User');
+const { sendEmail, getOrderEmailHtml, getAdminOrderEmailHtml } = require('../utils/email');
+
+async function sendOrderEmails(order) {
+  const user = await User.findById(order.user).select('name email');
+  if (!user) return;
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+
+  try {
+    // Send to customer
+    await sendEmail(
+      user.email,
+      `Order Confirmed - #${order._id}`,
+      getOrderEmailHtml(order, user)
+    );
+  } catch (err) {
+    console.error('Failed to send customer email:', err.message);
+  }
+
+  try {
+    // Send to admin
+    if (adminEmail) {
+      await sendEmail(
+        adminEmail,
+        `New Order - ${order._id} - ₦${order.total}`,
+        getAdminOrderEmailHtml(order, user)
+      );
+    }
+  } catch (err) {
+    console.error('Failed to send admin email:', err.message);
+  }
+}
 
 // Read keys at call time so they're always current regardless of when server started
 function getSecretKey() { return process.env.PAYSTACK_SECRET_KEY; }
@@ -63,8 +96,14 @@ exports.verifyPayment = async (req, res) => {
 
     if (order) {
       order.paystackStatus = txn.status;
-      if (txn.status === 'success') order.status = 'processing';
-      await order.save();
+      if (txn.status === 'success') {
+        order.status = 'processing';
+        await order.save();
+        // Send order confirmation emails
+        sendOrderEmails(order);
+      } else {
+        await order.save();
+      }
     }
 
     res.json({ success: txn.status === 'success', status: txn.status, data: txn });
@@ -99,6 +138,8 @@ exports.handleWebhook = async (req, res) => {
         order.status = 'processing';
         await order.save();
         console.log(`Webhook: order ${order._id} → processing (${data.reference})`);
+        // Send order confirmation emails
+        sendOrderEmails(order);
       }
     }
 

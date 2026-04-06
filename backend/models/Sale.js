@@ -32,11 +32,23 @@ const saleSchema = new Schema({
   discountType: { type: String, enum: ['fixed', 'percent'], default: 'fixed' },
   discountAmount: { type: Number, default: 0 },
   total: { type: Number, required: true },         // negative for refunds
-  paymentMethod: { type: String, enum: ['cash', 'card', 'transfer'], default: 'cash' },
+  paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'split'], default: 'cash' },
+  // For split payments: [{ method: 'cash'|'card'|'transfer', amount: number }]
+  splitPayments: [{
+    method: { type: String, enum: ['cash', 'card', 'transfer'] },
+    amount: { type: Number, required: true }
+  }],
   amountPaid: { type: Number, default: 0 },        // negative for refunds (money returned)
   change: { type: Number, default: 0 },
+  // Customer reference (for loyalty points)
+  customer: { type: Schema.Types.ObjectId, ref: 'Customer' },
   customerName: { type: String },
   customerPhone: { type: String },
+  loyaltyPointsEarned: { type: Number, default: 0 },
+  loyaltyPointsRedeemed: { type: Number, default: 0 },
+  // Age verification for restricted items
+  ageVerified: { type: Boolean, default: false },
+  ageVerifiedAt: Date,
   notes: { type: String },
   cashier: { type: Schema.Types.ObjectId, ref: 'User' },
   cashierName: { type: String },
@@ -44,6 +56,10 @@ const saleSchema = new Schema({
   status: { type: String, enum: ['completed', 'voided'], default: 'completed' },
   voidedAt: { type: Date },
   voidReason: { type: String },
+  // Receipt delivery
+  receiptSent: { type: Boolean, default: false },
+  receiptSentAt: Date,
+  receiptEmail: String,
 }, { timestamps: true });
 
 saleSchema.pre('save', async function(next) {
@@ -62,5 +78,8 @@ saleSchema.index({ status: 1, createdAt: -1 });
 saleSchema.index({ type: 1, createdAt: -1 });
 saleSchema.index({ originalSale: 1 });
 saleSchema.index({ createdAt: -1 });
+saleSchema.index({ customer: 1, createdAt: -1 });
+saleSchema.index({ receiptNumber: 1 });
+saleSchema.index({ customerPhone: 1 });
 
 module.exports = mongoose.model('Sale', saleSchema);

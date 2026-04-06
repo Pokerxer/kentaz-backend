@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const { auth, adminOnly } = require('../middleware/auth');
+const { auth, adminOnly, posAccess } = require('../middleware/auth');
 const Order    = require('../models/Order');
 const Sale     = require('../models/Sale');
 const Product  = require('../models/Product');
@@ -474,5 +474,21 @@ router.get('/purchases', auth, adminOnly, async (req, res) => {
     res.json({ rows, summary, from, to });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── POS Reports (X, Z, Hourly) ─────────────────────────────────────
+
+const {
+  getXReport,
+  getZReport,
+  getHourlySales,
+  getStaffPerformance,
+  getSummary,
+} = require('../controllers/reportController');
+
+router.get('/pos/x', auth, posAccess, getXReport);
+router.get('/pos/z', auth, posAccess, getZReport);
+router.get('/pos/hourly', auth, posAccess, getHourlySales);
+router.get('/pos/staff', auth, adminOnly, getStaffPerformance);
+router.get('/pos/summary', auth, adminOnly, getSummary);
 
 module.exports = router;
