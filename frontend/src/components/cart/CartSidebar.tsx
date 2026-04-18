@@ -255,7 +255,7 @@ export function CartSidebar() {
                           >
                             <Image
                               src={item.product.images?.[0]?.url || item.product.thumbnail || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'}
-                              alt={item.product.name}
+                              alt={item.product.name || 'Product image'}
                               fill
                               className="object-cover group-hover:scale-105 transition-transform duration-300"
                             />

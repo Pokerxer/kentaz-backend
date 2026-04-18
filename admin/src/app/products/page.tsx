@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -17,10 +17,50 @@ import {
   AlertTriangle,
   LayoutGrid,
   LayoutList,
+  ArrowUp,
+  ArrowDown,
+  ChevronDown,
+  Download,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
 import { api, Product } from '@/lib/api';
 import { AdminLayout } from '@/components/AdminLayout';
+
+function exportProductsCSV(products: Product[]) {
+  const headers = ['Name', 'Category', 'Subcategory', 'Status', 'SKU', 'Price', 'Stock', 'Tags'];
+  const rows = products.map(p => [
+    p.name || '',
+    p.category || '',
+    (p as any).subcategory || '',
+    p.status || '',
+    p.variants?.[0]?.sku || '',
+    p.variants?.[0]?.price?.toString() || '',
+    p.variants?.reduce((s, v) => s + (v.stock || 0), 0).toString() || '0',
+    p.tags?.join('; ') || '',
+  ]);
+  const csv = [headers, ...rows]
+    .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `products-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+type SortKey = 'name' | 'category' | 'subcategory' | 'status' | 'price' | 'stock';
+type SortOrder = 'asc' | 'desc';
+
+const columnConfig: Record<SortKey, { label: string; sortable: boolean }> = {
+  name:        { label: 'Product', sortable: true },
+  category:    { label: 'Category', sortable: true },
+  subcategory: { label: 'Subcategory', sortable: true },
+  status:      { label: 'Status', sortable: true },
+  price:       { label: 'Price', sortable: true },
+  stock:       { label: 'Stock', sortable: true },
+};
 
 const STATUS_FILTERS = [
   { value: '', label: 'All' },
@@ -35,7 +75,7 @@ const statusColors: Record<string, string> = {
   archived: 'bg-gray-100 text-gray-500',
 };
 
-const LIMIT = 20;
+const LIMIT = 100;
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
@@ -46,9 +86,37 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [subcategoryFilter, setSubcategoryFilter] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'grid'>('list');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      const data = await api.products.getAll({ limit: 10000 });
+      const list = Array.isArray(data) ? data : (data.products ?? []);
+      exportProductsCSV(list);
+    } catch {
+      setMsg({ text: 'Failed to export products', type: 'error' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortOrder('asc');
+    }
+  };
 
   const fetchProducts = useCallback(async (currentPage: number) => {
     setLoading(true);
@@ -56,6 +124,8 @@ export default function ProductsPage() {
       const params: Record<string, any> = { page: currentPage, limit: LIMIT };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
+      if (categoryFilter) params.category = categoryFilter;
+      if (subcategoryFilter) params.subcategory = subcategoryFilter;
       const data = await api.products.getAll(params);
       const list = Array.isArray(data) ? (data as any) : (data.products ?? []);
       setProducts(list);
@@ -66,10 +136,59 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter]);
+  }, [search, statusFilter, categoryFilter, subcategoryFilter]);
 
-  useEffect(() => { setPage(1); }, [search, statusFilter]);
+  useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter, subcategoryFilter]);
   useEffect(() => { fetchProducts(page); }, [fetchProducts, page]);
+
+  useEffect(() => {
+    api.categories.getAll()
+      .then(data => {
+        const cats = Array.isArray(data) ? data : [];
+        setCategories(cats.map((c: any) => c.name || c).filter(Boolean));
+      })
+      .catch(() => {});
+  }, []);
+
+  const sortedProducts = useMemo(() => {
+    const result = [...products];
+    result.sort((a, b) => {
+      let aVal: any, bVal: any;
+      switch (sortKey) {
+        case 'name':
+          aVal = a.name || '';
+          bVal = b.name || '';
+          break;
+        case 'category':
+          aVal = a.category || '';
+          bVal = b.category || '';
+          break;
+        case 'subcategory':
+          aVal = (a as any).subcategory || '';
+          bVal = (b as any).subcategory || '';
+          break;
+        case 'status':
+          aVal = a.status || '';
+          bVal = b.status || '';
+          break;
+        case 'price':
+          aVal = Math.min(...(a.variants?.map(v => v.price || 0) || [0]));
+          bVal = Math.min(...(b.variants?.map(v => v.price || 0) || [0]));
+          break;
+        case 'stock':
+          aVal = a.variants?.reduce((s, v) => s + (v.stock || 0), 0) || 0;
+          bVal = b.variants?.reduce((s, v) => s + (v.stock || 0), 0) || 0;
+          break;
+        default:
+          return 0;
+      }
+      if (typeof aVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+    return result;
+  }, [products, sortKey, sortOrder]);
 
   const handleDelete = async (product: Product) => {
     if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
@@ -136,13 +255,23 @@ export default function ProductsPage() {
             </h1>
             <p className="text-gray-500 mt-1 ml-5">Manage your product catalogue</p>
           </div>
-          <Link
-            href="/products/new"
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20"
-          >
-            <Plus className="h-4 w-4" />
-            Add Product
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href="/products/new"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20"
+            >
+              <Plus className="h-4 w-4" />
+              Add Product
+            </Link>
+            <button
+              onClick={handleExportAll}
+              disabled={products.length === 0 || exporting}
+              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all disabled:opacity-40"
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Export
+            </button>
+          </div>
         </div>
 
         {msg && (
@@ -181,6 +310,28 @@ export default function ProductsPage() {
                 {f.label}
               </button>
             ))}
+            {categories.length > 0 && (
+              <div className="relative">
+                <select
+                  value={categoryFilter}
+                  onChange={e => setCategoryFilter(e.target.value)}
+                  className="appearance-none px-4 py-2.5 pr-10 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 cursor-pointer min-w-[160px]"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            )}
+            <input
+              type="text"
+              placeholder="Subcategory..."
+              value={subcategoryFilter}
+              onChange={e => setSubcategoryFilter(e.target.value)}
+              className="px-3 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] w-40"
+            />
             {/* View toggle */}
             <div className="ml-auto flex items-center gap-1 border border-gray-200 rounded-xl p-1 bg-white">
               <button
@@ -235,16 +386,24 @@ export default function ProductsPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                    {Object.entries(columnConfig).map(([key, config]) => (
+                      <th key={key}
+                        className={`px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase ${config.sortable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+                        onClick={() => config.sortable && handleSort(key as SortKey)}
+                      >
+                        <span className="flex items-center gap-1">
+                          {config.label}
+                          {config.sortable && sortKey === key && (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                          )}
+                        </span>
+                      </th>
+                    ))}
                     <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {products.map(product => {
+                  {sortedProducts.map(product => {
                     const stockBadge = getStockBadge(product);
                     const isDeleting = deletingId === product._id;
                     return (
@@ -277,6 +436,15 @@ export default function ProductsPage() {
                           <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                             {product.category || 'Uncategorized'}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {(product as any).subcategory ? (
+                            <span className="inline-flex items-center px-2.5 py-1 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">
+                              {(product as any).subcategory}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -324,7 +492,7 @@ export default function ProductsPage() {
           ) : (
             // ── Grid view ──────────────────────────────────────────────
             <div className="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {products.map(product => {
+              {sortedProducts.map(product => {
                 const stockBadge = getStockBadge(product);
                 const isDeleting = deletingId === product._id;
                 return (
@@ -391,6 +559,9 @@ export default function ProductsPage() {
                     <div className="p-3 flex flex-col gap-1 flex-1">
                       <p className="text-sm font-semibold text-gray-900 leading-tight line-clamp-2">{product.name}</p>
                       <p className="text-xs text-gray-400">{product.category || 'Uncategorized'}</p>
+                      {(product as any).subcategory && (
+                        <span className="text-[10px] text-violet-600 font-medium">{(product as any).subcategory}</span>
+                      )}
                       {product.variants?.[0]?.sku && (
                         <p className="text-[10px] text-gray-400 font-mono truncate">{product.variants[0].sku}</p>
                       )}

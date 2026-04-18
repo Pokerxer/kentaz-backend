@@ -99,6 +99,38 @@ export const api = {
         body: JSON.stringify({ products }),
       }),
 
+    parseFile: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+      const res = await fetch(`${API_URL}/api/admin/products/parse-file`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to parse file');
+      }
+      return res.json() as Promise<{ products: Record<string, string>[]; count: number }>;
+    },
+
+    importFile: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+      const res = await fetch(`${API_URL}/api/admin/products/import-file`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to import file');
+      }
+      return res.json() as Promise<{ success: number; failed: number; errors: string[] }>;
+    },
+
     getSalesStats: (id: string) =>
       request<{
         totalSold: number;
@@ -223,6 +255,19 @@ export const api = {
       ),
   },
 
+  heroes: {
+    getAll: () => request<Hero[]>('/api/heroes/all'),
+    getPublic: () => request<Hero[]>('/api/heroes'),
+    create: (data: Omit<Hero, '_id' | 'createdAt' | 'updatedAt'>) =>
+      request<Hero>('/api/admin/heroes', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Hero>) =>
+      request<Hero>(`/api/admin/heroes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ message: string }>(`/api/admin/heroes/${id}`, { method: 'DELETE' }),
+    reorder: (ids: string[]) =>
+      request<{ message: string }>('/api/admin/heroes/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  },
+
   orders: {
     getAll: (params?: { page?: number; limit?: number; status?: string; search?: string; startDate?: string; endDate?: string }) => {
       const query = new URLSearchParams(
@@ -253,17 +298,41 @@ export const api = {
     getById: (id: string) =>
       request<{ user: User; orders: CustomerOrder[]; bookings: CustomerBooking[]; stats: CustomerStats }>(`/api/admin/users/${id}`),
 
+    create: (data: { name: string; email: string; password: string; role: string; permissions?: string[] }) =>
+      request<User>('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: string, data: { role?: string; isActive?: boolean; permissions?: string[] }) =>
+      request<User>(`/api/admin/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+
+    resetPassword: (id: string, password: string) =>
+      request<{ message: string }>(`/api/admin/users/${id}/reset-password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ password }),
+      }),
+
+    resetPin: (id: string, pin: string) =>
+      request<{ message: string }>(`/api/admin/staff/${id}/pin`, {
+        method: 'PUT',
+        body: JSON.stringify({ pin }),
+      }),
+
     toggleActive: (id: string) =>
       request<{ isActive: boolean }>(`/api/admin/users/${id}/toggle-active`, { method: 'PATCH' }),
 
     updateRole: (id: string, role: 'customer' | 'admin' | 'therapist' | 'staff') =>
-      request<User>(`/api/admin/users/${id}/role`, {
+      request<User>(`/api/admin/users/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       }),
 
     updatePermissions: (id: string, permissions: string[]) =>
-      request<User>(`/api/admin/users/${id}/permissions`, {
+      request<User>(`/api/admin/users/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ permissions }),
       }),
@@ -289,8 +358,8 @@ export const api = {
   },
   
   dashboard: {
-    getStats: () =>
-      request<DashboardStats>('/api/admin/dashboard/stats'),
+    getStats: (period: '7d' | '30d' | '90d' = '7d') =>
+      request<DashboardStats>(`/api/admin/dashboard/stats?period=${period}`),
   },
   
   inventory: {
@@ -371,6 +440,36 @@ export const api = {
   analytics: {
     get: (period: string = '30d') =>
       request<AnalyticsData>(`/api/admin/analytics?period=${period}`),
+  },
+
+  reviews: {
+    getAll: (params?: { page?: number; limit?: number; product?: string; rating?: number; search?: string }) => {
+      const query = new URLSearchParams(params as Record<string, string>).toString();
+      return request<{ reviews: Review[]; total: number; page: number; totalPages: number }>(`/api/admin/reviews?${query}`);
+    },
+    getStats: () =>
+      request<ReviewStats>('/api/admin/reviews/stats'),
+    get: (id: string) =>
+      request<Review>(`/api/admin/reviews/${id}`),
+    update: (id: string, data: { rating?: number; comment?: string }) =>
+      request<Review>(`/api/admin/reviews/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ message: string }>(`/api/admin/reviews/${id}`, { method: 'DELETE' }),
+  },
+
+  wishlists: {
+    getAll: (params?: { page?: number; limit?: number; search?: string; sort?: string }) => {
+      const query = new URLSearchParams(params as Record<string, string>).toString();
+      return request<{ users: WishlistUser[]; total: number; page: number; totalPages: number }>(`/api/admin/wishlists?${query}`);
+    },
+    getStats: () =>
+      request<WishlistStats>('/api/admin/wishlists/stats'),
+    getUserWishlist: (userId: string) =>
+      request<WishlistUser>(`/api/admin/wishlists/user/${userId}`),
+    removeProduct: (userId: string, productId: string) =>
+      request<{ message: string; wishlistCount: number }>(`/api/admin/wishlists/user/${userId}/product/${productId}`, { method: 'DELETE' }),
+    clearUserWishlist: (userId: string) =>
+      request<{ message: string }>(`/api/admin/wishlists/user/${userId}`, { method: 'DELETE' }),
   },
 
   reports: {
@@ -564,6 +663,56 @@ export interface AnalyticsData {
   topCategories: { name: string; revenue: number; qty: number }[];
   orderStatusBreakdown: Record<string, number>;
   paymentMethods: Record<string, number>;
+  refunds: { count: number; total: number };
+  totalDiscounts: number;
+  avgItemsPerTx: number;
+  totalCustomers: number;
+  topCashiers: { name: string; revenue: number; count: number }[];
+  recentOrders: { _id: string; total: number; status: string; createdAt: string; itemCount: number; customer: string }[];
+  lowStock: { _id: string; name: string; category: string; totalStock: number; minStock: number; image: string | null }[];
+}
+
+export interface Review {
+  _id: string;
+  product: { _id: string; name: string; slug: string; images: { url: string }[] };
+  user: { _id: string; name: string; email: string };
+  rating: number;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewStats {
+  total: number;
+  avgRating: string;
+  distribution: Record<number, number>;
+  recentReviews: Review[];
+}
+
+export interface WishlistProduct {
+  _id: string;
+  name: string;
+  slug: string;
+  images: { url: string }[];
+  category?: { name: string };
+  variants: { price: number }[];
+}
+
+export interface WishlistUser {
+  _id: string;
+  name: string;
+  email: string;
+  wishlist: WishlistProduct[];
+  wishlistCount: number;
+  createdAt: string;
+}
+
+export interface WishlistStats {
+  totalUsers: number;
+  totalItems: number;
+  avgItemsPerUser: string;
+  topProducts: { _id: string; name: string; image: string; wishlistCount: number }[];
+  popularCategories: { category: string; count: number }[];
 }
 
 export interface ShippingMethod {
@@ -659,6 +808,23 @@ export interface Discount {
   updatedAt: string;
 }
 
+export interface Hero {
+  _id: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  image: string;
+  imageAlt?: string;
+  ctaText: string;
+  ctaLink: string;
+  isActive: boolean;
+  order: number;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminCategory {
   _id: string;
   name: string;
@@ -680,6 +846,7 @@ export interface User {
   permissions?: string[]; // Custom route permissions
   addresses?: Address[];
   wishlist?: string[];
+  lastLogin?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -728,6 +895,7 @@ export interface Product {
   slug: string;
   description: string;
   category: string;
+  subcategory?: string;
   images: { url: string; publicId?: string }[];
   variants: Variant[];
   tags: string[];
@@ -884,29 +1052,39 @@ export interface DashboardPosSale {
 }
 
 export interface DashboardStats {
+  period: string;
+  periodLabel: string;
   revenue: {
-    today: number;
-    todayOrders: number;
-    todayPos: number;
-    thisMonth: number;
-    thisMonthOrders: number;
-    thisMonthPos: number;
-    vsLastMonth: number;
-    vsYesterday: number;
+    currentPeriod: number;
+    currentPeriodOrders: number;
+    currentPeriodPos: number;
+    previousPeriod: number;
+    previousPeriodOrders: number;
+    previousPeriodPos: number;
+    vsPrevious: number;
   };
   orders: {
-    today: number;
-    todayOrders: number;
-    todayPos: number;
-    thisMonth: number;
-    vsLastMonth: number;
-    vsYesterday: number;
+    currentPeriod: number;
+    currentPeriodOrders: number;
+    currentPeriodPos: number;
+    previousPeriod: number;
+    previousPeriodOrders: number;
+    previousPeriodPos: number;
+    vsPrevious: number;
     statusBreakdown: { pending: number; processing: number; shipped: number; delivered: number; cancelled: number };
     total: number;
   };
-  customers: { total: number; newThisMonth: number };
+  customers: {
+    total: number;
+    newThisPeriod: number;
+    newPrevPeriod: number;
+    vsPrevious: number;
+  };
   products: { total: number };
   avgOrderValue: number;
+  avgOrderValuePrevious: number;
+  avgOrderValueVsPrevious: number;
+  categoryRevenue: { category: string; revenue: number }[];
   recentOrders: Order[];
   recentPosSales: DashboardPosSale[];
   lowStock: DashboardLowStock[];

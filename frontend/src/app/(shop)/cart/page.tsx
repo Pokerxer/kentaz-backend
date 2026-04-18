@@ -1,24 +1,81 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Trash2, Minus, Plus, ShoppingBag, Lock } from 'lucide-react';
+import { Trash2, Minus, Plus, ShoppingBag, Lock, Tag, X, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { removeFromCart, updateQuantity } from '@/store/cartSlice';
 import { formatPrice } from '@/lib/utils';
 
+interface DiscountValidation {
+  valid: boolean;
+  discountAmount: number;
+  discount: {
+    code: string;
+    type: string;
+    value: number;
+    description: string;
+  };
+}
+
 export default function CartPage() {
   const { data: session, status } = useSession();
-  const { items, total } = useAppSelector((state) => state.cart);
   const dispatch = useAppDispatch();
+  const { items, total } = useAppSelector((state) => state.cart);
+  const [discountCode, setDiscountCode] = useState('');
+  const [validating, setValidating] = useState(false);
+  const [discountError, setDiscountError] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountValidation['discount'] | null>(null);
 
   const getPrice = (product: any) => {
     if (!product) return 0;
     if (product.variants?.[0]?.price) return product.variants[0].price;
+    if (product.price) return typeof product.price === 'number' ? product.price : product.price.amount || 0;
     return 0;
+  };
+
+  const subtotal = items.reduce((sum, item) => sum + getPrice(item.product) * item.quantity, 0);
+  const discountAmount = appliedDiscount 
+    ? appliedDiscount.type === 'percentage' 
+      ? Math.min((subtotal * appliedDiscount.value) / 100, 50000) // example cap
+      : appliedDiscount.value
+    : 0;
+  const shipping = subtotal - discountAmount >= 25000 ? 0 : 2500;
+  const tax = (subtotal - discountAmount) * 0.075;
+  const finalTotal = subtotal - discountAmount + shipping + tax;
+
+  const validateDiscount = async () => {
+    if (!discountCode.trim()) return;
+    setValidating(true);
+    setDiscountError('');
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/discounts/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: discountCode, cartTotal: subtotal }),
+      });
+      const data = await res.json();
+      
+      if (data.valid) {
+        setAppliedDiscount(data.discount);
+      } else {
+        setDiscountError(data.error || 'Invalid discount code');
+      }
+    } catch (err) {
+      setDiscountError('Failed to validate code');
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const removeDiscountCode = () => {
+    setAppliedDiscount(null);
+    setDiscountCode('');
   };
 
   if (items.length === 0) {
@@ -69,7 +126,7 @@ export default function CartPage() {
 
                 <div className="flex flex-col items-end justify-between">
                   <button
-                    onClick={() => dispatch(removeFromCart({ productId: product._id }))}
+                    onClick={() => dispatch(removeFromCart({ productId: product._id || product.id || '' }))}
                     className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -77,14 +134,14 @@ export default function CartPage() {
 
                   <div className="flex items-center border border-border rounded-lg">
                     <button
-                      onClick={() => dispatch(updateQuantity({ productId: product._id, quantity: Math.max(1, quantity - 1) }))}
+                      onClick={() => dispatch(updateQuantity({ productId: product._id || product.id || '', quantity: Math.max(1, quantity - 1) }))}
                       className="p-2 hover:bg-muted transition-colors"
                     >
                       <Minus className="h-3 w-3" />
                     </button>
                     <span className="w-8 text-center text-sm font-medium">{quantity}</span>
                     <button
-                      onClick={() => dispatch(updateQuantity({ productId: product._id, quantity: quantity + 1 }))}
+                      onClick={() => dispatch(updateQuantity({ productId: product._id || product.id || '', quantity: quantity + 1 }))}
                       className="p-2 hover:bg-muted transition-colors"
                     >
                       <Plus className="h-3 w-3" />
@@ -103,22 +160,69 @@ export default function CartPage() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatPrice(total)}</span>
+                <span>{formatPrice(subtotal)}</span>
               </div>
+              
+              {/* Discount input - always visible */}
+              <div className="space-y-2">
+                {!appliedDiscount ? (
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <input
+                        type="text"
+                        value={discountCode}
+                        onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
+                        placeholder="Gift card or promo code"
+                        className="w-full pl-8 pr-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <button
+                      onClick={validateDiscount}
+                      disabled={validating || !discountCode.trim()}
+                      className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-700">{appliedDiscount.code}</span>
+                    </div>
+                    <button onClick={removeDiscountCode} className="text-green-600 hover:text-green-800">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+                
+                {discountError && (
+                  <p className="text-xs text-destructive">{discountError}</p>
+                )}
+              </div>
+              
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Discount</span>
+                  <span>-{formatPrice(discountAmount)}</span>
+                </div>
+              )}
+              
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Shipping</span>
-                <span>{total >= 25000 ? 'Free' : formatPrice(2500)}</span>
+                <span>{shipping === 0 ? 'Free' : formatPrice(shipping)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tax</span>
-                <span>{formatPrice(total * 0.075)}</span>
+                <span>{formatPrice(tax)}</span>
               </div>
             </div>
 
             <div className="border-t border-border my-4 pt-4">
               <div className="flex justify-between font-semibold text-lg">
                 <span>Total</span>
-                <span>{formatPrice(total + (total >= 25000 ? 0 : 2500) + total * 0.075)}</span>
+                <span>{formatPrice(finalTotal)}</span>
               </div>
             </div>
 

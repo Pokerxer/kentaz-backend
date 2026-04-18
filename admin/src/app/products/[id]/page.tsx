@@ -128,8 +128,10 @@ export default function ProductViewPage() {
   );
 
   const totalStock = product.variants.reduce((s, v) => s + (v.stock ?? 0), 0);
-  const totalValue = product.variants.reduce((s, v) => s + (v.stock ?? 0) * (v.costPrice ?? v.price), 0);
+  const totalCostValue = product.variants.reduce((s, v) => s + (v.stock ?? 0) * (v.costPrice ?? 0), 0);
+  const totalRetailValue = product.variants.reduce((s, v) => s + (v.stock ?? 0) * (v.price), 0);
   const outOfStock = product.variants.filter(v => (v.stock ?? 0) <= 0).length;
+  const lowStock = product.variants.filter(v => (v.stock ?? 0) > 0 && (v.stock ?? 0) <= 5).length;
   const priceMin = Math.min(...product.variants.map(v => v.price));
   const priceMax = Math.max(...product.variants.map(v => v.price));
 
@@ -255,24 +257,89 @@ export default function ProductViewPage() {
             </div>
 
             {/* Stock Summary Card */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-3">
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-4">
               <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-blue-500" /> Stock Summary
+                <BarChart3 className="w-4 h-4 text-blue-500" /> Stock Value Analysis
               </h3>
-              <div className="grid grid-cols-3 gap-3">
+              
+              {/* Main metrics */}
+              <div className="grid grid-cols-2 gap-3">
                 <div className="text-center p-3 bg-blue-50 rounded-xl">
                   <p className="text-lg font-bold text-blue-700">{totalStock}</p>
                   <p className="text-xs text-blue-600 mt-0.5">Total Units</p>
                 </div>
-                <div className="text-center p-3 bg-green-50 rounded-xl">
-                  <p className="text-lg font-bold text-green-700">{formatPrice(totalValue)}</p>
-                  <p className="text-xs text-green-600 mt-0.5">Stock Value</p>
+                <div className="text-center p-3 bg-amber-50 rounded-xl">
+                  <p className="text-lg font-bold text-amber-700">{lowStock}</p>
+                  <p className="text-xs text-amber-600 mt-0.5">Low Stock</p>
                 </div>
                 <div className="text-center p-3 bg-red-50 rounded-xl">
                   <p className="text-lg font-bold text-red-700">{outOfStock}</p>
                   <p className="text-xs text-red-600 mt-0.5">Out of Stock</p>
                 </div>
+                <div className="text-center p-3 bg-green-50 rounded-xl">
+                  <p className="text-lg font-bold text-green-700">{formatPrice(totalCostValue)}</p>
+                  <p className="text-xs text-green-600 mt-0.5">Cost Value</p>
+                </div>
               </div>
+
+              {/* Value breakdown */}
+              <div className="pt-3 border-t border-gray-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Cost per unit (avg)</span>
+                  <span className="text-sm font-semibold text-gray-800">
+                    {totalStock > 0 ? formatPrice(totalCostValue / totalStock) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Retail value</span>
+                  <span className="text-sm font-semibold text-gray-800">{formatPrice(totalRetailValue)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Potential profit</span>
+                  <span className="text-sm font-semibold text-green-600">{formatPrice(totalRetailValue - totalCostValue)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Margin %</span>
+                  <span className={`text-sm font-semibold px-2 py-0.5 rounded-full ${
+                    totalRetailValue > 0 && ((totalRetailValue - totalCostValue) / totalRetailValue) * 100 >= 30 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {totalRetailValue > 0 ? (((totalRetailValue - totalCostValue) / totalRetailValue) * 100).toFixed(1) + '%' : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Stock health bar */}
+              <div className="pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="text-gray-500">Stock health</span>
+                  <span className={`font-medium ${
+                    totalStock === 0 ? 'text-red-600' : 
+                    lowStock > 0 || outOfStock > 0 ? 'text-amber-600' : 'text-green-600'
+                  }`}>
+                    {totalStock === 0 ? 'Critical' : 
+                     lowStock > 0 || outOfStock > 0 ? 'Needs attention' : 'Healthy'}
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                  {outOfStock > 0 && (
+                    <div className="bg-red-400" style={{ width: `${(outOfStock / (totalStock + outOfStock)) * 100}%` }} />
+                  )}
+                  {lowStock > 0 && (
+                    <div className="bg-amber-400" style={{ width: `${(lowStock / (totalStock + outOfStock + lowStock)) * 100}%` }} />
+                  )}
+                  {(totalStock - lowStock - outOfStock) > 0 && (
+                    <div className="bg-green-400 flex-1" />
+                  )}
+                </div>
+                <div className="flex justify-between text-[10px] mt-1.5 text-gray-400">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" /> Out: {outOfStock}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /> Low: {lowStock}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" /> Good: {totalStock - lowStock - outOfStock}</span>
+                </div>
+              </div>
+
               <div className="pt-1 border-t border-gray-100">
                 <Link
                   href={`/inventory?productId=${productId}`}
@@ -356,6 +423,14 @@ export default function ProductViewPage() {
                 <span>{product.category}</span>
               </div>
 
+              {(product as any).subcategory && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Tag className="w-4 h-4 text-gray-400" />
+                  <span className="font-medium text-gray-700">Subcategory:</span>
+                  <span className="px-2.5 py-1 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">{(product as any).subcategory}</span>
+                </div>
+              )}
+
               {product.description && (
                 <div>
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Description</p>
@@ -391,11 +466,17 @@ export default function ProductViewPage() {
 
             {/* Variants Table */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                   <Layers className="w-4 h-4 text-blue-500" /> Variants
                   <span className="ml-auto text-xs text-gray-400 font-normal">{product.variants.length} variant{product.variants.length !== 1 ? 's' : ''}</span>
                 </h3>
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" /> 
+                    Stock: {totalStock} units ({formatPrice(totalCostValue)})
+                  </span>
+                </div>
               </div>
 
               {/* Desktop Table */}
@@ -403,123 +484,190 @@ export default function ProductViewPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-left">
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Size</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Color</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost Price</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sale Price</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Variant</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Price</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Margin</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Stock</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Value</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sold</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">SKU</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {product.variants.map((v: Variant, i: number) => (
-                      <tr key={i} className="hover:bg-gray-50/60 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-800">{v.size || <span className="text-gray-400">—</span>}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {v.color && (
-                              <span
-                                className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0"
-                                style={{ background: v.color.toLowerCase() }}
-                              />
-                            )}
-                            <span className="text-gray-700">{v.color || <span className="text-gray-400">—</span>}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">{v.costPrice ? formatPrice(v.costPrice) : <span className="text-gray-400">—</span>}</td>
-                        <td className="px-4 py-3 font-semibold text-gray-900">{formatPrice(v.price)}</td>
-                        <td className="px-4 py-3">
-                          {v.costPrice && v.price ? (
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              parseFloat(calcMargin(v.costPrice, v.price)) >= 30
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {calcMargin(v.costPrice, v.price)}
-                            </span>
-                          ) : <span className="text-gray-400">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <StockBadge stock={v.stock ?? 0} />
-                        </td>
-                        <td className="px-4 py-3">
-                          {salesStats ? (
-                            <div className="text-sm">
-                              <span className="font-semibold text-gray-800">{salesStats.byVariant[i]?.sold ?? 0}</span>
-                              {(salesStats.byVariant[i]?.returned ?? 0) > 0 && (
-                                <span className="text-xs text-orange-500 ml-1">-{salesStats.byVariant[i].returned}</span>
+                    {product.variants.map((v: Variant, i: number) => {
+                      const stock = v.stock ?? 0;
+                      const stockValue = stock * (v.costPrice ?? 0);
+                      const maxStock = Math.max(...product.variants.map(x => x.stock ?? 0), 1);
+                      const stockPct = maxStock > 0 ? (stock / maxStock) * 100 : 0;
+                       
+                      return (
+                        <tr key={i} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {v.color && (
+                                <>
+                                  <span
+                                    className="w-5 h-5 rounded-full border border-gray-300 flex-shrink-0"
+                                    style={{ background: v.color.toLowerCase() }}
+                                  />
+                                  <span className="font-medium text-gray-800">
+                                    {[v.size, v.color].filter(Boolean).join(' / ') || `Variant ${i + 1}`}
+                                  </span>
+                                </>
+                              )}
+                              {!v.color && (
+                                <span className="font-medium text-gray-800">
+                                  {v.size || `Variant ${i + 1}`}
+                                </span>
                               )}
                             </div>
-                          ) : <span className="text-gray-400">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          {v.sku ? (
-                            <button
-                              onClick={() => copySku(v.sku!)}
-                              title="Copy SKU"
-                              className="flex items-center gap-1.5 text-xs font-mono text-gray-600 hover:text-blue-600 bg-gray-100 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors"
-                            >
-                              {copiedSku === v.sku ? <CheckCircle className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                              {v.sku}
-                            </button>
-                          ) : <span className="text-gray-400">—</span>}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">{v.costPrice ? formatPrice(v.costPrice) : <span className="text-gray-400">—</span>}</td>
+                          <td className="px-4 py-3 font-semibold text-gray-900">{formatPrice(v.price)}</td>
+                          <td className="px-4 py-3">
+                            {v.costPrice && v.price ? (
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                parseFloat(calcMargin(v.costPrice, v.price)) >= 30
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {calcMargin(v.costPrice, v.price)}
+                              </span>
+                            ) : <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 min-w-[60px]">
+                                <div className="flex items-center justify-between mb-1">
+                                  <StockBadge stock={stock} />
+                                </div>
+                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full transition-all ${
+                                      stock === 0 ? 'bg-red-400' : stock <= 5 ? 'bg-amber-400' : 'bg-green-400'
+                                    }`}
+                                    style={{ width: `${stockPct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs font-medium ${stockValue > 0 ? 'text-gray-700' : 'text-gray-400'}`}>
+                              {stockValue > 0 ? formatPrice(stockValue) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {salesStats ? (
+                              <div className="text-sm">
+                                <span className="font-semibold text-gray-800">{salesStats.byVariant[i]?.sold ?? 0}</span>
+                                {(salesStats.byVariant[i]?.returned ?? 0) > 0 && (
+                                  <span className="text-xs text-orange-500 ml-1">-{salesStats.byVariant[i].returned}</span>
+                                )}
+                              </div>
+                            ) : <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {v.sku ? (
+                              <button
+                                onClick={() => copySku(v.sku!)}
+                                title="Copy SKU"
+                                className="flex items-center gap-1.5 text-xs font-mono text-gray-600 hover:text-blue-600 bg-gray-100 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors"
+                              >
+                                {copiedSku === v.sku ? <CheckCircle className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                                {v.sku}
+                              </button>
+                            ) : <span className="text-gray-400">—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
+                  <tfoot className="bg-gray-50 border-t border-gray-200">
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-gray-800">Total</td>
+                      <td className="px-4 py-3 text-gray-600">—</td>
+                      <td className="px-4 py-3 text-gray-600">—</td>
+                      <td className="px-4 py-3 text-gray-600">—</td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-bold text-blue-700">{totalStock}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-bold text-gray-800">{formatPrice(totalCostValue)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-semibold text-gray-700">
+                          {salesStats?.netSold ?? '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-400">—</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
 
               {/* Mobile Cards */}
               <div className="md:hidden divide-y divide-gray-100">
-                {product.variants.map((v: Variant, i: number) => (
-                  <div key={i} className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        {v.color && (
-                          <span className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0" style={{ background: v.color.toLowerCase() }} />
-                        )}
-                        <span className="font-semibold text-gray-800">
-                          {[v.size, v.color].filter(Boolean).join(' / ') || `Variant ${i + 1}`}
-                        </span>
+                {product.variants.map((v: Variant, i: number) => {
+                  const stock = v.stock ?? 0;
+                  const stockValue = stock * (v.costPrice ?? 0);
+                  
+                  return (
+                    <div key={i} className="p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          {v.color && (
+                            <span className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0" style={{ background: v.color.toLowerCase() }} />
+                          )}
+                          <span className="font-semibold text-gray-800">
+                            {[v.size, v.color].filter(Boolean).join(' / ') || `Variant ${i + 1}`}
+                          </span>
+                        </div>
+                        <StockBadge stock={stock} />
                       </div>
-                      <StockBadge stock={v.stock ?? 0} />
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        <div className="bg-gray-50 rounded-lg p-2">
+                          <p className="text-xs text-gray-500">Cost</p>
+                          <p className="text-sm font-medium text-gray-700">{v.costPrice ? formatPrice(v.costPrice) : '—'}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-2">
+                          <p className="text-xs text-gray-500">Price</p>
+                          <p className="text-sm font-semibold text-gray-900">{formatPrice(v.price)}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-2">
+                          <p className="text-xs text-gray-500">Value</p>
+                          <p className="text-sm font-medium text-gray-700">{stockValue > 0 ? formatPrice(stockValue) : '—'}</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-lg p-2">
+                          <p className="text-xs text-amber-600">Sold</p>
+                          <p className="text-sm font-semibold text-amber-700">
+                            {salesStats ? (salesStats.byVariant[i]?.sold ?? 0) : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      {v.sku && (
+                        <button
+                          onClick={() => copySku(v.sku!)}
+                          className="flex items-center gap-1.5 text-xs font-mono text-gray-600 bg-gray-100 px-2.5 py-1.5 rounded-md"
+                        >
+                          {copiedSku === v.sku ? <CheckCircle className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          SKU: {v.sku}
+                        </button>
+                      )}
                     </div>
-                    <div className="grid grid-cols-4 gap-2 text-center">
-                      <div className="bg-gray-50 rounded-lg p-2">
-                        <p className="text-xs text-gray-500">Cost</p>
-                        <p className="text-sm font-medium text-gray-700">{v.costPrice ? formatPrice(v.costPrice) : '—'}</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-2">
-                        <p className="text-xs text-gray-500">Price</p>
-                        <p className="text-sm font-semibold text-gray-900">{formatPrice(v.price)}</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-2">
-                        <p className="text-xs text-gray-500">Margin</p>
-                        <p className={`text-sm font-semibold ${v.costPrice ? 'text-green-700' : 'text-gray-400'}`}>
-                          {v.costPrice ? calcMargin(v.costPrice, v.price) : '—'}
-                        </p>
-                      </div>
-                      <div className="bg-amber-50 rounded-lg p-2">
-                        <p className="text-xs text-amber-600">Sold</p>
-                        <p className="text-sm font-semibold text-amber-700">
-                          {salesStats ? (salesStats.byVariant[i]?.sold ?? 0) : '—'}
-                        </p>
-                      </div>
+                  );
+                })}
+                {/* Mobile total footer */}
+                <div className="p-4 bg-gray-50 border-t border-gray-200">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-gray-800">Total</span>
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="text-gray-600">Stock: <span className="font-bold text-blue-700">{totalStock}</span></span>
+                      <span className="text-gray-600">Value: <span className="font-bold text-gray-800">{formatPrice(totalCostValue)}</span></span>
                     </div>
-                    {v.sku && (
-                      <button
-                        onClick={() => copySku(v.sku!)}
-                        className="flex items-center gap-1.5 text-xs font-mono text-gray-600 bg-gray-100 px-2.5 py-1.5 rounded-md"
-                      >
-                        {copiedSku === v.sku ? <CheckCircle className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                        SKU: {v.sku}
-                      </button>
-                    )}
                   </div>
-                ))}
+                </div>
               </div>
             </div>
 

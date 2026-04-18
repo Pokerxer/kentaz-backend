@@ -117,13 +117,14 @@ function ProductsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const collectionParam = searchParams.get('collection');
+  const categoryParam = searchParams.get('category');
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState(collectionParam || 'all');
+  const [activeCategory, setActiveCategory] = useState(collectionParam || categoryParam || 'all');
   const [sortBy, setSortBy] = useState('featured');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [compareList, setCompareList] = useState<Product[]>([]);
@@ -171,6 +172,12 @@ function ProductsPage() {
       setActiveCategory(collectionParam);
     }
   }, [collectionParam]);
+
+  useEffect(() => {
+    if (categoryParam && categoryParam !== 'all') {
+      setActiveCategory(categoryParam);
+    }
+  }, [categoryParam]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -260,7 +267,7 @@ function ProductsPage() {
     if (handle === 'all') {
       router.push('/products');
     } else {
-      router.push(`/products?collection=${handle}`);
+      router.push(`/products?category=${encodeURIComponent(handle)}`);
     }
   };
 

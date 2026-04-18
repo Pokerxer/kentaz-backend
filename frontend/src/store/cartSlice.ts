@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 interface CartProduct {
   _id: string;
+  id?: string;
   name: string;
   slug: string;
   thumbnail?: string;
@@ -23,11 +24,16 @@ interface CartItem {
 export interface CartState {
   items: CartItem[];
   total: number;
+  discount?: {
+    code: string;
+    amount: number;
+  };
 }
 
 const initialState: CartState = {
   items: [],
   total: 0,
+  discount: undefined,
 };
 
 const calculateTotal = (items: CartItem[]): number => {
@@ -85,8 +91,14 @@ const cartSlice = createSlice({
       state.items = [];
       state.total = 0;
     },
+    applyDiscount: (state, action: PayloadAction<{ code: string; amount: number }>) => {
+      state.discount = action.payload;
+    },
+    removeDiscount: (state) => {
+      state.discount = undefined;
+    },
   },
 });
 
-export const { loadState: loadCartState, addToCart, removeFromCart, updateQuantity, clearCart } = cartSlice.actions;
+export const { loadState: loadCartState, addToCart, removeFromCart, updateQuantity, clearCart, applyDiscount, removeDiscount } = cartSlice.actions;
 export default cartSlice.reducer;

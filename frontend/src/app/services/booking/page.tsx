@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -102,7 +102,7 @@ function formatNGN(n: number) {
 }
 
 // ── Main component ──────────────────────────────────────────
-export default function BookingPage() {
+function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { initializePayment, verifyPayment, isReady: paystackReady } = usePaystack();
@@ -923,3 +923,17 @@ export default function BookingPage() {
     </div>
   );
 }
+
+function BookingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#C9A84C]" />
+      </div>
+    }>
+      <BookingPageContent />
+    </Suspense>
+  );
+}
+
+export default BookingPage;

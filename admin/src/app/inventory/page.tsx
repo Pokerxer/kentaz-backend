@@ -1,16 +1,20 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Search, Loader2, Package, TrendingUp, TrendingDown, AlertTriangle,
   ArrowUpDown, RotateCcw, Trash2, History, DollarSign, Box,
   ChevronDown, ChevronLeft, ChevronRight, ArrowRight, Calendar,
   BarChart3, Flame, Snail, Tag, ShoppingCart, RefreshCw,
+  ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { api, InventoryRecord, InventoryStats, InventoryAnalytics } from '@/lib/api';
 import { AdminLayout } from '@/components/AdminLayout';
+
+type SortKey = 'createdAt' | 'product' | 'type' | 'quantity' | 'newStock' | 'notes' | 'performedBy';
+type SortOrder = 'asc' | 'desc';
 
 const typeConfig: Record<string, { label: string; color: string; icon: any; sign: string }> = {
   in:          { label: 'Stock In',   color: 'bg-green-100 text-green-700',   icon: TrendingUp,   sign: '+' },
@@ -20,6 +24,16 @@ const typeConfig: Record<string, { label: string; color: string; icon: any; sign
   damage:      { label: 'Damaged',    color: 'bg-red-100 text-red-700',       icon: Trash2,        sign: '-' },
   initial:     { label: 'Initial',    color: 'bg-gray-100 text-gray-700',     icon: Package,       sign: ''  },
   sale:        { label: 'Sale',       color: 'bg-orange-100 text-orange-700', icon: DollarSign,    sign: '-' },
+};
+
+const columnConfig: Record<SortKey, { label: string; sortable: boolean }> = {
+  createdAt:    { label: 'Date', sortable: true },
+  product:     { label: 'Product', sortable: true },
+  type:        { label: 'Type', sortable: true },
+  quantity:    { label: 'Qty', sortable: true },
+  newStock:    { label: 'Stock Change', sortable: true },
+  notes:       { label: 'Notes', sortable: false },
+  performedBy: { label: 'By', sortable: true },
 };
 
 const typeOptions = [
@@ -59,8 +73,19 @@ export default function InventoryPage() {
   const [totalPages,    setTotalPages]    = useState(1);
   const [total,         setTotal]         = useState(0);
   const [period,        setPeriod]        = useState(30);
+  const [sortKey,       setSortKey]       = useState<SortKey>('createdAt');
+  const [sortOrder,     setSortOrder]     = useState<SortOrder>('desc');
 
   const LIMIT = 50;
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortOrder('desc');
+    }
+  };
 
   const fetchStats = useCallback(async () => {
     try {
@@ -103,14 +128,58 @@ export default function InventoryPage() {
   useEffect(() => { setPage(1); }, [typeFilter, startDate, endDate]);
   useEffect(() => { fetchInventory(page); }, [fetchInventory, page]);
 
-  const filteredInventory = inventory.filter(item => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      item.product?.name?.toLowerCase().includes(q) ||
-      item.product?.category?.toLowerCase().includes(q)
-    );
-  });
+  const filteredInventory = useMemo(() => {
+    let result = inventory.filter(item => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        item.product?.name?.toLowerCase().includes(q) ||
+        item.product?.category?.toLowerCase().includes(q)
+      );
+    });
+
+    result.sort((a, b) => {
+      let aVal: any, bVal: any;
+      switch (sortKey) {
+        case 'createdAt':
+          aVal = new Date(a.createdAt).getTime();
+          bVal = new Date(b.createdAt).getTime();
+          break;
+        case 'product':
+          aVal = a.product?.name || '';
+          bVal = b.product?.name || '';
+          break;
+        case 'type':
+          aVal = a.type || '';
+          bVal = b.type || '';
+          break;
+        case 'quantity':
+          aVal = a.quantity || 0;
+          bVal = b.quantity || 0;
+          break;
+        case 'newStock':
+          aVal = (a.newStock || 0) - (a.previousStock || 0);
+          bVal = (b.newStock || 0) - (b.previousStock || 0);
+          break;
+        case 'notes':
+          aVal = a.notes || '';
+          bVal = b.notes || '';
+          break;
+        case 'performedBy':
+          aVal = a.performedBy?.name || '';
+          bVal = b.performedBy?.name || '';
+          break;
+        default:
+          return 0;
+      }
+      if (typeof aVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+
+    return result;
+  }, [inventory, searchQuery, sortKey, sortOrder]);
 
   const healthTotal = analytics
     ? analytics.stockHealth.inStock + analytics.stockHealth.lowStock + analytics.stockHealth.outOfStock
@@ -443,8 +512,18 @@ export default function InventoryPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  {['Date', 'Product', 'Type', 'Qty', 'Stock Change', 'Notes', 'By'].map(h => (
-                    <th key={h} className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                  {Object.entries(columnConfig).map(([key, config]) => (
+                    <th key={key} 
+                      className={`px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase ${config.sortable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+                      onClick={() => config.sortable && handleSort(key as SortKey)}
+                    >
+                      <span className="flex items-center gap-1">
+                        {config.label}
+                        {config.sortable && sortKey === key && (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                        )}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>

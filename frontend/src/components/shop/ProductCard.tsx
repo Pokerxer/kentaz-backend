@@ -41,9 +41,12 @@ interface Product {
 interface ProductCardProps {
   product: any;
   onQuickView?: (product: any) => void;
+  showCompare?: boolean;
+  isComparing?: boolean;
+  onCompareToggle?: (product: any) => void;
 }
 
-export function ProductCard({ product, onQuickView }: ProductCardProps) {
+export function ProductCard({ product, onQuickView, showCompare, isComparing, onCompareToggle }: ProductCardProps) {
   const dispatch = useAppDispatch();
   const wishlistItems = useAppSelector((state) => state.wishlist.items);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -59,7 +62,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
   };
 
   const price = getPrice();
-  const images = product.images?.map(img => img.url) || [];
+  const images: string[] = product.images?.map((img: { url: string }) => img.url) || [];
   if (product.thumbnail && !images.includes(product.thumbnail)) {
     images.unshift(product.thumbnail);
   }
@@ -71,7 +74,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
   const hoverImageUrl = images[1] || imageUrl;
   const stock = product.variants?.[0]?.stock || 0;
   const isOutOfStock = stock === 0;
-  const tagValues = product.tags?.map(t => typeof t === 'string' ? t : t.value) || [];
+  const tagValues: string[] = product.tags?.map((t: string | { value: string }) => typeof t === 'string' ? t : (t as { value: string }).value) || [];
   const isBestseller = tagValues.includes('bestseller') || tagValues.includes('best-seller');
   const isFeatured = tagValues.includes('featured');
   const rating = product.ratings?.avg || 4.5;

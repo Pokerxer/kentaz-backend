@@ -1,8 +1,10 @@
-import { getPendingSales, deletePendingSale, updateSaleStatus, getAllPendingSales } from './offlineStorage';
-import { offlineApi, getDeviceId } from './posApi';
+import { getPendingSales, getAllPendingSales, deletePendingSale, updateSaleStatus, getPendingSalesCount } from './offlineStorage';
+import { posApi } from './posApi';
+
+const MAX_RETRIES = 3;
 
 let isSyncing = false;
-let syncListeners: Set<() => void> = new Set();
+const syncListeners: Set<() => void> = new Set();
 
 export function addSyncListener(callback: () => void) {
   syncListeners.add(callback);
@@ -24,28 +26,22 @@ export async function syncPendingSales(): Promise<{ synced: number; failed: numb
   let failed = 0;
 
   try {
-    const pending = await getPendingSales();
+    const all = await getAllPendingSales();
+    // Retry both 'pending' and 'failed' (under retry limit), oldest first
+    const toSync = all
+      .filter(r => r.status === 'pending' || (r.status === 'failed' && r.retryCount < MAX_RETRIES))
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    for (const record of pending) {
+    for (const record of toSync) {
       try {
         await updateSaleStatus(record.localId, 'syncing');
-        await offlineApi.queueSale(record.saleData, getDeviceId());
+        await posApi.createSale(record.saleData);
         await deletePendingSale(record.localId);
         synced++;
       } catch (error) {
         await updateSaleStatus(record.localId, 'failed', (error as Error).message);
         failed++;
       }
-    }
-
-    // Also try backend sync endpoint for any that were queued before app restart
-    try {
-      const result = await offlineApi.syncAll(getDeviceId());
-      if (result.synced > 0) {
-        synced += result.synced;
-      }
-    } catch {
-      // Backend sync is optional
     }
   } finally {
     isSyncing = false;
@@ -64,6 +60,10 @@ export async function getSyncStatus(): Promise<{ pending: number; syncing: numbe
   return {
     pending: all.filter((r) => r.status === 'pending').length,
     syncing: all.filter((r) => r.status === 'syncing').length,
-    failed: all.filter((r) => r.status === 'failed').length,
+    failed:  all.filter((r) => r.status === 'failed').length,
   };
+}
+
+export async function getActualPendingCount(): Promise<number> {
+  return getPendingSalesCount();
 }

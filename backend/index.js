@@ -82,6 +82,7 @@ app.use('/api/admin/purchases', purchaseRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/admin/staff', staffRoutes);
 app.use('/api/admin/discounts', discountRoutes);
+app.use('/api/discounts', discountRoutes);
 app.use('/api/admin/gift-cards', giftCardRoutes);
 app.use('/api/admin/shipping', shippingRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
@@ -91,6 +92,13 @@ app.use('/api/admin/upload', uploadRoutes);
 app.use('/api/receipts', receiptRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/bundles', bundleRoutes);
+const heroRoutes = require('./routes/heroes');
+const adminReviewsRoutes = require('./routes/adminReviews');
+const adminWishlistsRoutes = require('./routes/adminWishlists');
+app.use('/api/heroes', heroRoutes);
+app.use('/api/admin/heroes', heroRoutes);
+app.use('/api/admin/reviews', adminReviewsRoutes);
+app.use('/api/admin/wishlists', adminWishlistsRoutes);
 
 app.post('/api/seed/products', async (req, res) => {
   try {

@@ -9,7 +9,7 @@ import {
   Printer, RefreshCw, AlertCircle, ShoppingBag, User, X,
   FileText, RotateCcw, Minus, Plus, Package,
 } from 'lucide-react';
-import { posApi, getPosUser, hasPosPermission, POS_PERMS } from '@/lib/posApi';
+import { posApi, getPosUser, hasPosPermission, POS_PERMS, validatePosToken } from '@/lib/posApi';
 import type { Sale, SaleItem, PosUser } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 
@@ -577,9 +577,18 @@ export default function PosOrdersPage() {
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    const u = getPosUser();
-    if (!u) { router.replace('/pos/login'); return; }
-    setUser(u);
+    async function checkAuth() {
+      const u = getPosUser();
+      if (!u) { router.replace('/pos/login'); return; }
+
+      const validation = await validatePosToken();
+      if (!validation.valid) {
+        router.replace('/pos/login');
+        return;
+      }
+      setUser(validation.user || u);
+    }
+    checkAuth();
   }, [router]);
 
   const loadSales = useCallback(async () => {

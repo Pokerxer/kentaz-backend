@@ -11,7 +11,7 @@ import {
   Receipt, DollarSign, BarChart3, RefreshCw, UserCog,
   ArrowLeft, AlertCircle, X,
 } from 'lucide-react';
-import { posApi, getPosUser, clearPosSession } from '@/lib/posApi';
+import { posApi, getPosUser, clearPosSession, validatePosToken } from '@/lib/posApi';
 import type { PosUser, SalesSummary, Sale, RegisterSession } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 
@@ -186,9 +186,18 @@ export default function PosDashboard() {
   const [closeError, setCloseError] = useState('');
 
   useEffect(() => {
-    const u = getPosUser();
-    if (!u) { router.replace('/pos/login'); return; }
-    setUser(u);
+    async function checkAuth() {
+      const u = getPosUser();
+      if (!u) { router.replace('/pos/login'); return; }
+
+      const validation = await validatePosToken();
+      if (!validation.valid) {
+        router.replace('/pos/login');
+        return;
+      }
+      setUser(validation.user || u);
+    }
+    checkAuth();
   }, [router]);
 
   const loadAll = useCallback(async () => {

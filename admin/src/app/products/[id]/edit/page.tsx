@@ -425,6 +425,7 @@ export default function EditProductPage() {
     name: '',
     description: '',
     category: '',
+    subcategory: '',
     images: [] as string[],
     tags: [] as string[],
     featured: false,
@@ -446,6 +447,7 @@ export default function EditProductPage() {
         name: p.name || '',
         description: p.description || '',
         category: p.category || '',
+        subcategory: (p as any).subcategory || '',
         images: p.images?.map((img: any) => img.url) || [],
         tags: p.tags || [],
         featured: p.featured || false,
@@ -670,6 +672,19 @@ export default function EditProductPage() {
                       />
                     </div>
                     <div>
+                      <FieldLabel>Subcategory</FieldLabel>
+                      <input
+                        type="text"
+                        value={formData.subcategory}
+                        onChange={e => setField('subcategory', e.target.value)}
+                        placeholder="e.g. T-Shirts, Face Cream"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#C9A84C]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
                       <FieldLabel>Visibility</FieldLabel>
                       <div className="grid grid-cols-2 gap-2">
                         {(['draft', 'published'] as const).map(s => (

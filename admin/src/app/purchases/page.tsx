@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Plus,
@@ -15,6 +15,8 @@ import {
   ChevronRight,
   ShoppingBag,
   TrendingDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { purchaseApi, Purchase } from '@/lib/api';
@@ -37,6 +39,18 @@ const STATUS_FILTERS = [
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
+type SortKey = 'purchaseDate' | 'supplier' | 'reference' | 'items' | 'totalCost' | 'status';
+type SortOrder = 'asc' | 'desc';
+
+const columnConfig: Record<SortKey, { label: string; sortable: boolean }> = {
+  purchaseDate: { label: 'Date', sortable: true },
+  supplier:     { label: 'Supplier', sortable: true },
+  reference:   { label: 'Ref', sortable: true },
+  items:       { label: 'Items', sortable: true },
+  totalCost:   { label: 'Total Cost', sortable: true },
+  status:      { label: 'Status', sortable: true },
+};
+
 export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +62,19 @@ export default function PurchasesPage() {
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState<{ pending: number; received: number; last30DaysCost: number } | null>(null);
   const [msg, setMsg] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('purchaseDate');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   const LIMIT = 20;
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortOrder('desc');
+    }
+  };
 
   const fetchPurchases = useCallback(async (currentPage: number) => {
     try {
@@ -80,6 +105,46 @@ export default function PurchasesPage() {
 
   useEffect(() => { setPage(1); }, [statusFilter, search]);
   useEffect(() => { fetchPurchases(page); }, [fetchPurchases, page]);
+
+  const sortedPurchases = useMemo(() => {
+    const result = [...purchases];
+    result.sort((a, b) => {
+      let aVal: any, bVal: any;
+      switch (sortKey) {
+        case 'purchaseDate':
+          aVal = new Date(a.purchaseDate).getTime();
+          bVal = new Date(b.purchaseDate).getTime();
+          break;
+        case 'supplier':
+          aVal = a.supplier || '';
+          bVal = b.supplier || '';
+          break;
+        case 'reference':
+          aVal = a.reference || '';
+          bVal = b.reference || '';
+          break;
+        case 'items':
+          aVal = a.items.length;
+          bVal = b.items.length;
+          break;
+        case 'totalCost':
+          aVal = a.totalCost || 0;
+          bVal = b.totalCost || 0;
+          break;
+        case 'status':
+          aVal = a.status || '';
+          bVal = b.status || '';
+          break;
+        default:
+          return 0;
+      }
+      if (typeof aVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+    return result;
+  }, [purchases, sortKey, sortOrder]);
 
   const handleReceive = async (id: string) => {
     setActionLoading(id);
@@ -207,12 +272,19 @@ export default function PurchasesPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Ref</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Total Cost</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  {Object.entries(columnConfig).map(([key, config]) => (
+                    <th key={key}
+                      className={`px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase ${config.sortable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+                      onClick={() => config.sortable && handleSort(key as SortKey)}
+                    >
+                      <span className="flex items-center gap-1">
+                        {config.label}
+                        {config.sortable && sortKey === key && (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                        )}
+                      </span>
+                    </th>
+                  ))}
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -239,7 +311,7 @@ export default function PurchasesPage() {
                     </td>
                   </tr>
                 ) : (
-                  purchases.map(purchase => {
+                  sortedPurchases.map(purchase => {
                     const cfg = statusConfig[purchase.status];
                     const StatusIcon = cfg.icon;
                     const isActioning = actionLoading === purchase._id;

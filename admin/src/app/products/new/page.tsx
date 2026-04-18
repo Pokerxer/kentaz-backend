@@ -123,7 +123,7 @@ function SectionCard({ icon, iconBg, title, subtitle, children }: {
 }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -175,48 +175,81 @@ function CategoryDropdown({ options, value, onChange }: {
   }, []);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={ref} style={{ zIndex: open ? 60 : 1 }}>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center justify-between px-3.5 py-2.5 border rounded-xl text-sm text-left transition-all ${
-          open ? 'border-[#C9A84C] ring-2 ring-[#C9A84C]/20' : 'border-gray-200 hover:border-gray-300'
-        } ${selected ? 'text-gray-900' : 'text-gray-400'}`}
+        className={`w-full flex items-center justify-between px-4 py-3 border-2 rounded-xl text-sm text-left transition-all cursor-pointer bg-white ${
+          open 
+            ? 'border-[#C9A84C] ring-4 ring-[#C9A84C]/15 shadow-lg shadow-[#C9A84C]/10' 
+            : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+        } ${selected ? 'text-gray-900 font-medium' : 'text-gray-400'}`}
       >
-        <span className="truncate">{selected?.label || 'Select category'}</span>
-        <ChevronDown className={`h-4 w-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <div className="flex items-center gap-2">
+          {selected && (
+            <span className="w-2 h-2 bg-[#C9A84C] rounded-full flex-shrink-0" />
+          )}
+          <span className="truncate">{selected?.label || 'Select a category'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {selected && (
+            <span 
+              onClick={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }}
+              className="text-gray-400 hover:text-red-500 p-0.5 rounded hover:bg-red-50 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </span>
+          )}
+          <ChevronDown className={`h-5 w-5 text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </div>
       </button>
       {open && (
-        <div className="absolute z-50 w-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-          <div className="p-2.5 border-b border-gray-100">
+        <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-100 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="p-3 border-b border-gray-100 bg-gray-50/50">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 autoFocus
                 type="text"
-                placeholder="Search..."
+                placeholder="Search categories..."
                 value={q}
                 onChange={e => setQ(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white transition-all"
               />
             </div>
           </div>
-          <div className="max-h-52 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             {filtered.length === 0 ? (
-              <p className="px-4 py-5 text-center text-sm text-gray-400">No categories found</p>
-            ) : filtered.map(o => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => { onChange(o.value); setOpen(false); setQ(''); }}
-                className={`w-full flex items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-[#C9A84C]/5 transition-colors ${
-                  o.value === value ? 'bg-[#C9A84C]/10 text-[#C9A84C] font-medium' : 'text-gray-700'
-                }`}
-              >
-                {o.label}
-                {o.value === value && <Check className="h-3.5 w-3.5" />}
-              </button>
-            ))}
+              <div className="py-8 text-center">
+                <Package className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">No categories found</p>
+                <p className="text-xs text-gray-400 mt-1">Try a different search term</p>
+              </div>
+            ) : (
+              <div className="py-1">
+                {filtered.map(o => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => { onChange(o.value); setOpen(false); setQ(''); }}
+                    className={`w-full flex items-center justify-between px-4 py-3 text-left text-sm transition-all ${
+                      o.value === value 
+                        ? 'bg-[#C9A84C] text-white' 
+                        : 'text-gray-700 hover:bg-[#C9A84C]/5 hover:text-[#C9A84C]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full ${o.value === value ? 'bg-white' : 'bg-gray-300'}`} />
+                      <span className="font-medium">{o.label}</span>
+                    </div>
+                    {o.value === value && <Check className="h-4 w-4" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 text-xs text-gray-400 flex items-center gap-2">
+            <span className="font-medium">{filtered.length}</span> category{filtered.length !== 1 ? 's' : ''} available
           </div>
         </div>
       )}
@@ -508,6 +541,7 @@ export default function NewProductPage() {
     name: '',
     description: '',
     category: '',
+    subcategory: '',
     images: [] as string[],
     tags: [] as string[],
     featured: false,
@@ -712,6 +746,19 @@ export default function NewProductPage() {
                       />
                     </div>
                     <div>
+                      <FieldLabel>Subcategory</FieldLabel>
+                      <input
+                        type="text"
+                        value={formData.subcategory}
+                        onChange={e => setField('subcategory', e.target.value)}
+                        placeholder="e.g. T-Shirts, Face Cream"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#C9A84C]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
                       <FieldLabel>Visibility</FieldLabel>
                       <div className="grid grid-cols-2 gap-2">
                         {(['draft', 'published'] as const).map(s => (

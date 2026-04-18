@@ -5,6 +5,7 @@ const { uploadImage, deleteImage, deleteImages, getOptimizedUrl } = require('../
 const multer = require('multer');
 const path = require('path');
 const os = require('os');
+const XLSX = require('xlsx');
 
 const storage = multer.diskStorage({
   destination: os.tmpdir(),
@@ -28,7 +29,22 @@ const upload = multer({
   },
 });
 
+const uploadFile = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /csv|xlsx|xls/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = /text\/csv|application\/vnd.ms-excel|application\/vnd.openxmlformats/.test(file.mimetype);
+    if (extname || mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Only CSV and Excel files are allowed'));
+  },
+});
+
 exports.upload = upload;
+exports.uploadFile = uploadFile;
 
 exports.getCategories = async (req, res) => {
   try {
@@ -185,7 +201,25 @@ exports.createProduct = async (req, res) => {
     res.status(201).json(product);
   } catch (err) {
     console.error('createProduct error:', err);
-    res.status(500).json({ error: err.message });
+    
+    // Provide detailed error response
+    const errorResponse = { 
+      message: err.message || 'Failed to create product',
+      error: err.name 
+    };
+    
+    // Add validation error details if applicable
+    if (err.name === 'ValidationError') {
+      const fieldErrors = {};
+      for (const [field, message] of Object.entries(err.errors || {})) {
+        fieldErrors[field] = message.message;
+      }
+      errorResponse.details = fieldErrors;
+      errorResponse.field = Object.keys(fieldErrors)[0];
+      errorResponse.message = Object.values(fieldErrors)[0] || 'Validation failed';
+    }
+    
+    res.status(500).json(errorResponse);
   }
 };
 
@@ -402,6 +436,129 @@ exports.parseCSV = async (req, res) => {
 
     const products = parseCSV(csv);
     res.json({ products, count: products.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/admin/products/parse-file - Parse XLSX/CSV file for preview
+exports.parseFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let products = [];
+
+    if (ext === '.xlsx' || ext === '.xls') {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      products = XLSX.utils.sheet_to_json(worksheet);
+    } else if (ext === '.csv') {
+      const csv = require('fs').readFileSync(filePath, 'utf8');
+      products = parseCSV(csv);
+    } else {
+      return res.status(400).json({ error: 'Unsupported file format. Use .xlsx, .xls, or .csv' });
+    }
+
+    res.json({ products, count: products.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/admin/products/import-file - Import products from XLSX/CSV file
+exports.importFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let products = [];
+
+    if (ext === '.xlsx' || ext === '.xls') {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      products = XLSX.utils.sheet_to_json(worksheet);
+    } else if (ext === '.csv') {
+      const csv = require('fs').readFileSync(filePath, 'utf8');
+      products = parseCSV(csv);
+    } else {
+      return res.status(400).json({ error: 'Unsupported file format. Use .xlsx, .xls, or .csv' });
+    }
+
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ error: 'No products found in file' });
+    }
+
+    const results = { success: 0, failed: 0, errors: [] };
+
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+
+      // Validation - handle both column name formats
+const name = p.name || p.Name || p.product || p.Product || '';
+      const category = p.category || p.Category || '';
+      const subcategory = p.subcategory || p.subCategory || p.Subcategory || '';
+      const price = p.price || p.Price || p.price || 0;
+      const size = p.size || p.Size || '';
+      const color = p.color || p.Color || '';
+      const stock = p.stock || p.Stock || p.quantity || p.Quantity || 0;
+      const sku = p.sku || p.SKU || p.Sku || '';
+      const description = p.description || p.Description || p.desc || p.Desc || '';
+      const tags = p.tags || p.Tags || '';
+      const status = p.status || p.Status || 'draft';
+
+      if (!name || !name.toString().trim()) {
+        results.failed++;
+        results.errors.push(`Row ${i + 2}: Missing product name`);
+        continue;
+      }
+      if (!category || !category.toString().trim()) {
+        results.failed++;
+        results.errors.push(`Row ${i + 2}: Missing category`);
+        continue;
+      }
+      if (!price || isNaN(parseFloat(price))) {
+        results.failed++;
+        results.errors.push(`Row ${i + 2}: Invalid or missing price`);
+        continue;
+      }
+
+      try {
+        const productData = {
+          name: name.toString().trim(),
+          slug: name.toString().trim().toLowerCase().replace(/\s+/g, '-') + '-' + uuidv4().slice(0, 8),
+          description: description.toString().trim(),
+          category: category.toString().trim(),
+          subcategory: subcategory ? subcategory.toString().trim() : undefined,
+          status: status.toString().trim().toLowerCase(),
+          tags: tags ? tags.toString().split(';').map(t => t.trim()).filter(Boolean) : [],
+          variants: [{
+            size: size.toString().trim() || 'One Size',
+            color: color.toString().trim() || 'Default',
+            price: parseFloat(price),
+            stock: parseInt(stock) || 0,
+            sku: sku.toString().trim() || undefined
+          }]
+        };
+
+        const product = new Product(productData);
+        await product.save();
+        results.success++;
+      } catch (err) {
+        results.failed++;
+        results.errors.push(`Row ${i + 2}: ${err.message}`);
+      }
+    }
+
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

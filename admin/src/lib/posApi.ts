@@ -21,6 +21,36 @@ export function clearPosSession() {
   localStorage.removeItem('pos_user');
 }
 
+// Validate token by calling the auth/me endpoint
+export async function validatePosToken(): Promise<{ valid: boolean; user?: PosUser }> {
+  const token = getPosToken();
+  if (!token) return { valid: false };
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
+    const response = await fetch(`${API_URL}/api/auth/me`, { method: 'GET', headers });
+    if (!response.ok) {
+      clearPosSession();
+      return { valid: false };
+    }
+    const data = await response.json();
+    // /api/auth/me returns the user directly, not wrapped in { user: ... }
+    const userData = data.user ?? data;
+    if (userData?._id) {
+      localStorage.setItem('pos_user', JSON.stringify(userData));
+      return { valid: true, user: userData };
+    }
+    clearPosSession();
+    return { valid: false };
+  } catch {
+    clearPosSession();
+    return { valid: false };
+  }
+}
+
 export function getDeviceId(): string {
   if (typeof window === 'undefined') return 'server';
   let deviceId = localStorage.getItem('pos_device_id');
@@ -44,10 +74,19 @@ async function posRequest<T>(endpoint: string, options: RequestInit = {}): Promi
 }
 
 export const posApi = {
+  getStaffList: () =>
+    posRequest<{ _id: string; name: string; role: string; avatar: string | null; initials: string }[]>('/api/pos/staff-list'),
+
   login: (email: string, password: string) =>
     posRequest<{ user: PosUser; token: string }>('/api/pos/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+
+  loginById: (userId: string, pin: string) =>
+    posRequest<{ user: PosUser; token: string }>('/api/pos/login', {
+      method: 'POST',
+      body: JSON.stringify({ userId, pin }),
     }),
 
   getProducts: (params?: { search?: string; category?: string }) => {

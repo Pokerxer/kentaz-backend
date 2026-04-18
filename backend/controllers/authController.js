@@ -30,8 +30,16 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
 
+    if (user.isActive === false) {
+      return res.status(403).json({ error: 'Account has been deactivated. Contact an administrator.' });
+    }
+
+    user.lastLogin = new Date();
+    await user.save();
+
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ user, token });
+    const { password: _, ...userObj } = user.toObject();
+    res.json({ user: userObj, token });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

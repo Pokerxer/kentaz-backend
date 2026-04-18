@@ -6,96 +6,119 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Sale = require('../models/Sale');
 const Booking = require('../models/Booking');
-const Inventory = require('../models/Inventory');
 
 router.get('/stats', auth, adminOnly, async (req, res) => {
   try {
+    const period = req.query.period || '7d';
     const now = new Date();
+    now.setUTCHours(23, 59, 59, 999);
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
 
-    // ── Time windows ─────────────────────────────────────────────
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    let currentStart, currentEnd, prevStart, prevEnd, trendDays;
 
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    if (period === '30d') {
+      currentStart = new Date(todayStart); currentStart.setUTCDate(todayStart.getUTCDate() - 29);
+      currentEnd = new Date(now);
+      prevEnd = new Date(currentStart); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(prevEnd); prevStart.setUTCDate(prevEnd.getUTCDate() - 29);
+      prevStart.setUTCHours(0, 0, 0, 0);
+      trendDays = 30;
+    } else if (period === '90d') {
+      currentStart = new Date(todayStart); currentStart.setUTCDate(todayStart.getUTCDate() - 89);
+      currentEnd = new Date(now);
+      prevEnd = new Date(currentStart); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(prevEnd); prevStart.setUTCDate(prevEnd.getUTCDate() - 89);
+      prevStart.setUTCHours(0, 0, 0, 0);
+      trendDays = 90;
+    } else {
+      // 7d default
+      currentStart = new Date(todayStart); currentStart.setUTCDate(todayStart.getUTCDate() - 6);
+      currentEnd = new Date(now);
+      prevEnd = new Date(currentStart); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(prevEnd); prevStart.setUTCDate(prevEnd.getUTCDate() - 6);
+      prevStart.setUTCHours(0, 0, 0, 0);
+      trendDays = 7;
+    }
 
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const periodLabel = period === '7d' ? '7 Days' : period === '30d' ? '30 Days' : '90 Days';
 
-    const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    const yesterdayEnd   = new Date(todayEnd);   yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
-
-    const sevenDaysAgo = new Date(todayStart); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-
-    // ── Parallel queries ──────────────────────────────────────────
+    // ── Parallel queries ───────────────────────────────────────────
     const [
-      // Counts
       totalCustomers,
-      newCustomersThisMonth,
+      newCustomersCurrent,
+      newCustomersPrevious,
       totalProducts,
       totalOrders,
 
-      // Orders: current month
-      ordersThisMonth,
-      ordersLastMonth,
+      // Orders: current + previous (all statuses — for count)
+      ordersCurrent,
+      ordersPrevious,
 
-      // Orders: today
-      ordersToday,
-      ordersYesterday,
+      // Orders: current + previous (non-cancelled — for revenue)
+      orderRevCurrent,
+      orderRevPrevious,
 
-      // Orders: status breakdown
+      // Orders by status (all-time pipeline)
       ordersByStatus,
 
       // Recent orders
       recentOrders,
 
-      // POS: current month
-      posSalesThisMonth,
-      posSalesLastMonth,
-
-      // POS: today
-      posSalesToday,
+      // POS: current + previous
+      posSalesCurrent,
+      posSalesPrevious,
 
       // Recent POS sales
       recentPosSales,
 
-      // 7-day daily trend
+      // Daily trend arrays
       ordersTrend,
       posTrend,
 
-      // Low stock
+      // Category revenue breakdown (POS, current period)
+      posCategoryRevenue,
+
+      // Category revenue breakdown (online orders, current period)
+      orderCategoryRevenue,
+
+      // Low stock (top 8 variants, stock 1–10)
       lowStockProducts,
 
-      // Bookings today
+      // Bookings
       bookingsToday,
       bookingsPending,
     ] = await Promise.all([
+
       User.countDocuments({ role: 'customer' }),
-      User.countDocuments({ role: 'customer', createdAt: { $gte: monthStart } }),
+      User.countDocuments({ role: 'customer', createdAt: { $gte: currentStart, $lte: currentEnd } }),
+      User.countDocuments({ role: 'customer', createdAt: { $gte: prevStart, $lte: prevEnd } }),
       Product.countDocuments(),
       Order.countDocuments(),
 
-      // Orders this month
+      // Orders current (all statuses — count only)
       Order.aggregate([
-        { $match: { createdAt: { $gte: monthStart, $lte: monthEnd }, status: { $ne: 'cancelled' } } },
+        { $match: { createdAt: { $gte: currentStart, $lte: currentEnd } } },
+        { $group: { _id: null, count: { $sum: 1 } } },
+      ]),
+      // Orders previous (all statuses — count only)
+      Order.aggregate([
+        { $match: { createdAt: { $gte: prevStart, $lte: prevEnd } } },
+        { $group: { _id: null, count: { $sum: 1 } } },
+      ]),
+
+      // Orders current (non-cancelled — revenue + count)
+      Order.aggregate([
+        { $match: { createdAt: { $gte: currentStart, $lte: currentEnd }, status: { $ne: 'cancelled' } } },
         { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
       ]),
+      // Orders previous (non-cancelled — revenue + count)
       Order.aggregate([
-        { $match: { createdAt: { $gte: lastMonthStart, $lte: lastMonthEnd }, status: { $ne: 'cancelled' } } },
+        { $match: { createdAt: { $gte: prevStart, $lte: prevEnd }, status: { $ne: 'cancelled' } } },
         { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
       ]),
 
-      // Orders today
-      Order.aggregate([
-        { $match: { createdAt: { $gte: todayStart, $lte: todayEnd }, status: { $ne: 'cancelled' } } },
-        { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
-      ]),
-      Order.aggregate([
-        { $match: { createdAt: { $gte: yesterdayStart, $lte: yesterdayEnd }, status: { $ne: 'cancelled' } } },
-        { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
-      ]),
-
-      // Orders by status
+      // Orders by status (all-time)
       Order.aggregate([
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
@@ -107,19 +130,14 @@ router.get('/stats', auth, adminOnly, async (req, res) => {
         .limit(8)
         .lean(),
 
-      // POS this month
+      // POS current period
       Sale.aggregate([
-        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: monthStart, $lte: monthEnd } } },
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: currentStart, $lte: currentEnd } } },
         { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
       ]),
+      // POS previous period
       Sale.aggregate([
-        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: lastMonthStart, $lte: lastMonthEnd } } },
-        { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
-      ]),
-
-      // POS today
-      Sale.aggregate([
-        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: todayStart, $lte: todayEnd } } },
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: prevStart, $lte: prevEnd } } },
         { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
       ]),
 
@@ -129,9 +147,9 @@ router.get('/stats', auth, adminOnly, async (req, res) => {
         .limit(6)
         .lean(),
 
-      // 7-day order trend
+      // Order trend (daily)
       Order.aggregate([
-        { $match: { createdAt: { $gte: sevenDaysAgo }, status: { $ne: 'cancelled' } } },
+        { $match: { createdAt: { $gte: currentStart, $lte: currentEnd }, status: { $ne: 'cancelled' } } },
         {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -141,9 +159,9 @@ router.get('/stats', auth, adminOnly, async (req, res) => {
         },
         { $sort: { _id: 1 } },
       ]),
-      // 7-day POS trend
+      // POS trend (daily)
       Sale.aggregate([
-        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: sevenDaysAgo } } },
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: currentStart, $lte: currentEnd } } },
         {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -154,7 +172,24 @@ router.get('/stats', auth, adminOnly, async (req, res) => {
         { $sort: { _id: 1 } },
       ]),
 
-      // Low stock (top 8 variants, stock > 0 and <= 10)
+      // POS revenue by product (category resolved in JS below)
+      Sale.aggregate([
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: currentStart, $lte: currentEnd } } },
+        { $unwind: '$items' },
+        { $group: { _id: '$items.product', revenue: { $sum: '$items.total' } } },
+      ]),
+
+      // Online order revenue by product (category resolved in JS below)
+      Order.aggregate([
+        { $match: { createdAt: { $gte: currentStart, $lte: currentEnd }, status: { $ne: 'cancelled' } } },
+        { $unwind: '$items' },
+        { $group: {
+          _id: '$items.product',
+          revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+        }},
+      ]),
+
+      // Low stock (top 8 variants with stock 1–10)
       Product.aggregate([
         { $unwind: { path: '$variants', includeArrayIndex: 'variantIndex' } },
         { $match: { 'variants.stock': { $gt: 0, $lte: 10 } } },
@@ -163,112 +198,139 @@ router.get('/stats', auth, adminOnly, async (req, res) => {
         { $limit: 8 },
       ]),
 
-      // Bookings today
-      Booking.countDocuments({ date: { $gte: todayStart, $lte: todayEnd } }),
+      Booking.countDocuments({ createdAt: { $gte: currentStart, $lte: currentEnd } }),
       Booking.countDocuments({ status: 'pending' }),
     ]);
 
-    // ── Helper: safe value from agg ────────────────────────────
+    // ── Helper functions ────────────────────────────────────────────
     const agg = (arr, key = 'revenue') => arr[0]?.[key] || 0;
     const pctChange = (curr, prev) => {
       if (!prev) return curr > 0 ? 100 : 0;
       return Math.round(((curr - prev) / prev) * 100);
     };
 
-    // ── Revenue calculations ────────────────────────────────────
-    const orderRevThisMonth = agg(ordersThisMonth);
-    const orderRevLastMonth = agg(ordersLastMonth);
-    const posRevThisMonth   = agg(posSalesThisMonth);
-    const posRevLastMonth   = agg(posSalesLastMonth);
-    const totalRevThisMonth = orderRevThisMonth + posRevThisMonth;
-    const totalRevLastMonth = orderRevLastMonth + posRevLastMonth;
+    // ── Revenue calculations ────────────────────────────────────────
+    const orderCountCurrent  = agg(ordersCurrent, 'count');
+    const orderCountPrevious = agg(ordersPrevious, 'count');
 
-    const orderRevToday   = agg(ordersToday);
-    const posRevToday     = agg(posSalesToday);
-    const totalRevToday   = orderRevToday + posRevToday;
-    const orderRevYest    = agg(ordersYesterday);
+    const onlineRevCurrent  = agg(orderRevCurrent, 'revenue');
+    const onlineRevPrevious = agg(orderRevPrevious, 'revenue');
+    const onlineCountCurrent  = agg(orderRevCurrent, 'count');
+    const onlineCountPrevious = agg(orderRevPrevious, 'count');
 
-    const orderCountThisMonth = agg(ordersThisMonth, 'count');
-    const orderCountLastMonth = agg(ordersLastMonth, 'count');
-    const posCountThisMonth   = agg(posSalesThisMonth, 'count');
-    const posCountLastMonth   = agg(posSalesLastMonth, 'count');
-    const totalCountThisMonth = orderCountThisMonth + posCountThisMonth;
-    const totalCountLastMonth = orderCountLastMonth + posCountLastMonth;
+    const posRevCurrent   = agg(posSalesCurrent, 'revenue');
+    const posRevPrevious  = agg(posSalesPrevious, 'revenue');
+    const posCountCurrent  = agg(posSalesCurrent, 'count');
+    const posCountPrevious = agg(posSalesPrevious, 'count');
 
-    const orderCountToday   = agg(ordersToday, 'count');
-    const posCountToday     = agg(posSalesToday, 'count');
-    const orderCountYest    = agg(ordersYesterday, 'count');
+    const totalRevCurrent  = onlineRevCurrent + posRevCurrent;
+    const totalRevPrevious = onlineRevPrevious + posRevPrevious;
 
-    // ── Order status map ────────────────────────────────────────
+    // Total transaction count (online non-cancelled + POS completed)
+    const totalCountCurrent  = onlineCountCurrent + posCountCurrent;
+    const totalCountPrevious = onlineCountPrevious + posCountPrevious;
+
+    // Avg order value
+    const avgOrderValue         = totalCountCurrent  > 0 ? Math.round(totalRevCurrent  / totalCountCurrent)  : 0;
+    const avgOrderValuePrevious = totalCountPrevious > 0 ? Math.round(totalRevPrevious / totalCountPrevious) : 0;
+
+    // ── Order status map ────────────────────────────────────────────
     const statusMap = { pending: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0 };
-    for (const s of ordersByStatus) statusMap[s._id] = s.count;
+    for (const s of ordersByStatus) {
+      if (s._id in statusMap) statusMap[s._id] = s.count;
+    }
 
-    // ── Build 7-day trend (fill missing days) ──────────────────
-    const days7 = [];
-    for (let i = 6; i >= 0; i--) {
+    // ── Resolve categories via Product.find (same as inventoryController) ──
+    const allCatRows = [...posCategoryRevenue, ...orderCategoryRevenue].filter(r => r._id != null);
+    const catIds = [...new Set(allCatRows.map(r => String(r._id)))];
+    const catProds = await Product.find({ _id: { $in: catIds } }).select('category').lean();
+    const catLookup = Object.fromEntries(catProds.map(p => [String(p._id), p.category || 'Uncategorised']));
+
+    const categoryMap = {};
+    for (const row of allCatRows) {
+      const key = catLookup[String(row._id)] || 'Uncategorised';
+      categoryMap[key] = (categoryMap[key] || 0) + row.revenue;
+    }
+    const categoryRevenue = Object.entries(categoryMap)
+      .map(([category, revenue]) => ({ category, revenue }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 6);
+
+    // ── Build daily trend (fill missing days) ──────────────────────
+    const trend = [];
+    for (let i = trendDays - 1; i >= 0; i--) {
       const d = new Date(todayStart);
-      d.setDate(d.getDate() - i);
+      d.setUTCDate(todayStart.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' });
+      const label = d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
       const ord = ordersTrend.find(x => x._id === key);
       const pos = posTrend.find(x => x._id === key);
-      days7.push({
-        date:        key,
+      trend.push({
+        date: key,
         label,
-        orderRev:    ord?.revenue || 0,
-        posRev:      pos?.revenue || 0,
-        totalRev:    (ord?.revenue || 0) + (pos?.revenue || 0),
-        orderCount:  ord?.count || 0,
-        posCount:    pos?.count || 0,
+        orderRev:   ord?.revenue || 0,
+        posRev:     pos?.revenue || 0,
+        totalRev:   (ord?.revenue || 0) + (pos?.revenue || 0),
+        orderCount: ord?.count   || 0,
+        posCount:   pos?.count   || 0,
       });
     }
 
     res.json({
-      // KPIs
-      revenue: {
-        today:         totalRevToday,
-        todayOrders:   orderRevToday,
-        todayPos:      posRevToday,
-        thisMonth:     totalRevThisMonth,
-        thisMonthOrders: orderRevThisMonth,
-        thisMonthPos:  posRevThisMonth,
-        vsLastMonth:   pctChange(totalRevThisMonth, totalRevLastMonth),
-        vsYesterday:   pctChange(totalRevToday, orderRevYest),
-      },
-      orders: {
-        today:         orderCountToday + posCountToday,
-        todayOrders:   orderCountToday,
-        todayPos:      posCountToday,
-        thisMonth:     totalCountThisMonth,
-        vsLastMonth:   pctChange(totalCountThisMonth, totalCountLastMonth),
-        vsYesterday:   pctChange(orderCountToday, orderCountYest),
-        statusBreakdown: statusMap,
-        total:         totalOrders,
-      },
-      customers: {
-        total:         totalCustomers,
-        newThisMonth:  newCustomersThisMonth,
-      },
-      products: {
-        total: totalProducts,
-      },
-      avgOrderValue: totalCountThisMonth > 0
-        ? Math.round(totalRevThisMonth / totalCountThisMonth)
-        : 0,
+      period,
+      periodLabel,
 
-      // Lists
+      revenue: {
+        currentPeriod:       totalRevCurrent,
+        currentPeriodOrders: onlineRevCurrent,
+        currentPeriodPos:    posRevCurrent,
+        previousPeriod:      totalRevPrevious,
+        previousPeriodOrders: onlineRevPrevious,
+        previousPeriodPos:   posRevPrevious,
+        vsPrevious:          pctChange(totalRevCurrent, totalRevPrevious),
+      },
+
+      orders: {
+        currentPeriod:        totalCountCurrent,
+        currentPeriodOrders:  onlineCountCurrent,
+        currentPeriodPos:     posCountCurrent,
+        previousPeriod:       totalCountPrevious,
+        previousPeriodOrders: onlineCountPrevious,
+        previousPeriodPos:    posCountPrevious,
+        vsPrevious:           pctChange(totalCountCurrent, totalCountPrevious),
+        statusBreakdown:      statusMap,
+        total:                totalOrders,
+        // Raw online order count (all statuses) for display
+        allStatusCurrent:     orderCountCurrent,
+        allStatusPrevious:    orderCountPrevious,
+      },
+
+      customers: {
+        total:           totalCustomers,
+        newThisPeriod:   newCustomersCurrent,
+        newPrevPeriod:   newCustomersPrevious,
+        vsPrevious:      pctChange(newCustomersCurrent, newCustomersPrevious),
+      },
+
+      products: { total: totalProducts },
+
+      avgOrderValue,
+      avgOrderValuePrevious,
+      avgOrderValueVsPrevious: pctChange(avgOrderValue, avgOrderValuePrevious),
+
+      categoryRevenue,
       recentOrders,
       recentPosSales,
       lowStock: lowStockProducts,
-      trend: days7,
+      trend,
 
-      // Bookings
       bookings: {
         today:   bookingsToday,
         pending: bookingsPending,
       },
     });
   } catch (err) {
+    console.error('[dashboard/stats]', err);
     res.status(500).json({ error: err.message });
   }
 });

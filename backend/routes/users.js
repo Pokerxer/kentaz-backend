@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const { auth, adminOnly } = require('../middleware/auth');
 const User = require('../models/User');
 const Order = require('../models/Order');
@@ -73,7 +74,85 @@ router.get('/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Toggle active status
+// Create a new user (admin-initiated)
+router.post('/', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, email, password, role = 'staff', permissions = [] } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email and password are required' });
+    }
+    if (!['customer', 'admin', 'therapist', 'staff'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ error: 'Email already in use' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ name, email, password: hashedPassword, role, permissions });
+    await user.save();
+
+    const { password: _, ...userObj } = user.toObject();
+    res.status(201).json(userObj);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Combined update: role + permissions + isActive in one call
+router.patch('/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const { role, isActive, permissions } = req.body;
+    const VALID_ROLES = ['customer', 'admin', 'therapist', 'staff'];
+
+    if (role !== undefined && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    if (permissions !== undefined && !Array.isArray(permissions)) {
+      return res.status(400).json({ error: 'Permissions must be an array' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Prevent removing own admin role
+    if (role !== undefined && role !== 'admin' && req.user.id?.toString() === req.params.id) {
+      return res.status(400).json({ error: 'Cannot remove your own admin role' });
+    }
+
+    if (role !== undefined) user.role = role;
+    if (isActive !== undefined) user.isActive = isActive;
+    if (permissions !== undefined) user.permissions = permissions;
+
+    await user.save();
+    const { password: _, ...userObj } = user.toObject();
+    res.json(userObj);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset password
+router.patch('/:id/reset-password', auth, adminOnly, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.password = await bcrypt.hash(password, 10);
+    await user.save();
+    res.json({ message: 'Password updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Toggle active status (kept for backwards compat)
 router.patch('/:id/toggle-active', auth, adminOnly, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -86,63 +165,18 @@ router.patch('/:id/toggle-active', auth, adminOnly, async (req, res) => {
   }
 });
 
-// Update user role
-router.patch('/:id/role', auth, adminOnly, async (req, res) => {
-  try {
-    const { role } = req.body;
-    if (!['customer', 'admin', 'therapist', 'staff'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
-    }
-
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    // Prevent removing own admin role
-    if (req.user.id && req.user.id.toString() === req.params.id && role !== 'admin') {
-      return res.status(400).json({ error: 'Cannot remove your own admin role' });
-    }
-
-    user.role = role;
-    await user.save();
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Delete user
 router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Prevent self-delete
-    if (req.user.id && req.user.id.toString() === req.params.id) {
+    if (req.user.id?.toString() === req.params.id) {
       return res.status(400).json({ error: 'Cannot delete your own account' });
     }
 
     await User.findByIdAndDelete(req.params.id);
     res.json({ message: 'User deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Update user permissions
-router.patch('/:id/permissions', auth, adminOnly, async (req, res) => {
-  try {
-    const { permissions } = req.body;
-
-    if (!Array.isArray(permissions)) {
-      return res.status(400).json({ error: 'Permissions must be an array' });
-    }
-
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    user.permissions = permissions;
-    await user.save();
-    res.json(user);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

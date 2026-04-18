@@ -11,11 +11,11 @@ import {
   Menu, ArrowDownCircle, ArrowUpCircle, Monitor, Lock,
   DollarSign, TrendingUp, ChevronRight, ScanBarcode, Wifi, WifiOff,
 } from 'lucide-react';
-import { posApi, getPosUser, clearPosSession, hasPosPermission, POS_PERMS } from '@/lib/posApi';
+import { posApi, getPosUser, clearPosSession, hasPosPermission, POS_PERMS, validatePosToken } from '@/lib/posApi';
 import type { PosProduct, PosUser, CartItem, Sale, Register, RegisterReport, CreateSaleInput } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { savePendingSale, getPendingSalesCount, getPendingSales, updateSaleStatus } from '@/lib/offlineStorage';
+import { savePendingSale, getPendingSalesCount, cacheProducts, getCachedProducts, decrementCachedStock } from '@/lib/offlineStorage';
 import { syncPendingSales, addSyncListener } from '@/lib/syncManager';
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -531,8 +531,14 @@ export default function PosPage() {
   const { isOnline, wasOffline } = useNetworkStatus();
   const [pendingCount, setPendingCount] = useState(0);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [offlineBanner, setOfflineBanner] = useState<{ type: 'saved' | 'error'; message: string } | null>(null);
 
-  // Check pending sales count and setup sync listener
+  const showOfflineBanner = (type: 'saved' | 'error', message: string) => {
+    setOfflineBanner({ type, message });
+    setTimeout(() => setOfflineBanner(null), 5000);
+  };
+
+  // Check pending sales count
   useEffect(() => {
     let isMounted = true;
 
@@ -545,11 +551,7 @@ export default function PosPage() {
     checkPending();
 
     const unsubscribe = addSyncListener(() => {
-      if (isMounted) {
-        checkPending();
-        setSyncStatus('success');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      }
+      if (isMounted) checkPending();
     });
 
     return () => {
@@ -562,11 +564,20 @@ export default function PosPage() {
   useEffect(() => {
     if (wasOffline && isOnline && pendingCount > 0) {
       setSyncStatus('syncing');
-      syncPendingSales().then(({ synced, failed }) => {
+      syncPendingSales().then(async ({ synced, failed }) => {
         if (failed > 0) {
           setSyncStatus('error');
           setTimeout(() => setSyncStatus('idle'), 5000);
+        } else if (synced > 0) {
+          setSyncStatus('success');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        } else {
+          setSyncStatus('idle');
         }
+        // Re-read actual count from DB (don't assume 0)
+        const remaining = await getPendingSalesCount();
+        setPendingCount(remaining);
+        if (synced > 0) loadProducts();
       });
     }
   }, [isOnline, wasOffline]);
@@ -660,30 +671,70 @@ export default function PosPage() {
   const [closeProcessing, setCloseProcessing] = useState(false);
   const [registerError, setRegisterError] = useState('');
 
-  // Auth check + load current register (non-blocking)
+  // Auth check + validate token + load current register (non-blocking)
   useEffect(() => {
-    const u = getPosUser();
-    if (!u) { router.replace('/pos/login'); return; }
-    setUser(u);
-    posApi.getCurrentRegister().then(reg => {
-      if (reg) setRegister(reg);
-      // No register open — show prompt from menu, not blocking modal
-    }).catch(() => {});
+    async function checkAuth() {
+      const u = getPosUser();
+      if (!u) { router.replace('/pos/login'); return; }
+
+      // Validate token
+      const validation = await validatePosToken();
+      if (!validation.valid) {
+        router.replace('/pos/login');
+        return;
+      }
+
+      setUser(validation.user || u);
+      posApi.getCurrentRegister().then(reg => {
+        if (reg) setRegister(reg);
+      }).catch(() => {});
+    }
+    checkAuth();
   }, [router]);
 
   // Debounced search for API call
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load products with search
+  // Load products with search, falling back to IndexedDB cache when offline
   const loadProducts = useCallback(async (searchTerm: string = '') => {
     setLoadingProducts(true);
     try {
-      const data = await posApi.getProducts(searchTerm ? { search: searchTerm } : undefined);
-      setProducts(data);
-      const cats = ['All', ...Array.from(new Set(data.map(p => p.category))).sort()];
-      setCategories(cats);
+      if (navigator.onLine) {
+        const data = await posApi.getProducts(searchTerm ? { search: searchTerm } : undefined);
+        setProducts(data);
+        const cats = ['All', ...Array.from(new Set(data.map(p => p.category))).sort()];
+        setCategories(cats);
+        // Cache the full product list (only when not filtering)
+        if (!searchTerm) cacheProducts(data).catch(() => {});
+      } else {
+        // Offline: use cache, then filter client-side
+        const cached = await getCachedProducts();
+        const filtered = searchTerm
+          ? cached.filter(p =>
+              p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              (p.barcode && p.barcode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              p.variants.some(v => v.sku && v.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+            )
+          : cached;
+        setProducts(filtered);
+        const cats = ['All', ...Array.from(new Set(filtered.map(p => p.category))).sort()];
+        setCategories(cats);
+        if (cached.length === 0) setError('No cached products available offline.');
+      }
     } catch (err: any) {
-      setError(err.message);
+      // Network failed while online — try cache as fallback
+      try {
+        const cached = await getCachedProducts();
+        if (cached.length > 0) {
+          setProducts(cached);
+          const cats = ['All', ...Array.from(new Set(cached.map(p => p.category))).sort()];
+          setCategories(cats);
+        } else {
+          setError(err.message);
+        }
+      } catch {
+        setError(err.message);
+      }
     } finally {
       setLoadingProducts(false);
     }
@@ -832,6 +883,68 @@ export default function PosPage() {
   const discountAmount = orderDiscount > 0 ? (subtotal * orderDiscount) / 100 : 0;
   const cartTotal = Math.max(0, subtotal - discountAmount);
 
+  // Build a local receipt + save to queue when offline
+  async function saveOfflineSaleAndShowReceipt(saleData: CreateSaleInput, cartItems: CartItem[]) {
+    const localId = await savePendingSale(saleData);
+
+    // Decrement stock in the product cache so repeated offline sales see updated stock
+    await decrementCachedStock(
+      saleData.items.map(i => ({ productId: i.productId, variantIndex: i.variantIndex, quantity: i.quantity }))
+    ).catch(() => {});
+
+    // Compute totals locally (mirror server logic)
+    const rawSubtotal = cartItems.reduce((s, i) => s + i.price * i.quantity, 0);
+    const discAmt = saleData.discountType === 'percent'
+      ? Math.round(rawSubtotal * (saleData.discount ?? 0) / 100)
+      : (saleData.discount ?? 0);
+    const total = Math.max(0, rawSubtotal - discAmt);
+    const paid  = saleData.amountPaid ?? total;
+
+    const mockSale: Sale = {
+      _id:           localId,
+      receiptNumber: 'OFFLINE-' + Date.now().toString(36).toUpperCase(),
+      type:          'sale',
+      items: cartItems.map(i => ({
+        product:      { _id: i.product._id, name: i.product.name, images: i.product.images },
+        productName:  i.product.name,
+        variantIndex: i.variantIndex,
+        variantLabel: i.variantLabel,
+        quantity:     i.quantity,
+        price:        i.price,
+        costPrice:    0,
+        total:        i.price * i.quantity,
+        refundedQty:  0,
+      })),
+      subtotal:       rawSubtotal,
+      discount:       saleData.discount ?? 0,
+      discountType:   saleData.discountType ?? 'fixed',
+      discountAmount: discAmt,
+      total,
+      paymentMethod:  saleData.paymentMethod,
+      amountPaid:     paid,
+      change:         Math.max(0, paid - total),
+      customerName:   saleData.customerName,
+      customerPhone:  saleData.customerPhone,
+      notes:          saleData.notes,
+      cashier:        { _id: user!._id, name: user!.name, email: user!.email },
+      cashierName:    user!.name,
+      status:         'completed',
+      createdAt:      new Date().toISOString(),
+    };
+
+    setPendingCount(prev => prev + 1);
+    setShowPayment(false);
+    setActiveCartItems([]);
+    setSelectedCartItemIdx(null);
+    setNumpadInput('');
+    setActiveCartDiscount(0);
+    setActiveCartCustomer(null);
+    setActiveCartNote('');
+    setError('');
+    setCompletedSale(mockSale);
+    loadProducts();
+  }
+
   async function handleCompleteSale(payData: {
     paymentMethod: 'cash' | 'card' | 'transfer';
     discount: number;
@@ -877,41 +990,14 @@ export default function PosPage() {
         setActiveCartNote('');
         loadProducts();
       } else {
-        // Offline: save to local storage
-        await savePendingSale(saleData);
-        setPendingCount(prev => prev + 1);
-        setShowPayment(false);
-        setActiveCartItems([]);
-        setSelectedCartItemIdx(null);
-        setNumpadInput('');
-        setActiveCartDiscount(0);
-        setActiveCartCustomer(null);
-        setActiveCartNote('');
-        setError('');
-        // Show a success message but not the receipt since it wasn't created
-        alert('Sale saved offline. Will sync when back online.');
-        loadProducts();
+        // Offline: save to IndexedDB
+        await saveOfflineSaleAndShowReceipt(saleData, cart);
       }
     } catch (err: any) {
-      // If online request fails, try offline fallback
-      if (navigator.onLine) {
-        // Still online but request failed - try offline storage
-        try {
-          await savePendingSale(saleData);
-          setPendingCount(prev => prev + 1);
-          setShowPayment(false);
-          setActiveCartItems([]);
-          setSelectedCartItemIdx(null);
-          setNumpadInput('');
-          setActiveCartDiscount(0);
-          setActiveCartCustomer(null);
-          setActiveCartNote('');
-          alert('Sale saved offline due to error. Will sync when back online.');
-          loadProducts();
-        } catch {
-          setError(err.message);
-        }
-      } else {
+      // Network failed mid-request — fall back to offline queue
+      try {
+        await saveOfflineSaleAndShowReceipt(saleData, cart);
+      } catch {
         setError(err.message);
       }
     } finally {
@@ -930,6 +1016,15 @@ export default function PosPage() {
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
       {/* Print styles */}
       <style>{`@media print { body > *:not(#receipt) { display: none; } #receipt { display: block !important; } }`}</style>
+
+      {/* Offline banner */}
+      {offlineBanner && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-xl text-sm font-semibold transition-all ${offlineBanner.type === 'saved' ? 'bg-amber-500 text-white' : 'bg-red-500 text-white'}`}>
+          {offlineBanner.type === 'saved' ? <WifiOff className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+          {offlineBanner.message}
+          <button onClick={() => setOfflineBanner(null)} className="ml-1 opacity-70 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
 
       {/* Header */}
       <header className="bg-gray-900 text-white px-4 py-3 flex items-center justify-between flex-shrink-0 shadow-lg z-20">
@@ -1802,16 +1897,19 @@ export default function PosPage() {
                 <button
                   onClick={async () => {
                     if (!navigator.onLine) {
-                      alert('Cannot sync while offline');
+                      showOfflineBanner('error', 'Cannot sync while offline');
                       return;
                     }
                     setSyncStatus('syncing');
                     const { synced, failed } = await syncPendingSales();
+                    const remaining = await getPendingSalesCount();
+                    setPendingCount(remaining);
                     if (failed > 0) {
                       setSyncStatus('error');
-                      alert(`Sync complete: ${synced} succeeded, ${failed} failed`);
+                      setTimeout(() => setSyncStatus('idle'), 5000);
                     } else {
                       setSyncStatus('success');
+                      setTimeout(() => setSyncStatus('idle'), 3000);
                     }
                     setShowMenu(false);
                   }}

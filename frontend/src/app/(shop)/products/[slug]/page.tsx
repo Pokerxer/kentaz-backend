@@ -18,6 +18,14 @@ interface ProductVariant {
   stock?: number;
 }
 
+interface Review {
+  _id: string;
+  user: { name: string };
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
 interface Product {
   _id: string;
   name: string;
@@ -61,6 +69,8 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [product, setProduct] = useState<Product | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -75,20 +85,20 @@ export default function ProductDetailPage() {
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
 
   // Extract unique sizes and colors from variants
-  const sizes = product?.variants ? [...new Set(product.variants.map(v => v.size).filter(Boolean))] : [];
-  const colorsForSize = selectedSize
+  const sizes: string[] = product?.variants ? [...new Set(product.variants.map(v => v.size).filter(Boolean))] as string[] : [];
+  const colorsForSize: string[] = selectedSize
     ? product?.variants
         .filter(v => v.size === selectedSize && v.color)
         .map(v => v.color)
-        .filter(Boolean) || []
+        .filter(Boolean) as string[]
     : [];
-  const uniqueColorsForSize = [...new Set(colorsForSize)];
+  const uniqueColorsForSize: string[] = [...new Set(colorsForSize)];
 
   // All unique colors across all variants
-  const allColors = product?.variants
+  const allColors: string[] = product?.variants
     .map(v => v.color)
-    .filter(Boolean) || [];
-  const uniqueAllColors = [...new Set(allColors)];
+    .filter(Boolean) as string[];
+  const uniqueAllColors: string[] = [...new Set(allColors)];
 
   // Check if a color is available for selected size
   const isColorAvailableForSize = (color: string) => {
@@ -113,7 +123,7 @@ export default function ProductDetailPage() {
         .map(v => v.color)
         .filter(Boolean);
       if (colorsForFirstSize.length > 0) {
-        setSelectedColor(colorsForFirstSize[0]);
+        setSelectedColor(colorsForFirstSize[0] || null);
       }
     }
   }, [product, sizes, selectedSize]);
@@ -144,6 +154,20 @@ useEffect(() => {
       .then(data => {
         const p = data.product;
         setProduct(p);
+        setReviews(data.reviews || []);
+        
+        // Fetch related products by category
+        if (p?.category) {
+          fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/products?category=${encodeURIComponent(p.category)}&limit=10`)
+            .then(res => res.json())
+            .then(data => {
+              // Filter out current product
+              const related = (data.products || []).filter((rp: Product) => rp._id !== p._id).slice(0, 6);
+              setRelatedProducts(related);
+            })
+            .catch(err => console.error('Failed to fetch related products:', err));
+        }
+        
         setLoading(false);
       })
       .catch(err => {
@@ -549,7 +573,7 @@ useEffect(() => {
                                 transition={{ delay: 0.5 + index * 0.05 }}
                                 whileHover={!isUnavailable ? { scale: 1.1 } : {}}
                                 whileTap={!isUnavailable ? { scale: 0.95 } : {}}
-                                onClick={() => !isUnavailable && setSelectedColor(color)}
+                                onClick={() => !isUnavailable && color && setSelectedColor(color)}
                                 disabled={isUnavailable}
                                 title={isUnavailable ? `Not available in ${selectedSize}` : color}
                                 className={`group relative w-12 h-12 rounded-full border-2 transition-all ${
@@ -761,6 +785,189 @@ useEffect(() => {
             </motion.div>
           </motion.div>
         </div>
+
+        {/* Related Products Section */}
+        {relatedProducts.length > 0 && (
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1 }}
+            className="mt-16 lg:mt-24"
+          >
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">
+                You May Also Like
+              </h2>
+              <a 
+                href={`/products?category=${product?.category || ''}`}
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1"
+              >
+                View All
+                <ChevronRight className="h-4 w-4" />
+              </a>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 lg:gap-6">
+              {relatedProducts.map((item, index) => (
+                <motion.a
+                  key={item._id}
+                  href={`/products/${item.slug}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.1 + index * 0.1 }}
+                  whileHover={{ y: -8 }}
+                  className="group"
+                >
+                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 mb-3">
+                    <Image
+                      src={item.thumbnail || item.images?.[0]?.url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400'}
+                      alt={item.name}
+                      fill
+                      className="object-cover transition-transform duration-500 group-hover:scale-110"
+                      sizes="(max-width: 768px) 50vw, 16vw"
+                    />
+                    {item.tags?.includes('featured') && (
+                      <span className="absolute top-2 left-2 bg-amber-400 text-white text-xs font-bold px-2 py-1 rounded-md">
+                        Featured
+                      </span>
+                    )}
+                    {item.tags?.includes('bestseller') && (
+                      <span className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-md">
+                        Best Seller
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm font-medium text-gray-900 line-clamp-2 group-hover:text-gray-700 transition-colors">
+                    {item.name}
+                  </h3>
+                  <p className="text-sm font-bold text-gray-900 mt-1">
+                    {formatPrice(item.variants?.[0]?.price || 0)}
+                  </p>
+                </motion.a>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
+        {/* Reviews Section */}
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.2 }}
+          className="mt-16 lg:mt-24"
+        >
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">
+              Customer Reviews
+            </h2>
+            {reviews.length > 0 && (
+              <span className="text-sm text-gray-500">
+                {reviews.length} review{reviews.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
+          {reviews.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-2xl">
+              <Star className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">No reviews yet</p>
+              <p className="text-sm text-gray-400">Be the first to review this product</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* Rating Summary */}
+              <div className="grid md:grid-cols-3 gap-8 mb-12">
+                <div className="bg-gray-50 rounded-2xl p-6 text-center">
+                  <div className="text-5xl font-bold text-gray-900 mb-2">
+                    {product.ratings?.avg?.toFixed(1) || '0.0'}
+                  </div>
+                  <div className="flex justify-center gap-1 mb-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        className={`h-5 w-5 ${
+                          i < Math.floor(product.ratings?.avg || 0)
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Based on {product.ratings?.count || 0} reviews
+                  </p>
+                </div>
+
+                <div className="md:col-span-2 space-y-2">
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const count = reviews.filter(r => r.rating === star).length;
+                    const percentage = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
+                    return (
+                      <div key={star} className="flex items-center gap-3">
+                        <span className="text-sm text-gray-600 w-12">{star} star</span>
+                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-yellow-400 rounded-full transition-all duration-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-gray-500 w-8">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Review List */}
+              <div className="space-y-6">
+                {reviews.map((review, index) => (
+                  <motion.div
+                    key={review._id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 1.3 + index * 0.1 }}
+                    className="bg-white border border-gray-100 rounded-2xl p-6"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white font-bold">
+                          {review.user?.name?.charAt(0).toUpperCase() || 'A'}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {review.user?.name || 'Anonymous'}
+                          </p>
+                          <div className="flex items-center gap-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`h-4 w-4 ${
+                                  i < review.rating
+                                    ? 'fill-yellow-400 text-yellow-400'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-sm text-gray-400">
+                        {new Date(review.createdAt).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-gray-600 leading-relaxed">
+                      {review.comment}
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.section>
       </div>
     </div>
   );

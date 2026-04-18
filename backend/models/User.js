@@ -34,6 +34,7 @@ const userSchema = new mongoose.Schema({
   totalPurchases: { type: Number, default: 0 },
   totalSpent: { type: Number, default: 0 },
   dateOfBirth: Date,
+  lastLogin: { type: Date },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

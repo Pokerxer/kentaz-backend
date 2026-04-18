@@ -7,11 +7,11 @@ import {
   Users, Search, Check, X,
   ShieldCheck, UserCog, User as UserIcon, Trash2, Edit,
   Loader2, ChevronLeft, ChevronRight, ArrowUpDown, Key,
-  Lock, Unlock, Eye, ToggleLeft, ToggleRight, RefreshCw,
+  Lock, Unlock, Eye, EyeOff, ToggleLeft, ToggleRight, RefreshCw,
   Monitor, ShoppingCart, Package, BarChart3, Settings,
   Tag, CreditCard, Truck, Star, Heart, Bell, Megaphone,
   FileText, Calendar, Box, ShoppingBag, ChevronDown,
-  DollarSign, RotateCcw, XCircle,
+  DollarSign, RotateCcw, XCircle, Plus, KeyRound,
 } from 'lucide-react';
 
 // ── POS action permissions ─────────────────────────────────────────
@@ -173,15 +173,235 @@ function PermissionsBadge({ user }: { user: User }) {
   );
 }
 
+// ── Create user modal ──────────────────────────────────────────────
+
+function CreateUserModal({
+  onSave,
+  onClose,
+}: {
+  onSave: (data: { name: string; email: string; password: string; role: string; permissions: string[] }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [role, setRole] = useState<string>('staff');
+  const [permissions, setPermissions] = useState<string[]>(() => ROLE_PRESETS['staff'] ?? []);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  function handleRoleChange(r: string) {
+    setRole(r);
+    setPermissions(ROLE_PRESETS[r] ?? []);
+  }
+
+  function togglePerm(href: string) {
+    setPermissions(prev => prev.includes(href) ? prev.filter(p => p !== href) : [...prev, href]);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      await onSave({ name, email, password, role, permissions });
+      onClose();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to create user');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const groupsWithSelection = routeGroups.map(g => ({
+    ...g,
+    selected: g.routes.filter(r => permissions.includes(r.href)).length,
+  }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+          <div>
+            <p className="font-semibold text-gray-900">Create User</p>
+            <p className="text-xs text-gray-500">Add a new staff, therapist or admin account</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">{error}</div>}
+
+            {/* Basic info */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <input
+                  required
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Amara Okafor"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  required
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="amara@example.com"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password</label>
+                <div className="relative">
+                  <input
+                    required
+                    type={showPass ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Min. 6 characters"
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Role */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Role</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.entries(ROLE_CONFIG) as [string, typeof ROLE_CONFIG[string]][]).map(([r, cfg]) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => handleRoleChange(r)}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${role === r ? 'border-[#C9A84C] bg-[#C9A84C]/5' : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <cfg.icon className={`w-4 h-4 ${role === r ? 'text-[#C9A84C]' : 'text-gray-400'}`} />
+                      <span className={`text-sm font-medium ${role === r ? 'text-[#C9A84C]' : 'text-gray-700'}`}>{cfg.label}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 pl-6">{cfg.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Permissions */}
+            {role !== 'admin' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                    <Key className="w-4 h-4 text-gray-400" />
+                    Route Permissions
+                    {permissions.length > 0 && (
+                      <span className="px-1.5 py-0.5 bg-[#C9A84C] text-white text-xs rounded-full">{permissions.length}</span>
+                    )}
+                  </label>
+                  <div className="flex items-center gap-1">
+                    {ROLE_PRESETS[role]?.length > 0 && (
+                      <button type="button" onClick={() => setPermissions(ROLE_PRESETS[role])} className="text-xs text-blue-600 hover:underline px-1">
+                        Use {role} defaults
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setPermissions(allRoutes.map(r => r.href))} className="text-xs text-[#C9A84C] hover:underline px-1">All</button>
+                    <button type="button" onClick={() => setPermissions([])} className="text-xs text-gray-400 hover:underline px-1">None</button>
+                  </div>
+                </div>
+                <div className="border rounded-xl overflow-hidden divide-y">
+                  {groupsWithSelection.map(group => (
+                    <div key={group.label}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenGroup(openGroup === group.label ? null : group.label)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+                      >
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{group.label}</span>
+                        <div className="flex items-center gap-2">
+                          {group.selected > 0 && <span className="text-xs text-[#C9A84C] font-medium">{group.selected}/{group.routes.length}</span>}
+                          <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${openGroup === group.label ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+                      {openGroup === group.label && (
+                        <div className="px-2 py-1 bg-white">
+                          {group.routes.map(route => {
+                            const checked = permissions.includes(route.href);
+                            return (
+                              <label key={route.href} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-[#C9A84C]/5' : 'hover:bg-gray-50'}`}>
+                                <input type="checkbox" checked={checked} onChange={() => togglePerm(route.href)} className="rounded border-gray-300 text-[#C9A84C] focus:ring-[#C9A84C]" />
+                                <route.icon className={`w-4 h-4 flex-shrink-0 ${checked ? 'text-[#C9A84C]' : 'text-gray-400'}`} />
+                                <span className={`text-sm flex-1 ${checked ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>{route.label}</span>
+                                <code className="text-[10px] text-gray-400">{route.href}</code>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* POS Actions */}
+                <div className="mt-3 space-y-2">
+                  {POS_ACTIONS.map(action => {
+                    const granted = permissions.includes(action.key);
+                    return (
+                      <label key={action.key} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${granted ? 'border-[#C9A84C] bg-[#C9A84C]/5' : 'border-gray-100 hover:border-gray-200 bg-gray-50'}`}>
+                        <input type="checkbox" checked={granted} onChange={() => togglePerm(action.key)} className="rounded border-gray-300 text-[#C9A84C] focus:ring-[#C9A84C]" />
+                        <div className={`w-8 h-8 rounded-lg ${action.bg} flex items-center justify-center flex-shrink-0`}>
+                          <action.icon className={`w-4 h-4 ${action.color}`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-medium ${granted ? 'text-gray-900' : 'text-gray-700'}`}>{action.label}</p>
+                          <p className="text-xs text-gray-400">{action.desc}</p>
+                        </div>
+                        {granted && <Check className="w-4 h-4 text-[#C9A84C] flex-shrink-0" />}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3 px-6 py-4 border-t flex-shrink-0">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 py-2.5 bg-[#C9A84C] text-white rounded-xl text-sm font-semibold hover:bg-[#B8953F] disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              Create User
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── User modal ─────────────────────────────────────────────────────
 
 function UserModal({
   user,
   onSave,
+  onResetPassword,
+  onResetPin,
   onClose,
 }: {
   user: User;
   onSave: (data: { role: string; isActive: boolean; permissions: string[] }) => Promise<void>;
+  onResetPassword: (id: string, password: string) => Promise<void>;
+  onResetPin: (id: string, pin: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [role, setRole] = useState(user.role);
@@ -190,6 +410,15 @@ function UserModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [showResetPw, setShowResetPw] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState('');
+  const [showResetPin, setShowResetPin] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinMsg, setPinMsg] = useState('');
 
   // When role changes to a non-admin role, suggest its preset if permissions are empty
   function handleRoleChange(r: typeof role) {
@@ -221,6 +450,38 @@ function UserModal({
       setError(err.message ?? 'Failed to save');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (newPassword.length < 6) { setResetMsg('Password must be at least 6 characters'); return; }
+    setResetLoading(true);
+    setResetMsg('');
+    try {
+      await onResetPassword(user._id, newPassword);
+      setNewPassword('');
+      setShowResetPw(false);
+      setResetMsg('Password updated');
+    } catch (err: any) {
+      setResetMsg(err.message ?? 'Failed to reset password');
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
+  async function handleResetPin() {
+    if (!/^\d{4,8}$/.test(newPin)) { setPinMsg('PIN must be 4–8 digits'); return; }
+    setPinLoading(true);
+    setPinMsg('');
+    try {
+      await onResetPin(user._id, newPin);
+      setNewPin('');
+      setShowResetPin(false);
+      setPinMsg('PIN updated');
+    } catch (err: any) {
+      setPinMsg(err.message ?? 'Failed to update PIN');
+    } finally {
+      setPinLoading(false);
     }
   }
 
@@ -403,6 +664,91 @@ function UserModal({
                 <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${isActive ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </div>
+
+            {/* Reset password */}
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => { setShowResetPw(s => !s); setResetMsg(''); setNewPassword(''); }}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+              >
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <KeyRound className="w-4 h-4 text-gray-400" />
+                  Reset Password
+                </span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showResetPw ? 'rotate-180' : ''}`} />
+              </button>
+              {showResetPw && (
+                <div className="p-4 space-y-3 bg-white">
+                  <div className="relative">
+                    <input
+                      type={showNewPass ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="New password (min. 6 chars)"
+                      className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                    />
+                    <button type="button" onClick={() => setShowNewPass(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {resetMsg && (
+                    <p className={`text-xs ${resetMsg === 'Password updated' ? 'text-green-600' : 'text-red-500'}`}>{resetMsg}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={resetLoading || !newPassword}
+                    className="w-full py-2 bg-gray-800 text-white rounded-xl text-sm font-medium hover:bg-gray-900 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {resetLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Update Password
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Reset POS PIN — only for staff/admin */}
+            {(user.role === 'staff' || user.role === 'admin') && (
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => { setShowResetPin(s => !s); setPinMsg(''); setNewPin(''); }}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Monitor className="w-4 h-4 text-gray-400" />
+                    Reset POS PIN
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showResetPin ? 'rotate-180' : ''}`} />
+                </button>
+                {showResetPin && (
+                  <div className="p-4 space-y-3 bg-white">
+                    <p className="text-xs text-gray-400">Enter a 4–8 digit PIN the staff member will use to log into the POS terminal.</p>
+                    <input
+                      type="number"
+                      value={newPin}
+                      onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      placeholder="e.g. 1234"
+                      maxLength={8}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] tracking-widest font-mono"
+                    />
+                    {pinMsg && (
+                      <p className={`text-xs ${pinMsg === 'PIN updated' ? 'text-green-600' : 'text-red-500'}`}>{pinMsg}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleResetPin}
+                      disabled={pinLoading || !newPin}
+                      className="w-full py-2 bg-gray-800 text-white rounded-xl text-sm font-medium hover:bg-gray-900 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {pinLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      Set PIN
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Footer */}
@@ -476,6 +822,7 @@ export default function UsersPage() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [creating, setCreating] = useState(false);
   const searchRef = useRef<ReturnType<typeof setTimeout>>();
 
   const loadUsers = useCallback(async (pg = page, q = search, role = roleFilter) => {
@@ -511,11 +858,29 @@ export default function UsersPage() {
 
   async function handleSave(data: { role: string; isActive: boolean; permissions: string[] }) {
     if (!editingUser) return;
-    await api.users.updateRole(editingUser._id, data.role as User['role']);
-    if (editingUser.isActive !== data.isActive) await api.users.toggleActive(editingUser._id);
-    if (data.role !== 'admin') await api.users.updatePermissions(editingUser._id, data.permissions);
+    await api.users.update(editingUser._id, {
+      role: data.role,
+      isActive: data.isActive,
+      permissions: data.role === 'admin' ? [] : data.permissions,
+    });
     showToast('User access updated');
     loadUsers(page, search, roleFilter);
+  }
+
+  async function handleCreate(data: { name: string; email: string; password: string; role: string; permissions: string[] }) {
+    await api.users.create(data);
+    showToast('User created');
+    loadUsers(page, search, roleFilter);
+  }
+
+  async function handleResetPassword(id: string, password: string) {
+    await api.users.resetPassword(id, password);
+    showToast('Password updated');
+  }
+
+  async function handleResetPin(id: string, pin: string) {
+    await api.users.resetPin(id, pin);
+    showToast('POS PIN updated');
   }
 
   async function handleDelete() {
@@ -545,11 +910,20 @@ export default function UsersPage() {
   return (
     <AdminLayout>
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-[#C9A84C]" /> User Access Management
-        </h1>
-        <p className="text-gray-500 mt-0.5">Control who can access the admin panel and what they can do</p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <ShieldCheck className="w-6 h-6 text-[#C9A84C]" /> User Access Management
+          </h1>
+          <p className="text-gray-500 mt-0.5">Control who can access the admin panel and what they can do</p>
+        </div>
+        <button
+          onClick={() => setCreating(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#C9A84C] text-white rounded-xl text-sm font-semibold hover:bg-[#B8953F] transition-colors flex-shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          Create User
+        </button>
       </div>
 
       {/* Stats */}
@@ -619,19 +993,20 @@ export default function UsersPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase hidden sm:table-cell">Permissions</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">Joined</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase hidden lg:table-cell">Last Login</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-14 text-center">
+                  <td colSpan={8} className="px-4 py-14 text-center">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-300" />
                   </td>
                 </tr>
               ) : sortedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-14 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-14 text-center text-gray-400">
                     <Users className="w-10 h-10 mx-auto opacity-20 mb-2" />
                     <p className="text-sm">No users found</p>
                   </td>
@@ -667,6 +1042,11 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">
                     {new Date(user.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">
+                    {user.lastLogin
+                      ? new Date(user.lastLogin).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : <span className="text-gray-300">Never</span>}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -718,8 +1098,11 @@ export default function UsersPage() {
         </div>
       )}
 
+      {creating && (
+        <CreateUserModal onSave={handleCreate} onClose={() => setCreating(false)} />
+      )}
       {editingUser && (
-        <UserModal user={editingUser} onSave={handleSave} onClose={() => setEditingUser(null)} />
+        <UserModal user={editingUser} onSave={handleSave} onResetPassword={handleResetPassword} onResetPin={handleResetPin} onClose={() => setEditingUser(null)} />
       )}
       {deletingUser && (
         <DeleteModal user={deletingUser} onConfirm={handleDelete} onClose={() => setDeletingUser(null)} />

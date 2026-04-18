@@ -59,28 +59,28 @@ export default function ImportProductsPage() {
   };
 
   const handleFile = async (selectedFile: File) => {
-    if (!selectedFile.name.endsWith('.csv')) {
-      alert('Please select a CSV file');
+    const ext = selectedFile.name.split('.').pop()?.toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(ext || '')) {
+      alert('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
       return;
     }
-    if (selectedFile.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
       return;
     }
     setFile(selectedFile);
     setImportResult(null);
-    await parseCSVFile(selectedFile);
+    await parseFile(selectedFile);
   };
 
-  const parseCSVFile = async (file: File) => {
+  const parseFile = async (file: File) => {
     setParsing(true);
     try {
-      const text = await file.text();
-      const { products } = await api.products.parseCSV(text);
+      const { products } = await api.products.parseFile(file);
       setParsedProducts(products as unknown as ParsedProduct[]);
     } catch (err) {
       console.error('Parse error:', err);
-      alert('Failed to parse CSV file');
+      alert('Failed to parse file');
     } finally {
       setParsing(false);
     }
@@ -107,11 +107,11 @@ export default function ImportProductsPage() {
   }, [parsedProducts]);
 
   const handleImport = async () => {
-    if (parsedProducts.length === 0) return;
+    if (parsedProducts.length === 0 || !file) return;
     setImporting(true);
     setPreviewMode(false);
     try {
-      const result = await api.products.import(parsedProducts as unknown as Record<string, string>[]);
+      const result = await api.products.importFile(file);
       setImportResult(result);
     } catch (err: any) {
       setImportResult({ success: 0, failed: parsedProducts.length, errors: [err.message] });
@@ -165,14 +165,14 @@ export default function ImportProductsPage() {
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
           >
-            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileSelect} />
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFileSelect} />
             <div className="flex flex-col items-center">
               <div className="h-16 w-16 rounded-2xl bg-[#C9A84C]/10 flex items-center justify-center mb-4">
                 <Upload className="h-8 w-8 text-[#C9A84C]" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Drop your CSV file here</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Drop your file here</h3>
               <p className="text-gray-500 mb-4">or click to browse from your computer</p>
-              <p className="text-sm text-gray-400">Supported format: CSV (max 5MB)</p>
+              <p className="text-sm text-gray-400">Supported formats: CSV, XLSX, XLS (max 10MB)</p>
             </div>
           </div>
         )}
@@ -221,7 +221,7 @@ export default function ImportProductsPage() {
                     <Loader2 className="h-4 w-4 animate-spin" /> Parsing...
                   </div>
                 ) : (
-                  <button onClick={() => parseCSVFile(file)} className="flex items-center gap-2 text-sm text-[#C9A84C] hover:bg-[#C9A84C]/5 px-3 py-1.5 rounded-lg">
+                  <button onClick={() => parseFile(file)} className="flex items-center gap-2 text-sm text-[#C9A84C] hover:bg-[#C9A84C]/5 px-3 py-1.5 rounded-lg">
                     <RefreshCw className="h-4 w-4" /> Re-parse
                   </button>
                 )}

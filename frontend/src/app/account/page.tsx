@@ -17,7 +17,7 @@ import { clearUser, setUser } from '@/store/userSlice';
 import { removeAuthToken } from '@/lib/api/client';
 import { formatPrice } from '@/lib/utils';
 
-type TabType = 'overview' | 'orders' | 'bookings' | 'wishlist' | 'settings';
+type TabType = 'overview' | 'orders' | 'bookings' | 'wishlist' | 'reviews' | 'settings';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
 
@@ -272,6 +272,14 @@ export default function AccountPage() {
   const [wishlistItems, setWishlistItems] = useState<any[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  
+  // Reviews
+  const [productsToReview, setProductsToReview] = useState<any[]>([]);
+  const [selectedProductReview, setSelectedProductReview] = useState<any>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewSubmitMsg, setReviewSubmitMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Settings
   const [profileName,  setProfileName]  = useState('');
@@ -304,6 +312,27 @@ export default function AccountPage() {
       setOrders(Array.isArray(oData) ? oData : []);
       setWishlistItems(Array.isArray(wData) ? wData : []);
       setBookings(Array.isArray(bData) ? bData : []);
+      
+      // Extract products from delivered orders that can be reviewed
+      const deliveredOrders = (Array.isArray(oData) ? oData : []).filter(
+        (o: any) => o.status === 'delivered'
+      );
+      const products: any[] = [];
+      const seenProducts = new Set<string>();
+      deliveredOrders.forEach((order: any) => {
+        order.items?.forEach((item: any) => {
+          const productId = item.product?._id || item.productId;
+          if (productId && !seenProducts.has(productId)) {
+            seenProducts.add(productId);
+            products.push({
+              ...item.product,
+              orderId: order._id,
+              orderDate: order.createdAt,
+            });
+          }
+        });
+      });
+      setProductsToReview(products);
     } catch {}
     setLoading(false);
   };
@@ -333,6 +362,40 @@ export default function AccountPage() {
     setTimeout(() => setSaveMsg(null), 4000);
   };
 
+  const handleSubmitReview = async () => {
+    if (!selectedProductReview) return;
+    const token = localStorage.getItem('kentaz_token');
+    setSubmittingReview(true);
+    setReviewSubmitMsg(null);
+    try {
+      const res = await fetch(`${API}/api/store/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          product: selectedProductReview._id || selectedProductReview.productId,
+          rating: reviewRating,
+          comment: reviewComment,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setReviewSubmitMsg({ ok: true, text: 'Review submitted! Thank you.' });
+        setProductsToReview(productsToReview.filter(p => 
+          (p._id || p.productId) !== (selectedProductReview._id || selectedProductReview.productId)
+        ));
+        setSelectedProductReview(null);
+        setReviewRating(5);
+        setReviewComment('');
+      } else {
+        setReviewSubmitMsg({ ok: false, text: data.error || 'Failed to submit review' });
+      }
+    } catch {
+      setReviewSubmitMsg({ ok: false, text: 'Network error. Try again.' });
+    }
+    setSubmittingReview(false);
+    setTimeout(() => setReviewSubmitMsg(null), 4000);
+  };
+
   if (!isAuthenticated || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -351,7 +414,8 @@ export default function AccountPage() {
     { id: 'orders',    label: 'Orders',    icon: ShoppingBag, count: orders.length   },
     { id: 'bookings',  label: 'Bookings',  icon: Calendar,    count: bookings.length },
     { id: 'wishlist',  label: 'Wishlist',  icon: Heart,       count: wishlistItems.length },
-    { id: 'settings',  label: 'Settings',  icon: Settings    },
+    { id: 'reviews',   label: 'Reviews',    icon: Star,        count: productsToReview.length },
+    { id: 'settings',  label: 'Settings',   icon: Settings    },
   ];
 
   return (
@@ -775,6 +839,118 @@ export default function AccountPage() {
                       <h3 className="font-bold text-gray-900 mb-1">Wishlist is empty</h3>
                       <p className="text-sm text-gray-500 mb-5">Save items you love to find them easily later.</p>
                       <Link href="/products"><button className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-sm transition-colors">Explore Products</button></Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── REVIEWS ── */}
+              {activeTab === 'reviews' && (
+                <div>
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-xl font-bold text-gray-900">My Reviews <span className="text-gray-400 font-normal text-base">({productsToReview.length})</span></h2>
+                  </div>
+
+                  {productsToReview.length === 0 && !selectedProductReview ? (
+                    <div className="bg-white rounded-3xl border-2 border-dashed border-gray-200 p-16 text-center">
+                      <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Star className="h-8 w-8 text-amber-300" />
+                      </div>
+                      <h3 className="font-bold text-gray-900 mb-1">No products to review</h3>
+                      <p className="text-sm text-gray-500 mb-5">Products from delivered orders will appear here for review.</p>
+                      <Link href="/products"><button className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-sm transition-colors">Browse Products</button></Link>
+                    </div>
+                  ) : selectedProductReview ? (
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 max-w-2xl">
+                      <div className="flex items-center gap-4 mb-6">
+                        <button onClick={() => setSelectedProductReview(null)} className="text-gray-400 hover:text-gray-600">
+                          <ChevronRight className="h-5 w-5 rotate-180" />
+                        </button>
+                        <h3 className="font-bold text-gray-900">Write a Review</h3>
+                      </div>
+                      
+                      <div className="flex items-center gap-4 mb-6 p-4 bg-gray-50 rounded-2xl">
+                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-200 flex-shrink-0">
+                          {selectedProductReview.images?.[0]?.url
+                            ? <Image src={selectedProductReview.images[0].url} alt={selectedProductReview.name} width={64} height={64} className="w-full h-full object-cover" />
+                            : <div className="w-full h-full flex items-center justify-center"><Package className="h-6 w-6 text-gray-400" /></div>}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{selectedProductReview.name}</p>
+                          <p className="text-xs text-gray-400">From order #{selectedProductReview.orderId?.slice(-8).toUpperCase()}</p>
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Rating</label>
+                        <div className="flex gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              onClick={() => setReviewRating(star)}
+                              className="p-1 transition-transform hover:scale-110"
+                            >
+                              <Star className={`h-8 w-8 ${star <= reviewRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {reviewRating === 5 ? 'Excellent' : reviewRating === 4 ? 'Very Good' : reviewRating === 3 ? 'Good' : reviewRating === 2 ? 'Fair' : 'Poor'}
+                        </p>
+                      </div>
+
+                      <div className="mb-6">
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Your Review (optional)</label>
+                        <textarea
+                          value={reviewComment}
+                          onChange={(e) => setReviewComment(e.target.value)}
+                          placeholder="Share your experience with this product..."
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-colors min-h-[120px] resize-none"
+                        />
+                      </div>
+
+                      {reviewSubmitMsg && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                          className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm mb-4 ${reviewSubmitMsg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}
+                        >
+                          {reviewSubmitMsg.ok ? <CheckCircle className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+                          {reviewSubmitMsg.text}
+                        </motion.div>
+                      )}
+
+                      <button
+                        onClick={handleSubmitReview}
+                        disabled={submittingReview}
+                        className="flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-900 font-semibold rounded-xl text-sm transition-colors"
+                      >
+                        {submittingReview ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting...</> : <><CheckCircle className="h-4 w-4" /> Submit Review</>}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {productsToReview.map((product: any) => (
+                        <motion.div key={product._id || product.productId} whileHover={{ y: -4 }} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all">
+                          <div className="relative aspect-square bg-gray-100">
+                            {product.images?.[0]?.url
+                              ? <Image src={product.images[0].url} alt={product.name} fill className="object-cover" />
+                              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-6 w-6 text-gray-300" /></div>}
+                          </div>
+                          <div className="p-4">
+                            <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-2">{product.name}</p>
+                            <p className="text-xs text-gray-400 mb-3">From order #{product.orderId?.slice(-8).toUpperCase()}</p>
+                            <button
+                              onClick={() => {
+                                setSelectedProductReview(product);
+                                setReviewRating(5);
+                                setReviewComment('');
+                              }}
+                              className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                            >
+                              <Star className="h-4 w-4" /> Write Review
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
                     </div>
                   )}
                 </div>

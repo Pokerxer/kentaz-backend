@@ -4,36 +4,39 @@ const { auth, adminOnly } = require('../middleware/auth');
 const Order = require('../models/Order');
 const Sale = require('../models/Sale');
 const User = require('../models/User');
+const Product = require('../models/Product');
 
 // ── GET /api/admin/analytics?period=7d|30d|90d|12m ──────────────
 router.get('/', auth, adminOnly, async (req, res) => {
   try {
     const period = req.query.period || '30d';
     const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    now.setUTCHours(23, 59, 59, 999);
+    // UTC midnight — keeps bucket keys aligned with MongoDB's $dateToString (which outputs UTC dates)
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
 
     let start, prevStart, prevEnd, dateFormat;
 
     if (period === '7d') {
-      start = new Date(todayStart); start.setDate(todayStart.getDate() - 6);
-      prevEnd = new Date(start); prevEnd.setMilliseconds(-1);
-      prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 6); prevStart.setHours(0, 0, 0, 0);
+      start = new Date(todayStart); start.setUTCDate(todayStart.getUTCDate() - 6);
+      prevEnd = new Date(start); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(prevEnd); prevStart.setUTCDate(prevEnd.getUTCDate() - 6); prevStart.setUTCHours(0, 0, 0, 0);
       dateFormat = '%Y-%m-%d';
     } else if (period === '30d') {
-      start = new Date(todayStart); start.setDate(todayStart.getDate() - 29);
-      prevEnd = new Date(start); prevEnd.setMilliseconds(-1);
-      prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 29); prevStart.setHours(0, 0, 0, 0);
+      start = new Date(todayStart); start.setUTCDate(todayStart.getUTCDate() - 29);
+      prevEnd = new Date(start); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(prevEnd); prevStart.setUTCDate(prevEnd.getUTCDate() - 29); prevStart.setUTCHours(0, 0, 0, 0);
       dateFormat = '%Y-%m-%d';
     } else if (period === '90d') {
-      start = new Date(todayStart); start.setDate(todayStart.getDate() - 89);
-      prevEnd = new Date(start); prevEnd.setMilliseconds(-1);
-      prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 89); prevStart.setHours(0, 0, 0, 0);
+      start = new Date(todayStart); start.setUTCDate(todayStart.getUTCDate() - 89);
+      prevEnd = new Date(start); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(prevEnd); prevStart.setUTCDate(prevEnd.getUTCDate() - 89); prevStart.setUTCHours(0, 0, 0, 0);
       dateFormat = '%Y-%m-%d';
     } else { // 12m
-      start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-      prevEnd = new Date(start); prevEnd.setMilliseconds(-1);
-      prevStart = new Date(prevEnd.getFullYear(), prevEnd.getMonth() - 11, 1);
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
+      prevEnd = new Date(start); prevEnd.setUTCMilliseconds(-1);
+      prevStart = new Date(Date.UTC(prevEnd.getUTCFullYear(), prevEnd.getUTCMonth() - 11, 1));
       dateFormat = '%Y-%m';
     }
 
@@ -48,7 +51,14 @@ router.get('/', auth, adminOnly, async (req, res) => {
       paymentMethods,
       topPosProducts,
       topOrderProducts,
-      topCategories,
+      posCategories,
+      orderCategories,
+      refundAgg,
+      discountAgg,
+      avgItemsAgg,
+      topCashiersAgg,
+      totalCustomers,
+      recentOrdersRaw,
     ] = await Promise.all([
       // Order trend
       Order.aggregate([
@@ -83,15 +93,24 @@ router.get('/', auth, adminOnly, async (req, res) => {
       // New customers
       User.countDocuments({ role: 'customer', createdAt: { $gte: start, $lte: now } }),
       User.countDocuments({ role: 'customer', createdAt: { $gte: prevStart, $lte: prevEnd } }),
-      // Order status breakdown
+      // Order status breakdown (all-time — shows current pipeline state)
       Order.aggregate([
-        { $match: { createdAt: { $gte: start, $lte: now } } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
-      // Payment methods (POS)
+      // Payment methods (POS) — split sales are broken down by splitPayments sub-array
       Sale.aggregate([
         { $match: { type: 'sale', status: 'completed', createdAt: { $gte: start, $lte: now } } },
-        { $group: { _id: '$paymentMethod', revenue: { $sum: '$total' }, count: { $sum: 1 } } },
+        { $facet: {
+          regular: [
+            { $match: { paymentMethod: { $ne: 'split' } } },
+            { $group: { _id: '$paymentMethod', revenue: { $sum: '$total' }, count: { $sum: 1 } } },
+          ],
+          split: [
+            { $match: { paymentMethod: 'split' } },
+            { $unwind: '$splitPayments' },
+            { $group: { _id: '$splitPayments.method', revenue: { $sum: '$splitPayments.amount' }, count: { $sum: 1 } } },
+          ],
+        }},
       ]),
       // Top products by POS
       Sale.aggregate([
@@ -125,19 +144,54 @@ router.get('/', auth, adminOnly, async (req, res) => {
         { $unwind: { path: '$pd', preserveNullAndEmptyArrays: true } },
         { $project: { name: 1, revenue: 1, qty: 1, image: { $arrayElemAt: ['$pd.images.url', 0] } } },
       ]),
-      // Top categories (from POS)
+      // Category source — POS: group by product ID only (category resolved in JS below)
       Sale.aggregate([
         { $match: { type: 'sale', status: 'completed', createdAt: { $gte: start, $lte: now } } },
         { $unwind: '$items' },
-        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
-        { $unwind: { path: '$prod', preserveNullAndEmptyArrays: true } },
-        { $group: { _id: '$prod.category', revenue: { $sum: '$items.total' }, qty: { $sum: '$items.quantity' } } },
-        { $sort: { revenue: -1 } },
-        { $limit: 6 },
-        { $lookup: { from: 'categories', localField: '_id', foreignField: '_id', as: 'cat' } },
-        { $unwind: { path: '$cat', preserveNullAndEmptyArrays: true } },
-        { $project: { name: { $ifNull: ['$cat.name', 'Uncategorized'] }, revenue: 1, qty: 1 } },
+        { $group: { _id: '$items.product', revenue: { $sum: '$items.total' }, qty: { $sum: '$items.quantity' } } },
       ]),
+      // Category source — Online Orders: group by product ID only
+      Order.aggregate([
+        { $match: { createdAt: { $gte: start, $lte: now }, status: { $ne: 'cancelled' } } },
+        { $unwind: '$items' },
+        { $group: {
+          _id: '$items.product',
+          revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+          qty: { $sum: '$items.quantity' },
+        }},
+      ]),
+      // Refunds
+      Sale.aggregate([
+        { $match: { type: 'refund', createdAt: { $gte: start, $lte: now } } },
+        { $group: { _id: null, count: { $sum: 1 }, total: { $sum: { $abs: '$total' } } } },
+      ]),
+      // Discounts given (POS)
+      Sale.aggregate([
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: start, $lte: now } } },
+        { $group: { _id: null, total: { $sum: '$discountAmount' } } },
+      ]),
+      // Avg items per POS transaction
+      Sale.aggregate([
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: start, $lte: now } } },
+        { $project: { itemCount: { $size: '$items' } } },
+        { $group: { _id: null, avg: { $avg: '$itemCount' } } },
+      ]),
+      // Top cashiers by revenue
+      Sale.aggregate([
+        { $match: { type: 'sale', status: 'completed', createdAt: { $gte: start, $lte: now } } },
+        { $group: { _id: '$cashierName', revenue: { $sum: '$total' }, count: { $sum: 1 } } },
+        { $match: { _id: { $ne: null } } },
+        { $sort: { revenue: -1 } },
+        { $limit: 5 },
+      ]),
+      // Total customers (all-time)
+      User.countDocuments({ role: 'customer' }),
+      // Recent online orders
+      Order.find()
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .select('_id total status createdAt items shippingAddress')
+        .lean(),
     ]);
 
     // ── Build trend buckets (fill gaps) ────────────────────────────
@@ -183,12 +237,69 @@ router.get('/', auth, adminOnly, async (req, res) => {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 8);
 
+    // ── Resolve categories via Product.find (same pattern as inventoryController) ──
+    const allCatSales = [...posCategories, ...orderCategories].filter(s => s._id != null);
+    const catProductIds = [...new Set(allCatSales.map(s => String(s._id)))];
+    const catProducts = await Product.find({ _id: { $in: catProductIds } })
+      .select('category')
+      .lean();
+    const catProdMap = Object.fromEntries(catProducts.map(p => [String(p._id), p.category || 'Uncategorized']));
+
+    const catRev = {};
+    const catQty = {};
+    for (const s of allCatSales) {
+      const cat = catProdMap[String(s._id)] || 'Uncategorized';
+      catRev[cat] = (catRev[cat] || 0) + (s.revenue || 0);
+      catQty[cat] = (catQty[cat] || 0) + (s.qty    || 0);
+    }
+    const topCategories = Object.entries(catRev)
+      .map(([name, revenue]) => ({ name, revenue, qty: catQty[name] || 0 }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 6);
+
+    // ── Low stock products ──────────────────────────────────────────
+    const lowStock = await Product.aggregate([
+      { $match: { status: 'published' } },
+      { $addFields: {
+        totalStock: { $sum: '$variants.stock' },
+        threshold:  { $ifNull: ['$minStock', 5] },
+      }},
+      { $match: { $expr: { $lte: ['$totalStock', '$threshold'] } } },
+      { $sort: { totalStock: 1 } },
+      { $limit: 5 },
+      { $project: { name: 1, category: 1, totalStock: 1, minStock: '$threshold', image: { $arrayElemAt: ['$images.url', 0] } } },
+    ]);
+
+    // ── Shape new widget data ────────────────────────────────────────
+    const refunds = {
+      count: refundAgg[0]?.count || 0,
+      total: refundAgg[0]?.total || 0,
+    };
+    const totalDiscounts  = discountAgg[0]?.total  || 0;
+    const avgItemsPerTx   = Math.round((avgItemsAgg[0]?.avg || 0) * 10) / 10;
+    const topCashiers     = topCashiersAgg.map(c => ({ name: c._id || 'Unknown', revenue: c.revenue, count: c.count }));
+    const recentOrders = recentOrdersRaw.map(o => {
+      const sa = o.shippingAddress || {};
+      const customer = [sa.firstName, sa.lastName].filter(Boolean).join(' ') || sa.email || 'Guest';
+      return {
+        _id:       String(o._id),
+        total:     o.total,
+        status:    o.status,
+        createdAt: o.createdAt,
+        itemCount: o.items?.length || 0,
+        customer,
+      };
+    });
+
     // ── Status / payment maps ───────────────────────────────────────
     const statusMap = { pending: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0 };
     for (const s of orderStatusBreakdown) if (s._id) statusMap[s._id] = s.count;
 
     const pmMap = { cash: 0, card: 0, transfer: 0 };
-    for (const pm of paymentMethods) if (pm._id) pmMap[pm._id] = pm.revenue;
+    const pmRaw = [...(paymentMethods[0]?.regular || []), ...(paymentMethods[0]?.split || [])];
+    for (const pm of pmRaw) {
+      if (pm._id && pm._id in pmMap) pmMap[pm._id] += pm.revenue;
+    }
 
     res.json({
       period,
@@ -205,9 +316,23 @@ router.get('/', auth, adminOnly, async (req, res) => {
       },
       trend,
       topProducts,
-      topCategories: topCategories.map(c => ({ name: c.name, revenue: c.revenue, qty: c.qty })),
+      topCategories,
       orderStatusBreakdown: statusMap,
       paymentMethods: pmMap,
+      refunds,
+      totalDiscounts,
+      avgItemsPerTx,
+      totalCustomers,
+      topCashiers,
+      recentOrders,
+      lowStock: lowStock.map(p => ({
+        _id:        String(p._id),
+        name:       p.name,
+        category:   p.category || 'Uncategorized',
+        totalStock: p.totalStock,
+        minStock:   p.minStock || 5,
+        image:      p.image || null,
+      })),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -220,31 +345,31 @@ function generateBuckets(period, todayStart) {
 
   if (period === '7d') {
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(todayStart); d.setDate(todayStart.getDate() - i);
+      const d = new Date(todayStart); d.setUTCDate(todayStart.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric' });
+      const label = d.toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
       buckets.push({ key, label });
     }
   } else if (period === '30d') {
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(todayStart); d.setDate(todayStart.getDate() - i);
+      const d = new Date(todayStart); d.setUTCDate(todayStart.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' });
+      const label = d.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'UTC' });
       buckets.push({ key, label });
     }
   } else if (period === '90d') {
     for (let i = 89; i >= 0; i--) {
-      const d = new Date(todayStart); d.setDate(todayStart.getDate() - i);
+      const d = new Date(todayStart); d.setUTCDate(todayStart.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString('en-NG', { month: 'short', day: 'numeric' });
+      const label = d.toLocaleDateString('en-NG', { month: 'short', day: 'numeric', timeZone: 'UTC' });
       buckets.push({ key, label });
     }
   } else { // 12m
     const now = new Date();
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit' });
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const key = d.toISOString().slice(0, 7); // "YYYY-MM"
+      const label = d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'UTC' });
       buckets.push({ key, label });
     }
   }

@@ -8,7 +8,6 @@ import { useAdminStore } from '@/store/admin-store';
 import { useAuthStore } from '@/store/auth-store';
 import { canAccessPath } from '@/components/AuthProvider';
 import {
-  LayoutDashboard,
   Package,
   ShoppingCart,
   Users,
@@ -40,6 +39,7 @@ import {
   ShieldCheck,
   Key,
   Lock,
+  Image,
 } from 'lucide-react';
 
 const productsSubMenu = [
@@ -61,7 +61,7 @@ type NavItem = {
 };
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
+  { name: 'Dashboard',    href: '/dashboard',    icon: BarChart3 },
   { name: 'Point of Sale',href: '/pos/dashboard',icon: Monitor,       external: true },
   { name: 'POS Sales',    href: '/pos/sales',    icon: Receipt,       external: true },
   { name: 'Products',     href: '/products',     icon: Package,       hasDropdown: true, roles: ['admin'] },
@@ -74,11 +74,11 @@ const navigation: NavItem[] = [
   { name: 'Staff',        href: '/staff',        icon: UserCog,       roles: ['admin'] },
   { name: 'Categories',   href: '/categories',   icon: Tags,          roles: ['admin'] },
   { name: 'Discounts',    href: '/discounts',    icon: Percent,       roles: ['admin'] },
+  { name: 'Hero Banners',  href: '/heroes',      icon: Image,         roles: ['admin'] },
   { name: 'Gift Cards',   href: '/gift-cards',   icon: CreditCard,    roles: ['admin'] },
   { name: 'Shipping',     href: '/shipping',     icon: Truck,         roles: ['admin'] },
   { name: 'Reviews',      href: '/reviews',      icon: MessageSquare, roles: ['admin'] },
   { name: 'Wishlists',    href: '/wishlists',    icon: Heart,         roles: ['admin'] },
-  { name: 'Analytics',    href: '/analytics',    icon: BarChart3,     roles: ['admin'] },
   { name: 'Notifications',href: '/notifications',icon: Bell },
   { name: 'Announcements',href: '/announcements',icon: Megaphone,     roles: ['admin'] },
   { name: 'Reports',      href: '/reports',      icon: FileText,      roles: ['admin'] },

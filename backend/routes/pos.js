@@ -3,6 +3,7 @@ const router = express.Router();
 const { auth, posAccess, adminOnly } = require('../middleware/auth');
 const {
   posLogin,
+  getPosStaffList,
   getPosProducts,
   toggleFavorite,
   createSale,
@@ -24,7 +25,8 @@ const {
   deleteOfflineSale,
 } = require('../controllers/posController');
 
-// Public POS login
+// Public POS endpoints (no auth required)
+router.get('/staff-list', getPosStaffList);
 router.post('/login', posLogin);
 
 // POS operations (staff or admin)

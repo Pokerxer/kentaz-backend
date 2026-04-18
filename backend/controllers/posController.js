@@ -12,25 +12,72 @@ const { trackSale } = require('./customerController');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kentaz-super-secret-jwt';
 
+// GET /api/pos/staff-list — public, returns selectable staff for the login screen
+exports.getPosStaffList = async (req, res) => {
+  try {
+    const staff = await User.find({ role: { $in: ['staff', 'admin'] }, isActive: { $ne: false } })
+      .select('name role avatar')
+      .lean();
+    res.json(staff.map(u => ({
+      _id:      u._id,
+      name:     u.name,
+      role:     u.role,
+      avatar:   u.avatar || null,
+      initials: u.name.trim().split(/\s+/).map(n => n[0]).join('').toUpperCase().slice(0, 2),
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // POST /api/pos/login
+// Accepts { email, password } OR { userId, pin } OR { userId, password }
 exports.posLogin = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const { email, userId, password, pin } = req.body;
+    const credential = pin || password;
+    if (!credential) return res.status(400).json({ error: 'PIN or password is required' });
+
+    const user = userId
+      ? await User.findById(userId)
+      : await User.findOne({ email });
+
     if (!user) return res.status(400).json({ error: 'Invalid credentials' });
     if (user.role !== 'staff' && user.role !== 'admin') {
       return res.status(403).json({ error: 'Not authorized for POS access' });
     }
     if (user.isActive === false) return res.status(403).json({ error: 'Account is inactive' });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+    // PIN takes priority if provided and user has one set; fall back to password
+    let isMatch = false;
+    if (pin && user.pin) {
+      isMatch = await bcrypt.compare(pin, user.pin);
+    } else {
+      isMatch = await bcrypt.compare(credential, user.password);
+    }
+    if (!isMatch) return res.status(400).json({ error: 'Incorrect PIN' });
 
     const token = jwt.sign({ id: user._id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '12h' });
     res.json({
       user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, permissions: user.permissions || [] },
       token,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// PUT /api/admin/staff/:id/pin — admin sets a staff member's PIN
+exports.setStaffPin = async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin || !/^\d{4,8}$/.test(String(pin))) {
+      return res.status(400).json({ error: 'PIN must be 4–8 digits' });
+    }
+    const hashed = await bcrypt.hash(String(pin), 10);
+    const user = await User.findByIdAndUpdate(req.params.id, { pin: hashed }, { new: true }).select('-password -pin');
+    if (!user) return res.status(404).json({ error: 'Staff not found' });
+    res.json({ message: 'PIN updated', staff: user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
