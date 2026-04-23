@@ -7,6 +7,7 @@ const {
   getAdminBookings,
   updateBookingStatus,
   initializeBookingPayment,
+  verifyBookingPayment,
   getAvailableSlots,
   cancelBooking,
   getTherapists,
@@ -19,6 +20,7 @@ router.get('/slots', auth, getAvailableSlots);
 router.get('/therapists', auth, getTherapists);
 router.get('/:id', auth, getBooking);
 router.post('/:id/pay', auth, initializeBookingPayment);
+router.post('/:id/verify', auth, verifyBookingPayment);
 router.post('/:id/cancel', auth, cancelBooking);
 
 router.get('/admin/bookings', auth, adminOnly, getAdminBookings);

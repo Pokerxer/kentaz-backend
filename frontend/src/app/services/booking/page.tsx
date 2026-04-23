@@ -105,7 +105,7 @@ function formatNGN(n: number) {
 function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { initializePayment, verifyPayment, isReady: paystackReady } = usePaystack();
+  const { isReady: paystackReady } = usePaystack();
 
   const serviceType = (searchParams.get('type') || 'therapy') as 'therapy' | 'podcast';
   const service = serviceInfo[serviceType] ?? serviceInfo.therapy;
@@ -242,32 +242,65 @@ function BookingPageContent() {
 
   // ── Payment ───────────────────────────────────────────────
   const handlePayment = async () => {
+    if (!bookingId) {
+      setError('No booking found. Please try again.');
+      return;
+    }
     setPaymentLoading(true);
     setError(null);
     const userData = JSON.parse(localStorage.getItem('kentaz_user') || '{}');
     if (!userData.email) {
       setError('Please log in to complete your booking.');
       router.push('/login?redirect=/services/booking?type=' + serviceType);
+      setPaymentLoading(false);
       return;
     }
     try {
-      initializePayment({
+      const token = localStorage.getItem('kentaz_token');
+      const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+
+      // Step 1: initialize on backend — get booking-tied reference
+      const initRes = await fetch(`${BASE}/api/store/bookings/${bookingId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      if (!initRes.ok) {
+        const d = await initRes.json();
+        throw new Error(d.error || 'Failed to initialise payment');
+      }
+      const { accessCode, reference } = await initRes.json();
+
+      // Step 2: open Paystack popup with the booking-tied access code
+      const handler = (window as any).PaystackPop.setup({
+        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
         email: userData.email,
-        amount: service.priceNGN * 100,   // kobo
-        firstName: userData.name?.split(' ')[0] || '',
-        lastName: userData.name?.split(' ').slice(1).join(' ') || '',
-        onSuccess: async (ref) => {
-          const verified = await verifyPayment(ref.reference);
-          if (verified) {
+        amount: service.priceNGN * 100,
+        access_code: accessCode,
+        ref: reference,
+        callback: async (txn: { reference: string }) => {
+          try {
+            // Step 3: verify on backend — marks booking paid + confirmed
+            const vRes = await fetch(`${BASE}/api/store/bookings/${bookingId}/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ reference: txn.reference }),
+            });
+            if (!vRes.ok) {
+              const d = await vRes.json();
+              setError(`Paid but verification failed — reference: ${txn.reference}. Contact support.`);
+              console.error('verify error', d);
+              return;
+            }
             setCurrentStep('confirmation');
-          } else {
-            setError('Payment verification failed. Contact support with reference: ' + ref.reference);
+          } catch {
+            setError(`Paid but verification failed — reference: ${txn.reference}. Contact support.`);
           }
         },
         onClose: () => {
           setError('Payment was cancelled. Your booking is saved — return to pay later.');
         },
       });
+      handler.openIframe();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to initialise payment');
     } finally {

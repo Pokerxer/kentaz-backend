@@ -48,52 +48,55 @@ exports.uploadFile = uploadFile;
 
 exports.getCategories = async (req, res) => {
   try {
-    // Aggregate by category, get count and a sample product image per category
-    const categories = await Product.aggregate([
-      { $match: { 'images.0': { $exists: true } } },
-      { $group: {
-          _id: '$category',
-          count: { $sum: 1 },
-          sampleImage: { $first: { $arrayElemAt: ['$images.url', 0] } }
-      }},
-      { $sort: { count: -1 } }
-    ]);
+    const Category = require('../models/Category');
 
+    // Fallback images for all known categories
     const categoryImages = {
-      'Male Fashion': 'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600',
-      'Female Fashion': 'https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600',
-      'Kiddies Fashion': 'https://images.unsplash.com/photo-1519234935892-7cb5d9e5b2e7?w=600',
-      'Skincare': 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600',
-      'Luxury Hair': 'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600',
-      'Bags & Purses': 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600',
-      'Shoes': 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600',
-      'Accessories': 'https://images.unsplash.com/photo-1611923134239-b9be5816e23c?w=600',
-      'Perfumes': 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=600',
-      'Gift Items': 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?w=600'
+      'Female Fashion':    'https://images.unsplash.com/photo-1485968579169-a6e9dc7d3a84?w=600',
+      'Mens Wear':         'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=600',
+      'Male Fashion':      'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600',
+      'Turkey Wears':      'https://images.unsplash.com/photo-1601924994987-69e26d50dc26?w=600',
+      'U.S Wears':         'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=600',
+      'China Wears':       'https://images.unsplash.com/photo-1594938298603-c8148c4b4e41?w=600',
+      'Abayas':            'https://images.unsplash.com/photo-1626436819054-14e0c4deaef8?w=600',
+      'Sport Wear':        'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600',
+      'Children':          'https://images.unsplash.com/photo-1519457431-44ccd64a579b?w=600',
+      'Kiddies Fashion':   'https://images.unsplash.com/photo-1519234935892-7cb5d9e5b2e7?w=600',
+      'Shoes':             'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600',
+      'Bags':              'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600',
+      'Bags & Purses':     'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600',
+      'Accessories':       'https://images.unsplash.com/photo-1611923134239-b9be5816e23c?w=600',
+      'Jewelry':           'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600',
+      'Beauty & Skincare': 'https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=600',
+      'Skincare':          'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600',
+      'Human Hair':        'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600',
+      'Luxury Hair':       'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600',
+      'Luxury Human Hair': 'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600',
+      'Perfumes':          'https://images.unsplash.com/photo-1541643600914-78b084683601?w=600',
+      'Gift Items':        'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?w=600',
+      'Adult Toys':        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600',
     };
 
-    const categoryDescriptions = {
-      'Male Fashion': 'Premium suits, casuals, and accessories for the modern gentleman',
-      'Female Fashion': 'Elegant dresses, gowns, and contemporary styles for her',
-      'Kiddies Fashion': 'Adorable outfits for your little ones',
-      'Skincare': 'Luxury skincare and beauty products for radiant skin',
-      'Luxury Hair': 'Premium virgin hair extensions and luxury wigs',
-      'Bags & Purses': 'Designer bags and statement pieces',
-      'Shoes': 'Handcrafted footwear for every occasion',
-      'Accessories': 'Watches, jewelry, and premium accessories',
-      'Perfumes': 'Signature fragrances that leave a lasting impression',
-      'Gift Items': 'Perfect gifts for every occasion'
-    };
+    // Get all active categories sorted by sortOrder
+    const dbCategories = await Category.find({ isActive: true }).sort({ sortOrder: 1 }).lean();
 
-    const result = categories.map(cat => ({
-      name: cat._id || 'Other',
-      // handle matches exact category name so frontend filtering works
-      handle: cat._id || 'Other',
-      count: cat.count,
-      // prefer a real product image, fall back to curated Unsplash
-      image: cat.sampleImage || categoryImages[cat._id] || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600',
-      description: categoryDescriptions[cat._id] || 'Explore our collection'
-    }));
+    // Aggregate product counts per category
+    const counts = await Product.aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 }, sampleImage: { $first: { $arrayElemAt: ['$images.url', 0] } } } }
+    ]);
+    const countMap = {};
+    counts.forEach(c => { countMap[c._id] = { count: c.count, sampleImage: c.sampleImage }; });
+
+    const result = dbCategories.map(cat => {
+      const stats = countMap[cat.name] || { count: 0, sampleImage: null };
+      return {
+        name: cat.name,
+        handle: cat.name,
+        count: stats.count,
+        image: stats.sampleImage || cat.image || categoryImages[cat.name] || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600',
+        description: cat.description || 'Explore our collection',
+      };
+    });
 
     res.json(result);
   } catch (err) {
@@ -122,8 +125,11 @@ exports.getTrendingProducts = async (req, res) => {
       return res.json({ products: trending, total: trending.length, source: 'sales' });
     }
 
-    // Fallback: featured products
-    let products = await Product.find({ featured: true }).sort({ createdAt: -1 }).limit(limit).lean();
+    // Fallback: prefer products with images, then featured, then any
+    let products = await Product.find({ 'images.0': { $exists: true }, featured: true }).sort({ createdAt: -1 }).limit(limit).lean();
+    if (products.length < 4) {
+      products = await Product.find({ 'images.0': { $exists: true } }).sort({ createdAt: -1 }).limit(limit).lean();
+    }
     if (products.length < 4) {
       products = await Product.find({}).sort({ createdAt: -1 }).limit(limit).lean();
     }

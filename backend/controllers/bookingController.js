@@ -2,6 +2,7 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const User = require('../models/User');
+const { sendBookingEmails } = require('../utils/email');
 
 exports.createBooking = async (req, res) => {
   try {
@@ -22,6 +23,11 @@ exports.createBooking = async (req, res) => {
     const populated = await Booking.findById(booking._id)
       .populate('user', 'name email')
       .populate('therapistId', 'name avatar');
+
+    // Send "booking received, awaiting payment" email
+    const user = await User.findById(req.user.id).select('name email');
+    if (user) sendBookingEmails(populated, user, 'new').catch(() => {});
+
     res.status(201).json(populated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -170,6 +176,47 @@ exports.getTherapists = async (req, res) => {
     res.json(therapists);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+exports.verifyBookingPayment = async (req, res) => {
+  try {
+    const { reference } = req.body;
+    if (!reference) return res.status(400).json({ error: 'reference is required' });
+
+    const booking = await Booking.findOne({ _id: req.params.id, user: req.user.id });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.paymentStatus === 'paid') {
+      return res.json({ success: true, booking });
+    }
+
+    const txn = await axios.get(
+      `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
+    );
+
+    const { status } = txn.data.data;
+    if (status !== 'success') {
+      return res.status(400).json({ error: 'Payment not successful on Paystack' });
+    }
+
+    booking.paymentStatus = 'paid';
+    booking.status = 'confirmed';
+    booking.paystackRef = reference;
+    await booking.save();
+
+    const populated = await Booking.findById(booking._id)
+      .populate('user', 'name email')
+      .populate('therapistId', 'name avatar');
+
+    // Send "booking confirmed + paid" email
+    const user = await User.findById(req.user.id).select('name email');
+    if (user) sendBookingEmails(populated, user, 'paid').catch(() => {});
+
+    res.json({ success: true, booking: populated });
+  } catch (err) {
+    console.error('Booking verify error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
   }
 };
 

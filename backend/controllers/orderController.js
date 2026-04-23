@@ -1,4 +1,6 @@
 const Order = require('../models/Order');
+const User = require('../models/User');
+const { sendEmail, getOrderStatusEmailHtml } = require('../utils/email');
 
 exports.createOrder = async (req, res) => {
   try {
@@ -113,6 +115,17 @@ exports.updateOrderStatus = async (req, res) => {
       .populate('user', 'name email phone')
       .populate('items.product', 'name images slug category');
     if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // Notify customer on meaningful status changes
+    const notifyStatuses = ['shipped', 'delivered', 'cancelled'];
+    if (notifyStatuses.includes(status) && order.user?.email) {
+      sendEmail(
+        order.user.email,
+        `Your Kentaz order is ${status.charAt(0).toUpperCase() + status.slice(1)} — #${order._id}`,
+        getOrderStatusEmailHtml(order, order.user)
+      ).catch(err => console.error('Status email error:', err.message));
+    }
+
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });

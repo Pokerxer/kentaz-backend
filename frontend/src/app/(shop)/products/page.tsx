@@ -9,19 +9,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProductContent } from '@/components/shop/ProductContent';
 
-const categories = [
-  { name: 'All', handle: 'all' },
-  { name: 'Male Fashion', handle: 'Male Fashion' },
-  { name: 'Female Fashion', handle: 'Female Fashion' },
-  { name: 'Kiddies Fashion', handle: 'Kiddies Fashion' },
-  { name: 'Skincare', handle: 'Skincare' },
-  { name: 'Luxury Hair', handle: 'Luxury Hair' },
-  { name: 'Bags & Purses', handle: 'Bags & Purses' },
-  { name: 'Shoes', handle: 'Shoes' },
-  { name: 'Accessories', handle: 'Accessories' },
-  { name: 'Perfumes', handle: 'Perfumes' },
-  { name: 'Gift Items', handle: 'Gift Items' },
-];
+const STATIC_CATEGORIES = [{ name: 'All', handle: 'all' }];
 
 const sortOptions = [
   { label: 'Featured', value: 'featured' },
@@ -129,11 +117,10 @@ function ProductsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [compareList, setCompareList] = useState<Product[]>([]);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
-  const [inStockOnly, setInStockOnly] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState<any>(null);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -144,19 +131,42 @@ function ProductsPage() {
     colors: true,
     sizes: false,
     rating: false,
-    availability: true,
   });
+  const [categories, setCategories] = useState(STATIC_CATEGORIES);
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
-    fetch(`${apiUrl}/api/store/products?limit=100`)
+    fetch(`${apiUrl}/api/admin/categories`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const cats = data
+            .filter((c: any) => c.name && c.name !== 'Other')
+            .map((c: any) => ({ name: c.name, handle: c.name }));
+          setCategories([{ name: 'All', handle: 'all' }, ...cats]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+    fetch(`${apiUrl}/api/store/products?limit=2000`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch');
         return res.json();
       })
       .then(data => {
         const productsArray = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
-        setProducts(productsArray);
+        // Only show products that have at least one image and have stock > 0
+        const visible = productsArray.filter((p: any) => {
+          const hasImage = (p.images && p.images.length > 0) || p.thumbnail;
+          const hasStock = p.variants && p.variants.length > 0
+            ? p.variants.some((v: any) => (v.stock ?? 0) > 0)
+            : true; // if no variants defined, don't hide it
+          return hasImage && hasStock;
+        });
+        setProducts(visible);
         setLoading(false);
       })
       .catch(err => {
@@ -227,12 +237,6 @@ function ProductsPage() {
       result = result.filter(p => (p.ratings?.avg || 0) >= selectedRating);
     }
 
-    if (inStockOnly) {
-      result = result.filter(p => 
-        p.variants?.some(v => (v.stock || 0) > 0) || !p.variants || p.variants.length === 0
-      );
-    }
-
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(p => 
@@ -260,7 +264,7 @@ function ProductsPage() {
     }
 
     return result;
-  }, [products, activeCategory, searchQuery, sortBy, priceRange, selectedColors, selectedSizes, selectedRating, inStockOnly]);
+  }, [products, activeCategory, searchQuery, sortBy, priceRange, selectedColors, selectedSizes, selectedRating]);
 
   const handleCategoryClick = (handle: string) => {
     setActiveCategory(handle);
@@ -284,27 +288,25 @@ function ProductsPage() {
     setSearchQuery('');
     setActiveCategory('all');
     setSortBy('featured');
-    setPriceRange([0, 100000]);
+    setPriceRange([0, 1000000]);
     setSelectedColors([]);
     setSelectedSizes([]);
     setSelectedRating(null);
-    setInStockOnly(false);
     router.push('/products');
   };
 
-  const hasActiveFilters = Boolean(searchQuery || activeCategory !== 'all' || 
-    priceRange[0] > 0 || priceRange[1] < 100000 || 
-    selectedColors.length > 0 || selectedSizes.length > 0 || 
-    selectedRating !== null || inStockOnly);
+  const hasActiveFilters = Boolean(searchQuery || activeCategory !== 'all' ||
+    priceRange[0] > 0 || priceRange[1] < 1000000 ||
+    selectedColors.length > 0 || selectedSizes.length > 0 ||
+    selectedRating !== null);
 
   const activeFilterCount = [
     searchQuery ? 1 : 0,
     activeCategory !== 'all' ? 1 : 0,
-    priceRange[0] > 0 || priceRange[1] < 100000 ? 1 : 0,
+    priceRange[0] > 0 || priceRange[1] < 1000000 ? 1 : 0,
     selectedColors.length > 0 ? 1 : 0,
     selectedSizes.length > 0 ? 1 : 0,
     selectedRating !== null ? 1 : 0,
-    inStockOnly ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   const filterContent = (
@@ -343,8 +345,8 @@ function ProductsPage() {
           <input
             type="range"
             min="0"
-            max="100000"
-            step="1000"
+            max="1000000"
+            step="5000"
             value={priceRange[1]}
             onChange={(e) => setPriceRange([priceRange[0], parseInt(e.target.value)])}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-900"
@@ -360,8 +362,8 @@ function ProductsPage() {
             <input
               type="number"
               placeholder="Max"
-              value={priceRange[1] === 100000 ? '' : priceRange[1] || ''}
-              onChange={(e) => setPriceRange([priceRange[0], parseInt(e.target.value) || 100000])}
+              value={priceRange[1] === 1000000 ? '' : priceRange[1] || ''}
+              onChange={(e) => setPriceRange([priceRange[0], parseInt(e.target.value) || 1000000])}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
           </div>
@@ -439,24 +441,6 @@ function ProductsPage() {
         </div>
       </FilterSection>
 
-      <FilterSection title="Availability" expanded={expandedSections.availability} onToggle={() => setExpandedSections(s => ({ ...s, availability: !s.availability }))}>
-        <div className="px-4 pb-4">
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={inStockOnly}
-                onChange={(e) => setInStockOnly(e.target.checked)}
-                className="peer w-5 h-5 rounded border border-gray-300 checked:border-gray-900 checked:bg-gray-900 transition-all appearance-none cursor-pointer"
-              />
-              <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-            <span className="text-sm text-gray-600">In Stock Only</span>
-          </label>
-        </div>
-      </FilterSection>
     </>
   );
 
@@ -597,7 +581,6 @@ function ProductsPage() {
               selectedColors={selectedColors}
               selectedSizes={selectedSizes}
               selectedRating={selectedRating}
-              inStockOnly={inStockOnly}
               compareList={compareList}
               onCompareToggle={handleCompareToggle}
               onQuickView={(p: any) => { setQuickViewProduct(p); setIsQuickViewOpen(true); }}
@@ -608,7 +591,6 @@ function ProductsPage() {
               setSelectedColors={setSelectedColors}
               setSelectedSizes={setSelectedSizes}
               setSelectedRating={setSelectedRating}
-              setInStockOnly={setInStockOnly}
             />
           </div>
         </div>

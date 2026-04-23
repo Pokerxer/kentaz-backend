@@ -242,7 +242,7 @@ app.post('/api/seed', async (req, res) => {
         description: 'Handrolled silk knit tie with subtle texture. Royal burgundy color adds sophistication to any suit. Dry clean only for lasting elegance.',
         category: 'Accessories',
         images: [
-          { url: 'https://images.unsplash.com/photo-1519262074530-b0d1a10c9d2d?w=600' }
+          { url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=600' }
         ],
         variants: [
           { size: 'One Size', color: 'Burgundy', price: 9500, stock: 40 },
@@ -260,7 +260,7 @@ app.post('/api/seed', async (req, res) => {
         description: 'Double-breasted pure cashmere overcoat with horn buttons. Relaxed fit with storm flap for ultimate warmth. The pinnacle of luxury outerwear for the modern gentleman.',
         category: 'Male Fashion',
         images: [
-          { url: 'https://images.unsplash.com/photo-1544923246-77307dd628b0?w=600' }
+          { url: 'https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=600' }
         ],
         variants: [
           { size: 'S', color: 'Camel', price: 185000, stock: 3 },
@@ -278,7 +278,7 @@ app.post('/api/seed', async (req, res) => {
         description: 'Stunning hand-beaded evening clutch with crystal embellishments. Magnetic snap closure with silk lining. Interior pocket for essentials. Your perfect gala companion.',
         category: 'Bags & Purses',
         images: [
-          { url: 'https://images.unsplash.com/photo-1594633312681-425c7b97b5b0?w=600' },
+          { url: 'https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=600' },
           { url: 'https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=600' }
         ],
         variants: [
@@ -353,7 +353,7 @@ app.post('/api/seed', async (req, res) => {
         description: 'Premium Brazilian loose wave closure with 4x4 lace base. Hand-tied baby hairs for natural hairline. Swiss lace construction breathable and undetectable.',
         category: 'Luxury Hair',
         images: [
-          { url: 'https://images.unsplash.com/photo-1588558990294-8fec9499b51c?w=600' }
+          { url: 'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?w=600' }
         ],
         variants: [
           { size: '12x6', color: 'Natural Black', price: 22000, stock: 35 },
@@ -406,7 +406,7 @@ app.post('/api/seed', async (req, res) => {
         description: 'Exquisite hand-poured soy wax candle set in African violet scent. Notes of jasmine, violet leaves, and white musk. Presented in elegant gift box with gold ribbon.',
         category: 'Gift Items',
         images: [
-          { url: 'https://images.unsplash.com/photo-1602607730398-1d5d1c16e99c?w=600' }
+          { url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600' }
         ],
         variants: [
           { size: '3 Candle Set', color: 'African Violet', price: 22000, stock: 30 },
@@ -423,7 +423,7 @@ app.post('/api/seed', async (req, res) => {
         description: 'Lead-free crystal champagne flutes with intricate crystal stem design. 6oz capacity perfect for celebrations. Dishwasher safe. Presented in signature gift box.',
         category: 'Gift Items',
         images: [
-          { url: 'https://images.unsplash.com/photo-1543005623-a128da4f02ae?w=600' }
+          { url: 'https://images.unsplash.com/photo-1547595628-c61a29f496f0?w=600' }
         ],
         variants: [
           { size: 'Set of 2', color: 'Clear', price: 18000, stock: 20 },
