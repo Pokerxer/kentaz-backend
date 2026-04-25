@@ -508,7 +508,40 @@ export const api = {
     clearRead: () =>
       request<{ message: string }>('/api/admin/notifications/clear-read', { method: 'DELETE' }),
   },
+
+  settings: {
+    getAll: () =>
+      request<Record<string, any>>('/api/admin/settings'),
+    save: (key: string, value: Record<string, any>) =>
+      request<Record<string, any>>(`/api/admin/settings/${key}`, {
+        method: 'PUT',
+        body: JSON.stringify(value),
+      }),
+  },
+
+  announcements: {
+    getAll: () =>
+      request<Announcement[]>('/api/admin/announcements'),
+    create: (data: Partial<Announcement>) =>
+      request<Announcement>('/api/admin/announcements', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Announcement>) =>
+      request<Announcement>(`/api/admin/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/api/admin/announcements/${id}`, { method: 'DELETE' }),
+  },
 };
+
+export interface Announcement {
+  _id: string;
+  title: string;
+  body: string;
+  type: 'info' | 'warning' | 'success' | 'promo';
+  active: boolean;
+  startsAt?: string;
+  endsAt?: string;
+  createdBy?: { name: string };
+  createdAt: string;
+}
 
 // ── Report interfaces ──────────────────────────────────────────
 export interface ReportSalesRow {

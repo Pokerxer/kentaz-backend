@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Minus, Plus, Heart, ShoppingCart, Truck, Shield, RotateCcw, Check, Star, Share2, ChevronRight, ZoomIn, Eye } from 'lucide-react';
@@ -286,15 +287,15 @@ useEffect(() => {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-2 text-sm text-gray-500 mb-8"
         >
-          <a href="/" className="hover:text-gray-900 transition-colors">Home</a>
+          <Link href="/" className="hover:text-gray-900 transition-colors">Home</Link>
           <ChevronRight className="h-4 w-4" />
-          <a href="/products" className="hover:text-gray-900 transition-colors">Shop</a>
+          <Link href="/products" className="hover:text-gray-900 transition-colors">Shop</Link>
           {product.category && (
             <>
               <ChevronRight className="h-4 w-4" />
-              <a href={`/products?category=${product.category}`} className="hover:text-gray-900 transition-colors">
+              <Link href={`/products?category=${product.category}`} className="hover:text-gray-900 transition-colors">
                 {product.category}
-              </a>
+              </Link>
             </>
           )}
           <ChevronRight className="h-4 w-4" />

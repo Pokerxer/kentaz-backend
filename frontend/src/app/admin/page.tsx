@@ -1,28 +1,32 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
-import { redirect } from 'next/navigation';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Package, ShoppingBag, Calendar, TrendingUp, DollarSign, Users } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Package, ShoppingBag, Calendar, DollarSign } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/Card';
+import { useAppSelector } from '@/store/hooks';
 
 export default function AdminDashboard() {
-  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { user, isAuthenticated } = useAppSelector((state) => state.user);
 
-  if (status === 'loading') {
-    return <div className="p-8">Loading...</div>;
+  useEffect(() => {
+    if (isAuthenticated && user?.role !== 'admin') {
+      router.replace('/');
+    }
+  }, [isAuthenticated, user, router]);
+
+  // Not authenticated yet — wait for Redux hydration
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#C9A84C]" />
+      </div>
+    );
   }
 
-  if (!session || session.user.role !== 'admin') {
-    redirect('/');
-  }
-
-  const stats = [
-    { label: 'Total Revenue', value: '$12,450', icon: DollarSign, change: '+12%' },
-    { label: 'Orders', value: '156', icon: Package, change: '+8%' },
-    { label: 'Products', value: '48', icon: ShoppingBag, change: '+3' },
-    { label: 'Bookings', value: '23', icon: Calendar, change: '+5' },
-  ];
+  if (user?.role !== 'admin') return null;
 
   const menuItems = [
     { name: 'Products', href: '/admin/products', icon: ShoppingBag, description: 'Manage product catalog' },
@@ -34,24 +38,7 @@ export default function AdminDashboard() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Manage your store from here</p>
-      </div>
-
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <stat.icon className="h-8 w-8 text-primary" />
-                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                  {stat.change}
-                </span>
-              </div>
-              <p className="text-2xl font-bold mt-4">{stat.value}</p>
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-            </CardContent>
-          </Card>
-        ))}
+        <p className="text-muted-foreground mt-1">Welcome back, {user.name}</p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">

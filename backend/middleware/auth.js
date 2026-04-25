@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'kentaz-super-secret-jwt';
+const JWT_SECRET = require('../utils/jwt');
 
 exports.auth = async (req, res, next) => {
   try {

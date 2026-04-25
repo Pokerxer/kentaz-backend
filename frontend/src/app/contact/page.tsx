@@ -4,19 +4,36 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
+import { Mail, Phone, MapPin, Send, Loader2, AlertCircle } from 'lucide-react';
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
 
 export default function ContactPage() {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    message: ''
-  });
+  const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API}/api/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSubmitted(true);
+      } else {
+        setError(data.error || 'Failed to send message. Please try again.');
+      }
+    } catch {
+      setError('Network error. Please try again or email us directly.');
+    }
+    setLoading(false);
   };
 
   if (submitted) {
@@ -68,7 +85,7 @@ export default function ContactPage() {
               </div>
             </div>
           </div>
-          
+
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Send a Message</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -98,8 +115,14 @@ export default function ContactPage() {
                   placeholder="How can we help you?"
                 />
               </div>
-              <Button type="submit" className="w-full">
-                Send Message
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Sending…</> : 'Send Message'}
               </Button>
             </form>
           </div>

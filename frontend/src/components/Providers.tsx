@@ -1,6 +1,5 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
 import { Provider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { store, hydrateStore } from '@/store';
@@ -25,12 +24,10 @@ export function Providers({ children }: ProvidersProps) {
   }, []);
 
   return (
-    <SessionProvider>
-      <Provider store={store}>
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      </Provider>
-    </SessionProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    </Provider>
   );
 }

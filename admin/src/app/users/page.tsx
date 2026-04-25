@@ -838,7 +838,7 @@ export default function UsersPage() {
     finally { setLoading(false); }
   }, [page, search, roleFilter]);
 
-  useEffect(() => { loadUsers(page, search, roleFilter); }, [page, roleFilter]);
+  useEffect(() => { loadUsers(page, search, roleFilter); }, [page, search, roleFilter, loadUsers]);
 
   function handleSearchChange(val: string) {
     setSearch(val);

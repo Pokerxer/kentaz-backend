@@ -99,8 +99,7 @@ exports.verifyPayment = async (req, res) => {
       if (txn.status === 'success') {
         order.status = 'processing';
         await order.save();
-        // Send order confirmation emails
-        sendOrderEmails(order);
+        sendOrderEmails(order).catch(err => console.error('Order email error (verify):', err.message));
       } else {
         await order.save();
       }
@@ -138,8 +137,7 @@ exports.handleWebhook = async (req, res) => {
         order.status = 'processing';
         await order.save();
         console.log(`Webhook: order ${order._id} → processing (${data.reference})`);
-        // Send order confirmation emails
-        sendOrderEmails(order);
+        sendOrderEmails(order).catch(err => console.error('Order email error (webhook):', err.message));
       }
     }
 

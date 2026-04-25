@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 
+const { auth, adminOnly } = require('./middleware/auth');
 const authRoutes = require('./routes/auth');
 const storeProductRoutes = require('./routes/storeProducts');
 const adminProductRoutes = require('./routes/adminProducts');
@@ -92,6 +93,13 @@ app.use('/api/admin/upload', uploadRoutes);
 app.use('/api/receipts', receiptRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/bundles', bundleRoutes);
+const contactRoutes = require('./routes/contact');
+app.use('/api/contact', contactRoutes);
+const settingsRoutes = require('./routes/settings');
+app.use('/api/admin/settings', settingsRoutes);
+const announcementRoutes = require('./routes/announcements');
+app.use('/api/admin/announcements', announcementRoutes);
+app.use('/api/store/announcements', require('./routes/announcements'));
 const heroRoutes = require('./routes/heroes');
 const adminReviewsRoutes = require('./routes/adminReviews');
 const adminWishlistsRoutes = require('./routes/adminWishlists');
@@ -100,7 +108,7 @@ app.use('/api/admin/heroes', heroRoutes);
 app.use('/api/admin/reviews', adminReviewsRoutes);
 app.use('/api/admin/wishlists', adminWishlistsRoutes);
 
-app.post('/api/seed/products', async (req, res) => {
+app.post('/api/seed/products', auth, adminOnly, async (req, res) => {
   try {
     const products = req.body.products;
     const created = [];
@@ -115,6 +123,9 @@ app.post('/api/seed/products', async (req, res) => {
 });
 
 app.post('/api/seed/admin', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
   try {
     const bcrypt = require('bcryptjs');
     const User = require('./models/User');
@@ -155,7 +166,7 @@ app.get('/api/store/shipping-options', (req, res) => {
   });
 });
 
-app.post('/api/seed', async (req, res) => {
+app.post('/api/seed', auth, adminOnly, async (req, res) => {
   try {
     const products = [
       {

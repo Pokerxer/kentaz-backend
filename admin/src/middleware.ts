@@ -30,8 +30,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check for admin token
-  const adminToken = request.cookies.get('admin_token')?.value ||
-    request.cookies.get('admin-auth')?.value;
+  const adminToken = request.cookies.get('admin_token')?.value;
 
   const isAuthenticated = !!adminToken;
   const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));

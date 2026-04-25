@@ -85,9 +85,11 @@ export default function BookingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-[#C9A84C]" />
-      </div>
+      <AdminLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-[#C9A84C]" />
+        </div>
+      </AdminLayout>
     );
   }
 

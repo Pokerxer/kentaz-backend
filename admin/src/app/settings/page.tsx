@@ -1,79 +1,81 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
+import { api } from '@/lib/api';
 import {
   Save, Globe, CreditCard, Truck, Bell, Shield,
-  Mail, MessageSquare, AlertTriangle, Clock
+  Mail, AlertTriangle, Clock, Loader2, CheckCircle, AlertCircle,
 } from 'lucide-react';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+  const [saving, setSaving]       = useState(false);
+  const [loading, setLoading]     = useState(true);
 
   const [storeSettings, setStoreSettings] = useState({
-    storeName: 'Kentaz',
-    storeUrl: 'https://kentaz.com',
-    currency: 'NGN',
-    timezone: 'Africa/Lagos',
-    email: 'admin@kentaz.com',
-    phone: '+234',
+    storeName: 'Kentaz', storeUrl: 'https://kentazemporium.com', currency: 'NGN',
+    timezone: 'Africa/Lagos', email: 'info@kentazemporium.com', phone: '07081856411',
   });
-
   const [paymentSettings, setPaymentSettings] = useState({
-    paystackEnabled: true,
-    paystackPublicKey: '',
-    paystackSecretKey: '',
-    codEnabled: true,
-    codFee: 0,
+    paystackEnabled: true, paystackPublicKey: '', paystackSecretKey: '', codEnabled: true, codFee: 0,
   });
-
   const [shippingSettings, setShippingSettings] = useState({
-    enableShipping: true,
-    defaultProcessingDays: 3,
-    freeShippingThreshold: 50000,
-    standardShippingFee: 2500,
-    expressShippingFee: 5000,
-    allowPickup: true,
-    pickupAddress: '',
+    enableShipping: true, defaultProcessingDays: 3, freeShippingThreshold: 50000,
+    standardShippingFee: 2500, expressShippingFee: 5000, allowPickup: true, pickupAddress: '',
   });
-
   const [notificationSettings, setNotificationSettings] = useState({
-    emailOrders: true,
-    emailLowStock: true,
-    emailLowStockThreshold: 10,
-    emailDailyDigest: false,
-    pushNewOrders: true,
-    pushLowStock: true,
-    pushDailyReport: false,
+    emailOrders: true, emailLowStock: true, emailLowStockThreshold: 10, emailDailyDigest: false,
+    pushNewOrders: true, pushLowStock: true, pushDailyReport: false,
+  });
+  const [securitySettings, setSecuritySettings] = useState({
+    twoFactorEnabled: false, sessionTimeout: 60, passwordMinLength: 8,
+    requireUppercase: true, requireNumbers: true, ipWhitelist: '',
   });
 
-  const [securitySettings, setSecuritySettings] = useState({
-    twoFactorEnabled: false,
-    sessionTimeout: 60,
-    passwordMinLength: 8,
-    requireUppercase: true,
-    requireNumbers: true,
-    ipWhitelist: '',
-  });
+  // Load persisted settings on mount
+  useEffect(() => {
+    api.settings.getAll()
+      .then(data => {
+        if (data.general)       setStoreSettings(s       => ({ ...s, ...data.general }));
+        if (data.payments)      setPaymentSettings(s     => ({ ...s, ...data.payments }));
+        if (data.shipping)      setShippingSettings(s    => ({ ...s, ...data.shipping }));
+        if (data.notifications) setNotificationSettings(s => ({ ...s, ...data.notifications }));
+        if (data.security)      setSecuritySettings(s    => ({ ...s, ...data.security }));
+      })
+      .catch(() => {}) // non-fatal — defaults are fine
+      .finally(() => setLoading(false));
+  }, []);
+
+  const SETTINGS_MAP: Record<string, any> = {
+    general:       storeSettings,
+    payments:      paymentSettings,
+    shipping:      shippingSettings,
+    notifications: notificationSettings,
+    security:      securitySettings,
+  };
 
   const tabs = [
-    { id: 'general', label: 'Store Info', icon: Globe },
-    { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'shipping', label: 'Shipping', icon: Truck },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'security', label: 'Security', icon: Shield },
+    { id: 'general',       label: 'Store Info',     icon: Globe },
+    { id: 'payments',      label: 'Payments',       icon: CreditCard },
+    { id: 'shipping',      label: 'Shipping',       icon: Truck },
+    { id: 'notifications', label: 'Notifications',  icon: Bell },
+    { id: 'security',      label: 'Security',       icon: Shield },
   ];
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    // Simulate API call
-    setTimeout(() => {
+    setSaveMsg(null);
+    try {
+      await api.settings.save(activeTab, SETTINGS_MAP[activeTab]);
+      setSaveMsg({ ok: true, text: 'Settings saved!' });
+    } catch (e: any) {
+      setSaveMsg({ ok: false, text: e.message || 'Failed to save settings' });
+    } finally {
       setSaving(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    }, 800);
+      setTimeout(() => setSaveMsg(null), 4000);
+    }
   };
 
   return (
@@ -554,24 +556,20 @@ export default function SettingsPage() {
             </div>
           )}
 
-          <div className="mt-6 flex items-center justify-between border-t pt-6">
-            {saved && <span className="text-sm text-green-600">Settings saved!</span>}
-            <div className="ml-auto">
+          <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t pt-6">
+            {saveMsg && (
+              <div className={`flex items-center gap-2 text-sm rounded-xl px-3 py-2 ${saveMsg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {saveMsg.ok ? <CheckCircle className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+                {saveMsg.text}
+              </div>
+            )}
+            <div className="sm:ml-auto">
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || loading}
                 className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-4 py-2 text-sm font-medium text-white hover:bg-[#B8953F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {saving ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" /> Save Changes
-                  </>
-                )}
+                {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</> : <><Save className="h-4 w-4" /> Save Changes</>}
               </button>
             </div>
           </div>

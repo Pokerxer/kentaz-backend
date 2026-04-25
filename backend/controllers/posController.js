@@ -10,7 +10,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { trackSale } = require('./customerController');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'kentaz-super-secret-jwt';
+const JWT_SECRET = require('../utils/jwt');
 
 // GET /api/pos/staff-list — public, returns selectable staff for the login screen
 exports.getPosStaffList = async (req, res) => {

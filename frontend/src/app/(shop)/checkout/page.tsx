@@ -160,91 +160,14 @@ export default function CheckoutPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-2">Login Required</h2>
             <p className="text-gray-500 mb-6">You must be logged in to complete your purchase</p>
             <div className="space-y-3">
-                        <Button 
-                          className="w-full" 
-                          disabled={paystackLoading || loading || !isShippingValid}
-                          onClick={async () => {
-                            // Validate required fields
-                            if (!shippingInfo.email || !shippingInfo.firstName || !shippingInfo.lastName || grandTotal <= 0) {
-                              alert('Please fill in all required shipping information');
-                              return;
-                            }
-                            
-                            setLoading(true);
-                            try {
-                              // Initialize Paystack payment
-                              initializePayment({
-                                email: shippingInfo.email,
-                                firstName: shippingInfo.firstName,
-                                lastName: shippingInfo.lastName,
-                                amount: grandTotal,
-                                phone: shippingInfo.phone || '',
-                                onSuccess: async (response) => {
-                                  try {
-                                    // Verify payment with Paystack
-                                    const isVerified = await verifyPayment(response.reference);
-                                    
-                                    if (isVerified) {
-                                      // Create order in our system
-                                      const orderResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/orders`, {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                          'Authorization': `Bearer ${localStorage.getItem('kentaz_token')}`
-                                        },
-                                        body: JSON.stringify({
-                                          items: items.map(item => ({
-                                            product: item.product._id,
-                                            name: item.product.name,
-                                            price: item.variant?.price || item.product.price,
-                                            quantity: item.quantity,
-                                            variant: item.variant
-                                          })),
-                                          shippingAddress: shippingInfo,
-                                          total: grandTotal,
-                                          paystackRef: response.reference
-                                        })
-                                      });
-                                      
-                                      if (orderResponse.ok) {
-                                        // Clear cart and move to confirmation
-                                        dispatch(clearCart());
-                                        setCurrentStep('confirmation');
-                                        setPaystackRef(response.reference);
-                                        setOrderNumber(`ORD-${Date.now().toString().slice(-6)}`);
-                                      } else {
-                                        throw new Error('Failed to create order');
-                                      }
-                                    } else {
-                                      alert('Payment verification failed. Please contact support.');
-                                    }
-                                  } catch (error) {
-                                    console.error('Error processing order:', error);
-                                    alert('Failed to process order. Please try again.');
-                                    setLoading(false);
-                                  }
-                                },
-                                onClose: () => {
-                                  setLoading(false);
-                                }
-                              });
-                            } catch (error) {
-                              console.error('Payment initialization error:', error);
-                              setLoading(false);
-                            }
-                          }}
-                        >
-                          {paystackLoading ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                              Processing...
-                            </>
-                          ) : (
-                            `Pay ${formatPrice(grandTotal)}`
-                          )}
-                        </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                className="w-full"
+                onClick={() => router.push('/login?callbackUrl=/checkout')}
+              >
+                Log In to Continue
+              </Button>
+              <Button
+                variant="outline"
                 className="w-full"
                 onClick={() => router.push('/cart')}
               >

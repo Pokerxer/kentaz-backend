@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,7 +9,7 @@ import {
   Package, Calendar, Heart, Settings, MapPin, Mail, Phone, LogOut,
   ChevronRight, Clock, CheckCircle2, Truck, X, ShoppingBag, CreditCard,
   Star, Edit, Plus, Wallet, TrendingUp, Loader2, CheckCircle, AlertCircle,
-  Mic, Stethoscope, ArrowRight, Receipt, User, Shield, Box,
+  Mic, Stethoscope, ArrowRight, User, Shield, Box,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
@@ -261,11 +261,12 @@ function OrderDrawer({ orderId, onClose }: { orderId: string; onClose: () => voi
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-export default function AccountPage() {
+function AccountPageContent() {
   const router   = useRouter();
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAppSelector((s) => s.user);
 
+  const searchParams   = useSearchParams();
   const [activeTab,     setActiveTab]     = useState<TabType>('overview');
   const [orders,        setOrders]        = useState<any[]>([]);
   const [bookings,      setBookings]      = useState<any[]>([]);
@@ -287,9 +288,29 @@ export default function AccountPage() {
   const [saving,       setSaving]       = useState(false);
   const [saveMsg,      setSaveMsg]      = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Change password modal
+  const [showPwModal,  setShowPwModal]  = useState(false);
+  const [pwCurrent,    setPwCurrent]    = useState('');
+  const [pwNew,        setPwNew]        = useState('');
+  const [pwConfirm,    setPwConfirm]    = useState('');
+  const [pwSaving,     setPwSaving]     = useState(false);
+  const [pwMsg,        setPwMsg]        = useState<{ ok: boolean; text: string } | null>(null);
+
   useEffect(() => {
     if (!isAuthenticated) router.push('/login?callbackUrl=/account');
   }, [isAuthenticated, router]);
+
+  // Handle deep links: /account?tab=orders&order=ID
+  useEffect(() => {
+    const tab = searchParams.get('tab') as TabType | null;
+    const orderId = searchParams.get('order');
+    if (tab && ['overview', 'orders', 'bookings', 'wishlist', 'reviews', 'settings'].includes(tab)) {
+      setActiveTab(tab);
+    }
+    if (orderId) {
+      setSelectedOrderId(orderId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -362,6 +383,38 @@ export default function AccountPage() {
     setTimeout(() => setSaveMsg(null), 4000);
   };
 
+  const handleChangePassword = async () => {
+    if (!pwCurrent || !pwNew || !pwConfirm) {
+      setPwMsg({ ok: false, text: 'All fields are required.' }); return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwMsg({ ok: false, text: 'New passwords do not match.' }); return;
+    }
+    if (pwNew.length < 6) {
+      setPwMsg({ ok: false, text: 'New password must be at least 6 characters.' }); return;
+    }
+    const token = localStorage.getItem('kentaz_token');
+    setPwSaving(true); setPwMsg(null);
+    try {
+      const res = await fetch(`${API}/api/auth/change-password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPwMsg({ ok: true, text: 'Password changed successfully!' });
+        setPwCurrent(''); setPwNew(''); setPwConfirm('');
+        setTimeout(() => { setShowPwModal(false); setPwMsg(null); }, 2000);
+      } else {
+        setPwMsg({ ok: false, text: data.error || 'Failed to change password.' });
+      }
+    } catch {
+      setPwMsg({ ok: false, text: 'Network error. Try again.' });
+    }
+    setPwSaving(false);
+  };
+
   const handleSubmitReview = async () => {
     if (!selectedProductReview) return;
     const token = localStorage.getItem('kentaz_token');
@@ -423,6 +476,95 @@ export default function AccountPage() {
       <AnimatePresence>
         {selectedOrderId && (
           <OrderDrawer orderId={selectedOrderId} onClose={() => setSelectedOrderId(null)} />
+        )}
+      </AnimatePresence>
+
+      {/* ── Change Password Modal ── */}
+      <AnimatePresence>
+        {showPwModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+              onClick={() => setShowPwModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md pointer-events-auto overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-5 w-5 text-amber-500" />
+                    <h2 className="font-bold text-gray-900">Change Password</h2>
+                  </div>
+                  <button onClick={() => setShowPwModal(false)} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Current Password</label>
+                    <input
+                      type="password"
+                      value={pwCurrent}
+                      onChange={e => setPwCurrent(e.target.value)}
+                      placeholder="Enter current password"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">New Password</label>
+                    <input
+                      type="password"
+                      value={pwNew}
+                      onChange={e => setPwNew(e.target.value)}
+                      placeholder="At least 6 characters"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Confirm New Password</label>
+                    <input
+                      type="password"
+                      value={pwConfirm}
+                      onChange={e => setPwConfirm(e.target.value)}
+                      placeholder="Repeat new password"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+
+                  <AnimatePresence>
+                    {pwMsg && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                        className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm ${pwMsg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}
+                      >
+                        {pwMsg.ok ? <CheckCircle className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+                        {pwMsg.text}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setShowPwModal(false)}
+                      className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button onClick={handleChangePassword} disabled={pwSaving}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-900 font-semibold rounded-xl text-sm transition-colors"
+                    >
+                      {pwSaving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : 'Update Password'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
@@ -1058,7 +1200,7 @@ export default function AccountPage() {
                       <h2 className="font-bold text-gray-900">Security</h2>
                     </div>
                     <div className="p-6">
-                      <button className="flex items-center justify-between w-full px-4 py-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group">
+                      <button onClick={() => { setShowPwModal(true); setPwMsg(null); }} className="flex items-center justify-between w-full px-4 py-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group">
                         <div className="text-left">
                           <p className="text-sm font-semibold text-gray-900">Change Password</p>
                           <p className="text-xs text-gray-400">Update your account password</p>
@@ -1086,5 +1228,17 @@ export default function AccountPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function AccountPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <AccountPageContent />
+    </Suspense>
   );
 }

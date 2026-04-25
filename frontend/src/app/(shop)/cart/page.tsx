@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Trash2, Minus, Plus, ShoppingBag, Lock, Tag, X, Check, Loader2 } from 'lucide-react';
@@ -10,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { removeFromCart, updateQuantity } from '@/store/cartSlice';
 import { formatPrice } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 interface DiscountValidation {
   valid: boolean;
@@ -23,9 +23,10 @@ interface DiscountValidation {
 }
 
 export default function CartPage() {
-  const { data: session, status } = useSession();
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const { items, total } = useAppSelector((state) => state.cart);
+  const { isAuthenticated } = useAppSelector((state) => state.user);
   const [discountCode, setDiscountCode] = useState('');
   const [validating, setValidating] = useState(false);
   const [discountError, setDiscountError] = useState('');
@@ -226,11 +227,7 @@ export default function CartPage() {
               </div>
             </div>
 
-            {status === 'loading' ? (
-              <Button className="w-full" size="lg" disabled>
-                Loading...
-              </Button>
-            ) : session ? (
+            {isAuthenticated ? (
               <Link href="/checkout">
                 <Button className="w-full" size="lg">
                   <Lock className="h-4 w-4 mr-2" />
@@ -238,12 +235,10 @@ export default function CartPage() {
                 </Button>
               </Link>
             ) : (
-              <Link href="/login?callbackUrl=/cart">
-                <Button className="w-full" size="lg" variant="outline">
-                  <Lock className="h-4 w-4 mr-2" />
-                  Login to Checkout
-                </Button>
-              </Link>
+              <Button className="w-full" size="lg" variant="outline" onClick={() => router.push('/login?redirect=/cart')}>
+                <Lock className="h-4 w-4 mr-2" />
+                Login to Checkout
+              </Button>
             )}
 
             <p className="text-xs text-center text-muted-foreground mt-4">

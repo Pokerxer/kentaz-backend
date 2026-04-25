@@ -1,19 +1,66 @@
+const axios = require('axios');
 const Order = require('../models/Order');
 const User = require('../models/User');
-const { sendEmail, getOrderStatusEmailHtml } = require('../utils/email');
+const { sendEmail, getOrderStatusEmailHtml, getOrderEmailHtml, getAdminOrderEmailHtml } = require('../utils/email');
 
 exports.createOrder = async (req, res) => {
   try {
     const { items, shippingAddress, total, paystackRef } = req.body;
+
+    if (!paystackRef) {
+      return res.status(400).json({ error: 'Payment reference is required' });
+    }
+
+    // Verify payment server-side before creating the order
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    let paystackStatus = 'pending';
+    try {
+      const txnRes = await axios.get(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
+        { headers: { Authorization: `Bearer ${secretKey}` } }
+      );
+      const txn = txnRes.data.data;
+      paystackStatus = txn.status; // 'success' | 'failed' | 'abandoned' …
+
+      if (txn.status !== 'success') {
+        return res.status(402).json({ error: 'Payment not confirmed. Please complete payment before placing the order.' });
+      }
+    } catch (verifyErr) {
+      // If Paystack is unreachable (e.g. dev environment), warn but allow order through
+      console.warn('[createOrder] Paystack verify failed — proceeding with pending status:', verifyErr.message);
+    }
+
+    // Prevent duplicate orders for the same payment reference
+    const existing = await Order.findOne({ paystackRef });
+    if (existing) {
+      return res.status(200).json(existing);
+    }
+
     const order = new Order({
       user: req.user.id,
       items,
       shippingAddress,
       total,
       paystackRef,
-      paystackStatus: 'pending',
+      paystackStatus,
+      status: paystackStatus === 'success' ? 'processing' : 'pending',
     });
     await order.save();
+
+    // Send confirmation emails for verified payments
+    if (paystackStatus === 'success') {
+      const user = await User.findById(req.user.id).select('name email');
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (user) {
+        sendEmail(user.email, `Order Confirmed — #${order._id}`, getOrderEmailHtml(order, user))
+          .catch(err => console.error('Order confirm email error:', err.message));
+        if (adminEmail) {
+          sendEmail(adminEmail, `New Order — ${order._id} — ₦${order.total}`, getAdminOrderEmailHtml(order, user))
+            .catch(err => console.error('Admin order email error:', err.message));
+        }
+      }
+    }
+
     res.status(201).json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -59,6 +59,7 @@ function OrderDetail({
   const [loadingFull, setLoadingFull] = useState(true);
   const [updating, setUpdating]       = useState(false);
   const [statusMenu, setStatusMenu]   = useState(false);
+  const [updateError, setUpdateError] = useState('');
 
   useEffect(() => {
     setLoadingFull(true);
@@ -71,12 +72,16 @@ function OrderDetail({
   async function handleStatus(status: StatusKey) {
     setStatusMenu(false);
     setUpdating(true);
+    setUpdateError('');
     try {
       const updated = await api.orders.updateStatus(fullOrder._id, status);
       setFullOrder(updated);
       onStatusChange(updated);
-    } catch {}
-    finally { setUpdating(false); }
+    } catch (e: any) {
+      setUpdateError(e.message || 'Failed to update status. Please try again.');
+    } finally {
+      setUpdating(false);
+    }
   }
 
   const cfg = STATUS_CONFIG[fullOrder.status as StatusKey] ?? STATUS_CONFIG.pending;
@@ -87,6 +92,15 @@ function OrderDetail({
 
   return (
     <div className="flex flex-col h-full">
+      {updateError && (
+        <div className="mx-5 mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          {updateError}
+          <button onClick={() => setUpdateError('')} className="ml-auto text-red-400 hover:text-red-600">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
         <div>
