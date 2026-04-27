@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import { Heart, ShoppingCart, Check, Star } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { addToWishlist, removeFromWishlist } from '@/store/wishlistSlice';
@@ -127,7 +127,7 @@ export function ProductCard({ product, onQuickView, showCompare, isComparing, on
       >
         <Link href={`/products/${product.slug || product.handle || productId}`}>
           <div className="relative aspect-[3/4] bg-muted/50">
-            <Image
+            <SafeImage
               src={imageUrl}
               alt={product.title || product.name || 'Product'}
               fill
@@ -135,7 +135,7 @@ export function ProductCard({ product, onQuickView, showCompare, isComparing, on
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             />
             {hoverImageUrl && (
-              <Image
+              <SafeImage
                 src={hoverImageUrl}
                 alt={`${product.title || product.name || 'Product'} hover`}
                 fill
@@ -289,7 +289,7 @@ export function ProductListCard({ product, onQuickView }: { product: ProductCard
       <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex-shrink-0">
         <Link href={`/products/${product.slug || productId}`}>
           <div className="relative w-full h-full rounded-lg overflow-hidden bg-gray-100">
-            <Image
+            <SafeImage
               src={imageUrl}
               alt={product.name || 'Product'}
               fill

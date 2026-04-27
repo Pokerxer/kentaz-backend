@@ -537,6 +537,11 @@ export default function NewProductPage() {
   const [tagInput, setTagInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // AI state
+  const [aiDescLoading, setAiDescLoading] = useState(false);
+  const [aiTagsLoading, setAiTagsLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -622,6 +627,63 @@ export default function NewProductPage() {
     if (t && !formData.tags.includes(t)) { setField('tags', [...formData.tags, t]); setTagInput(''); }
   };
 
+  // AI helpers
+  const aiGenerateDescription = async () => {
+    if (!formData.name.trim()) { setAiError('Enter a product name first'); return; }
+    setAiDescLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generateDescription',
+          payload: {
+            name: formData.name,
+            category: formData.category,
+            subcategory: formData.subcategory,
+            tags: formData.tags,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setField('description', data.description);
+    } catch (e: any) {
+      setAiError(e.message);
+    } finally {
+      setAiDescLoading(false);
+    }
+  };
+
+  const aiSuggestTags = async () => {
+    if (!formData.name.trim()) { setAiError('Enter a product name first'); return; }
+    setAiTagsLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'suggestTags',
+          payload: {
+            name: formData.name,
+            category: formData.category,
+            description: formData.description,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      const newTags = (data.tags as string[]).filter((t: string) => !formData.tags.includes(t));
+      if (newTags.length) setField('tags', [...formData.tags, ...newTags]);
+    } catch (e: any) {
+      setAiError(e.message);
+    } finally {
+      setAiTagsLoading(false);
+    }
+  };
+
   // Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -696,6 +758,13 @@ export default function NewProductPage() {
             <p className="text-sm text-green-700">{success}</p>
           </div>
         )}
+        {aiError && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+            <Wand2 className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-800 flex-1">{aiError}</p>
+            <button onClick={() => setAiError(null)} className="text-amber-400 hover:text-amber-600 flex-shrink-0"><X className="h-4 w-4" /></button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -725,7 +794,20 @@ export default function NewProductPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <FieldLabel>Description</FieldLabel>
-                      <span className="text-xs text-gray-400">{formData.description.length} chars</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{formData.description.length} chars</span>
+                        <button
+                          type="button"
+                          onClick={aiGenerateDescription}
+                          disabled={aiDescLoading || !formData.name.trim()}
+                          title={formData.name.trim() ? 'Generate with AI' : 'Enter a product name first'}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg text-[11px] font-semibold hover:from-violet-600 hover:to-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                        >
+                          {aiDescLoading
+                            ? <><Loader2 className="h-3 w-3 animate-spin" /> Generating…</>
+                            : <><Wand2 className="h-3 w-3" /> AI Write</>}
+                        </button>
+                      </div>
                     </div>
                     <textarea
                       value={formData.description}
@@ -1019,9 +1101,22 @@ export default function NewProductPage() {
 
               {/* Tags */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Tag className="h-4 w-4 text-[#C9A84C]" />
-                  <h3 className="font-semibold text-gray-900 text-sm">Tags</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-[#C9A84C]" />
+                    <h3 className="font-semibold text-gray-900 text-sm">Tags</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={aiSuggestTags}
+                    disabled={aiTagsLoading || !formData.name.trim()}
+                    title={formData.name.trim() ? 'Suggest tags with AI' : 'Enter a product name first'}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg text-[11px] font-semibold hover:from-violet-600 hover:to-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                  >
+                    {aiTagsLoading
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Suggesting…</>
+                      : <><Sparkles className="h-3 w-3" /> AI Tags</>}
+                  </button>
                 </div>
                 {formData.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-3">

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import {
   Calendar, Clock, Mic, Heart, Users, Sparkles, Shield, Star,
   ArrowRight, CheckCircle, ChevronDown, Video, MapPin, Phone,
@@ -161,7 +161,7 @@ export default function ServicesPage() {
       {/* ── HERO ─────────────────────────────────────────────── */}
       <section className="relative bg-[#0a0a0a] overflow-hidden min-h-[60vh] flex items-center">
         <div className="absolute inset-0">
-          <Image
+          <SafeImage
             src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1920&q=80"
             alt="Therapy session"
             fill
@@ -392,7 +392,7 @@ export default function ServicesPage() {
           <ScrollReveal>
             <div className="relative rounded-3xl overflow-hidden mb-20 md:mb-28">
               <div className="absolute inset-0">
-                <Image
+                <SafeImage
                   src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=1200&q=80"
                   alt="Ready to begin"
                   fill
@@ -455,7 +455,7 @@ export default function ServicesPage() {
           <div className="grid lg:grid-cols-2 gap-10 max-w-5xl mx-auto items-center mb-16">
             <ScrollReveal direction="left">
               <div className="relative rounded-3xl overflow-hidden aspect-[4/3]">
-                <Image
+                <SafeImage
                   src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&q=80"
                   alt="Podcast studio"
                   fill

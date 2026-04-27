@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import { X, Plus, Minus, Check, ShoppingBag, Heart } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { addToCart } from '@/store/cartSlice';
@@ -103,7 +103,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
             <div className="grid md:grid-cols-2 gap-0">
               {/* Images */}
               <div className="relative aspect-[3/4] bg-gray-100">
-                <Image
+                <SafeImage
                   src={images[selectedImage] || '/placeholder.jpg'}
                   alt={product.name}
                   fill

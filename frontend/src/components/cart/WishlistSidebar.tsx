@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -88,7 +88,7 @@ function QuickViewModal({ item, isOpen, onClose }: QuickViewModalProps) {
               {/* Images */}
               <div className="space-y-3">
                 <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-gray-100">
-                  <Image
+                  <SafeImage
                     src={images[selectedImage] || '/placeholder.jpg'}
                     alt={item.name}
                     fill
@@ -103,7 +103,7 @@ function QuickViewModal({ item, isOpen, onClose }: QuickViewModalProps) {
                         onClick={() => setSelectedImage(idx)}
                         className={`relative w-16 h-20 rounded-lg overflow-hidden ${selectedImage === idx ? 'ring-2 ring-[#C9A84C]' : ''}`}
                       >
-                        <Image src={img} alt="" fill className="object-cover" />
+                        <SafeImage src={img} alt="" fill className="object-cover" />
                       </button>
                     ))}
                   </div>
@@ -336,7 +336,7 @@ export function WishlistSidebar() {
                           onClick={() => setIsOpen(false)}
                           className="relative w-20 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-white"
                         >
-                          <Image
+                          <SafeImage
                             src={item.thumbnail || '/placeholder.jpg'}
                             alt={item.name || 'Product'}
                             fill

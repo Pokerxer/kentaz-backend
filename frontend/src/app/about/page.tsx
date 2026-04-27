@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import SafeImage from '@/components/ui/SafeImage';
 import { ArrowRight, Star, Award, Users, Heart, Sparkles } from "lucide-react";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
 
@@ -81,7 +81,7 @@ export default function AboutPage() {
             <ScrollReveal>
               <div className="relative">
                 <div className="aspect-[4/5] relative rounded-2xl overflow-hidden">
-                  <Image
+                  <SafeImage
                     src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800"
                     alt="Kentaz Emporium Store"
                     fill

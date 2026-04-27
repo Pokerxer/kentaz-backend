@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import { CreditCard, Lock, ArrowLeft, Check, ChevronRight, Truck, ShoppingBag, User, MapPin, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -544,7 +544,7 @@ export default function CheckoutPage() {
                       <div key={product._id} className="flex gap-4">
                         <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                           {product.images?.[0]?.url && (
-                            <Image
+                            <SafeImage
                               src={product.images[0].url}
                               alt={product.name}
                               width={64}

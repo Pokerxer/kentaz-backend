@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -177,7 +177,7 @@ function OrderDrawer({ orderId, onClose }: { orderId: string; onClose: () => voi
                       <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
                         <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-200 flex-shrink-0">
                           {img
-                            ? <Image src={img} alt={name} width={56} height={56} className="w-full h-full object-cover" />
+                            ? <SafeImage src={img} alt={name} width={56} height={56} className="w-full h-full object-cover" />
                             : <div className="w-full h-full flex items-center justify-center"><Package className="h-5 w-5 text-gray-400" /></div>}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -771,7 +771,7 @@ function AccountPageContent() {
                               <div className="flex-shrink-0 w-36 group">
                                 <div className="w-36 h-36 rounded-2xl overflow-hidden bg-gray-100 mb-2 relative">
                                   {item.images?.[0]?.url
-                                    ? <Image src={item.images[0].url} alt={item.name} fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                                    ? <SafeImage src={item.images[0].url} alt={item.name} fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
                                     : <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag className="h-6 w-6" /></div>}
                                 </div>
                                 <p className="text-xs font-semibold text-gray-800 truncate">{item.name}</p>
@@ -835,7 +835,7 @@ function AccountPageContent() {
                                     {order.items?.slice(0, 5).map((item: any, i: number) => (
                                       <div key={i} className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 flex-shrink-0 relative">
                                         {item.product?.images?.[0]?.url
-                                          ? <Image src={item.product.images[0].url} alt="" fill className="object-cover" />
+                                          ? <SafeImage src={item.product.images[0].url} alt="" fill className="object-cover" />
                                           : <div className="w-full h-full flex items-center justify-center"><Box className="h-3 w-3 text-gray-300" /></div>}
                                       </div>
                                     ))}
@@ -954,7 +954,7 @@ function AccountPageContent() {
                           <motion.div key={item._id} whileHover={{ y: -4 }} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all group">
                             <div className="relative aspect-square bg-gray-100">
                               {item.images?.[0]?.url
-                                ? <Image src={item.images[0].url} alt={item.name} fill className="object-cover group-hover:scale-105 transition-transform duration-400" />
+                                ? <SafeImage src={item.images[0].url} alt={item.name} fill className="object-cover group-hover:scale-105 transition-transform duration-400" />
                                 : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-6 w-6 text-gray-300" /></div>}
                               <button className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow hover:bg-red-50 transition-colors">
                                 <Heart className="h-4 w-4 text-red-400 fill-red-400" />
@@ -1014,7 +1014,7 @@ function AccountPageContent() {
                       <div className="flex items-center gap-4 mb-6 p-4 bg-gray-50 rounded-2xl">
                         <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-200 flex-shrink-0">
                           {selectedProductReview.images?.[0]?.url
-                            ? <Image src={selectedProductReview.images[0].url} alt={selectedProductReview.name} width={64} height={64} className="w-full h-full object-cover" />
+                            ? <SafeImage src={selectedProductReview.images[0].url} alt={selectedProductReview.name} width={64} height={64} className="w-full h-full object-cover" />
                             : <div className="w-full h-full flex items-center justify-center"><Package className="h-6 w-6 text-gray-400" /></div>}
                         </div>
                         <div>
@@ -1074,7 +1074,7 @@ function AccountPageContent() {
                         <motion.div key={product._id || product.productId} whileHover={{ y: -4 }} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all">
                           <div className="relative aspect-square bg-gray-100">
                             {product.images?.[0]?.url
-                              ? <Image src={product.images[0].url} alt={product.name} fill className="object-cover" />
+                              ? <SafeImage src={product.images[0].url} alt={product.name} fill className="object-cover" />
                               : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-6 w-6 text-gray-300" /></div>}
                           </div>
                           <div className="p-4">

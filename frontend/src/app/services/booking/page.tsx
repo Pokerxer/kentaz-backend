@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import {
   Calendar, Clock, CheckCircle, ArrowLeft, ArrowRight,
   Mic, Heart, Video, Users, CreditCard, Loader2,
@@ -201,7 +201,7 @@ function BookingPageContent() {
     try {
       const token = localStorage.getItem('kentaz_token');
       if (!token) {
-        router.push('/login?redirect=/services/booking?type=' + serviceType);
+        router.push(`/login?callbackUrl=${encodeURIComponent(`/services/booking?type=${serviceType}`)}`);
         return;
       }
       const body: Record<string, unknown> = {
@@ -251,7 +251,7 @@ function BookingPageContent() {
     const userData = JSON.parse(localStorage.getItem('kentaz_user') || '{}');
     if (!userData.email) {
       setError('Please log in to complete your booking.');
-      router.push('/login?redirect=/services/booking?type=' + serviceType);
+      router.push(`/login?callbackUrl=${encodeURIComponent(`/services/booking?type=${serviceType}`)}`);
       setPaymentLoading(false);
       return;
     }
@@ -292,6 +292,8 @@ function BookingPageContent() {
               return;
             }
             setCurrentStep('confirmation');
+            // Redirect to account bookings after a short delay so user can see the confirmation
+            setTimeout(() => router.push('/account/bookings'), 4000);
           } catch {
             setError(`Paid but verification failed — reference: ${txn.reference}. Contact support.`);
           }
@@ -496,7 +498,7 @@ function BookingPageContent() {
                       <div className="flex items-start gap-3">
                         {t.avatar ? (
                           <div className="relative w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
-                            <Image src={t.avatar} alt={t.name} fill className="object-cover" />
+                            <SafeImage src={t.avatar} alt={t.name} fill className="object-cover" />
                           </div>
                         ) : (
                           <div className="w-12 h-12 rounded-full bg-[#C9A84C]/15 flex items-center justify-center flex-shrink-0">

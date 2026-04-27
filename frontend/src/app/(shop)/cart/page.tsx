@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import Link from 'next/link';
 import { Trash2, Minus, Plus, ShoppingBag, Lock, Tag, X, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -107,7 +107,7 @@ export default function CartPage() {
               <div className="flex gap-4">
                 <Link href={`/products/${product.slug}`}>
                   <div className="relative h-24 w-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                    <Image
+                    <SafeImage
                       src={product.images?.[0]?.url || '/placeholder.jpg'}
                       alt={product.name}
                       fill

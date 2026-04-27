@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -253,7 +253,7 @@ export function CartSidebar() {
                             onClick={() => setIsOpen(false)}
                             className="relative w-24 h-28 bg-white rounded-xl overflow-hidden flex-shrink-0 shadow-sm group"
                           >
-                            <Image
+                            <SafeImage
                               src={item.product.images?.[0]?.url || item.product.thumbnail || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'}
                               alt={item.product.name || 'Product image'}
                               fill

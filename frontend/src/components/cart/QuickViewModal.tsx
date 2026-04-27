@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Minus, Plus, ShoppingCart, Check, Star, Truck, Shield, RotateCcw, ArrowRight } from 'lucide-react';
@@ -179,7 +179,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
               <div className="grid md:grid-cols-2 gap-6 md:gap-8 p-4 md:p-6">
                 <div className="space-y-4">
                   <div className="relative aspect-square rounded-2xl bg-gray-100 overflow-hidden">
-                    <Image
+                    <SafeImage
                       src={images[selectedImage]}
                       alt={product.title || product.name || 'Product'}
                       fill
@@ -215,7 +215,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                               : 'border-transparent hover:border-gray-300'
                           }`}
                         >
-                          <Image
+                          <SafeImage
                             src={image}
                             alt={`${product.name} ${index + 1}`}
                             fill

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import SafeImage from '@/components/ui/SafeImage';
 import { ArrowRight, Star, Shield, Brain, Mic, Heart, Eye, Sparkles, Flame, TrendingUp, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
@@ -173,7 +173,7 @@ function ServicesSection() {
               >
                 <div className="relative rounded-3xl overflow-hidden bg-white shadow-xl hover:shadow-2xl transition-all duration-700">
                   <div className="relative aspect-[4/3] md:aspect-[16/10] overflow-hidden">
-                    <Image
+                    <SafeImage
                       src={service.image}
                       alt={service.title}
                       fill
@@ -333,7 +333,7 @@ function CategoriesSection() {
                       isBig ? "aspect-[16/9] md:aspect-[4/3]" : "aspect-square"
                     }`}
                   >
-                    <Image
+                    <SafeImage
                       src={category.image}
                       alt={category.name}
                       fill
@@ -619,7 +619,7 @@ function FeaturedProductsSection() {
 
                       {/* Image */}
                       <div className={`relative overflow-hidden ${isHero ? 'aspect-square md:aspect-auto md:h-[360px]' : 'aspect-[3/4]'}`}>
-                        <Image
+                        <SafeImage
                           src={imgSrc}
                           alt={product.name}
                           fill
@@ -860,7 +860,7 @@ function TrendingCard({ product, rank, onQuickView }: { product: any; rank: numb
       <div className="relative rounded-2xl overflow-hidden bg-white/5 hover:bg-white/8 border border-white/5 hover:border-[#C9A84C]/30 transition-all duration-500 transform hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(201,168,76,0.15)]">
         {/* Image */}
         <div className="relative aspect-[3/4] overflow-hidden">
-          <Image
+          <SafeImage
             src={image}
             alt={product.name}
             fill
@@ -976,7 +976,7 @@ function TestimonialsSection() {
                 <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
                   {testimonial.image ? (
                     <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden border-2 border-[#C9A84C]/30 flex-shrink-0">
-                      <Image src={testimonial.image} alt={testimonial.name} fill className="object-cover" />
+                      <SafeImage src={testimonial.image} alt={testimonial.name} fill className="object-cover" />
                     </div>
                   ) : (
                     <div className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-lg ${avatarColors[index % avatarColors.length]}`}>

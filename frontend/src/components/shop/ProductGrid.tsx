@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
+import SafeImage from '@/components/ui/SafeImage';
 import { Heart } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
@@ -66,7 +66,7 @@ export function ProductGrid({ products, loading }: ProductGridProps) {
         return (
           <Card key={product._id} hover className="group overflow-hidden">
             <div className="relative aspect-square bg-muted">
-              <Image
+              <SafeImage
                 src={imageUrl}
                 alt={product.name}
                 fill
