@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 
+// Raise Next.js body size limit to 10 MB (Cloudinary free plan max)
+export const config = {
+  api: { bodyParser: { sizeLimit: '20mb' } },
+};
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -24,6 +29,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: { code: 'NO_FILE', message: 'No file provided' } },
         { status: 400 },
+      );
+    }
+
+    const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FILE_TOO_LARGE', message: 'Image must be under 20 MB' } },
+        { status: 413 },
       );
     }
 
