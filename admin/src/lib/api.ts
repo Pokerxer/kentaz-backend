@@ -356,7 +356,47 @@ export const api = {
         body: JSON.stringify({ status }),
       }),
   },
-  
+
+  availability: {
+    getSettings: (serviceType: string) =>
+      request<AvailabilitySettings>(`/api/admin/availability/${serviceType}`),
+
+    updateSettings: (serviceType: string, data: { workingDays?: number[]; timeSlots?: string[]; slotDuration?: number }) =>
+      request<AvailabilitySettings>(`/api/admin/availability/${serviceType}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+    getCalendar: (serviceType: string, month: string) =>
+      request<{ settings: AvailabilitySettings; bookings: Booking[] }>(
+        `/api/admin/availability/${serviceType}/calendar?month=${month}`
+      ),
+
+    blockDate: (serviceType: string, date: string, reason?: string) =>
+      request<AvailabilitySettings>(`/api/admin/availability/${serviceType}/block-date`, {
+        method: 'POST',
+        body: JSON.stringify({ date, reason }),
+      }),
+
+    unblockDate: (serviceType: string, date: string) =>
+      request<AvailabilitySettings>(`/api/admin/availability/${serviceType}/block-date`, {
+        method: 'DELETE',
+        body: JSON.stringify({ date }),
+      }),
+
+    blockSlot: (serviceType: string, date: string, time: string, reason?: string) =>
+      request<AvailabilitySettings>(`/api/admin/availability/${serviceType}/block-slot`, {
+        method: 'POST',
+        body: JSON.stringify({ date, time, reason }),
+      }),
+
+    unblockSlot: (serviceType: string, date: string, time: string) =>
+      request<AvailabilitySettings>(`/api/admin/availability/${serviceType}/block-slot`, {
+        method: 'DELETE',
+        body: JSON.stringify({ date, time }),
+      }),
+  },
+
   dashboard: {
     getStats: (period: '7d' | '30d' | '90d' = '7d') =>
       request<DashboardStats>(`/api/admin/dashboard/stats?period=${period}`),
@@ -974,6 +1014,17 @@ export interface OrderItem {
 
 export interface OrderStatusCounts {
   [status: string]: { count: number; revenue: number };
+}
+
+export interface AvailabilitySettings {
+  _id: string;
+  serviceType: 'therapy' | 'podcast';
+  workingDays: number[];
+  timeSlots: string[];
+  slotDuration: number;
+  blockedDates: { _id: string; date: string; reason: string }[];
+  blockedSlots: { _id: string; date: string; time: string; reason: string }[];
+  updatedAt: string;
 }
 
 export interface Booking {

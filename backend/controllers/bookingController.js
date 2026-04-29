@@ -138,21 +138,46 @@ exports.getAvailableSlots = async (req, res) => {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const existingBookings = await Booking.find({
-      date: { $gte: startOfDay, $lte: endOfDay },
-      serviceType,
-      status: { $ne: 'cancelled' },
-    }).select('timeSlot');
+    const AvailabilitySettings = require('../models/AvailabilitySettings');
+    const DEFAULT_SLOTS = {
+      therapy: ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'],
+      podcast: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'],
+    };
+
+    const [settings, existingBookings] = await Promise.all([
+      AvailabilitySettings.findOne({ serviceType }),
+      Booking.find({
+        date: { $gte: startOfDay, $lte: endOfDay },
+        serviceType,
+        status: { $ne: 'cancelled' },
+      }).select('timeSlot'),
+    ]);
+
+    const allSlots = settings?.timeSlots?.length
+      ? settings.timeSlots
+      : (DEFAULT_SLOTS[serviceType] || []);
 
     const bookedSlots = existingBookings.map(b => b.timeSlot);
 
-    const allSlots = serviceType === 'therapy'
-      ? ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00']
-      : ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+    // Check if entire day is blocked
+    const isDateBlocked = (settings?.blockedDates || []).some(bd => {
+      const d = new Date(bd.date);
+      return d.toDateString() === startOfDay.toDateString();
+    });
+
+    if (isDateBlocked) {
+      return res.json(allSlots.map(slot => ({ time: slot, available: false, blocked: true })));
+    }
+
+    const blockedSlotTimes = (settings?.blockedSlots || [])
+      .filter(bs => new Date(bs.date).toDateString() === startOfDay.toDateString())
+      .map(bs => bs.time);
 
     const available = allSlots.map(slot => ({
       time: slot,
-      available: !bookedSlots.includes(slot),
+      available: !bookedSlots.includes(slot) && !blockedSlotTimes.includes(slot),
+      booked: bookedSlots.includes(slot),
+      blocked: blockedSlotTimes.includes(slot),
     }));
 
     res.json(available);

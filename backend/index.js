@@ -103,10 +103,12 @@ app.use('/api/store/announcements', require('./routes/announcements'));
 const heroRoutes = require('./routes/heroes');
 const adminReviewsRoutes = require('./routes/adminReviews');
 const adminWishlistsRoutes = require('./routes/adminWishlists');
+const availabilityRoutes = require('./routes/availability');
 app.use('/api/heroes', heroRoutes);
 app.use('/api/admin/heroes', heroRoutes);
 app.use('/api/admin/reviews', adminReviewsRoutes);
 app.use('/api/admin/wishlists', adminWishlistsRoutes);
+app.use('/api/admin/availability', availabilityRoutes);
 
 app.post('/api/seed/products', auth, adminOnly, async (req, res) => {
   try {
