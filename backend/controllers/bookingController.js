@@ -7,6 +7,21 @@ const { sendBookingEmails } = require('../utils/email');
 exports.createBooking = async (req, res) => {
   try {
     const { serviceType, therapistId, date, timeSlot, duration, amount, notes, sessionType, intake } = req.body;
+
+    // Guard against double-booking the same slot
+    const slotDate = new Date(date);
+    const startOfDay = new Date(slotDate); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(slotDate); endOfDay.setHours(23, 59, 59, 999);
+    const conflict = await Booking.findOne({
+      serviceType,
+      timeSlot,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      status: { $ne: 'cancelled' },
+    });
+    if (conflict) {
+      return res.status(409).json({ error: 'This time slot has just been booked. Please choose another time.' });
+    }
+
     const booking = new Booking({
       user: req.user.id,
       serviceType,

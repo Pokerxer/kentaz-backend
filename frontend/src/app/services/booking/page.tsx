@@ -148,10 +148,9 @@ function BookingPageContent() {
       if (!res.ok) throw new Error('slot fetch failed');
       setAvailableSlots(await res.json());
     } catch {
-      const fallback = serviceType === 'therapy'
-        ? ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00']
-        : ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-      setAvailableSlots(fallback.map(t => ({ time: t, available: true })));
+      // Don't show a fake fallback — surface the error so the user retries
+      setAvailableSlots([]);
+      setError('Could not load available times. Please try again.');
     } finally {
       setSlotsLoading(false);
     }
@@ -228,6 +227,11 @@ function BookingPageContent() {
       });
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 409) {
+          // Slot was taken by someone else — refresh availability
+          setSelectedTime(null);
+          if (selectedDate) fetchSlots(selectedDate);
+        }
         throw new Error(data.error || 'Failed to create booking');
       }
       const booking = await res.json();
@@ -618,7 +622,17 @@ function BookingPageContent() {
                   ))}
                 </div>
                 {availableSlots.length === 0 && !slotsLoading && (
-                  <p className="text-sm text-[#6B6B6B] text-center py-4">No slots available — try another date.</p>
+                  <div className="text-center py-4">
+                    <p className="text-sm text-[#6B6B6B]">No slots available — try another date.</p>
+                    {error && (
+                      <button
+                        onClick={() => selectedDate && fetchSlots(selectedDate)}
+                        className="mt-2 text-xs text-[#C9A84C] underline hover:no-underline"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
                 )}
                 <p className="text-xs text-[#9B9B9B] mt-3">Greyed times are already booked. All times are WAT (GMT+1).</p>
               </div>
