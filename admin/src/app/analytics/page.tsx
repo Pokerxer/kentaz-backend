@@ -58,9 +58,9 @@ export default function AnalyticsPage() {
   const summary = data?.summary;
 
   const trendData = (data?.trend ?? []).map(p => ({
-    name: p.date ?? p.period ?? '',
-    Revenue: p.revenue ?? 0,
-    Orders: p.orders ?? 0,
+    name: p.label ?? p.key ?? '',
+    Revenue: p.total ?? 0,
+    Orders: p.orderCount ?? 0,
   }));
 
   const categoryData = (data?.topCategories ?? []).map(c => ({
@@ -115,10 +115,10 @@ export default function AnalyticsPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { icon: DollarSign,   label: 'Revenue',       value: loading ? null : fmt(summary?.revenue ?? 0),          trend: summary?.vsRevenue,       accent: 'bg-amber-500' },
-          { icon: ShoppingCart, label: 'Orders',        value: loading ? null : (summary?.orders ?? 0).toString(),   trend: summary?.vsTransactions,  accent: 'bg-blue-500' },
-          { icon: Users,        label: 'Customers',     value: loading ? null : (data?.totalCustomers ?? 0).toString(), trend: undefined,              accent: 'bg-emerald-500' },
-          { icon: Package,      label: 'Avg Order',     value: loading ? null : fmt(summary?.avgOrderValue ?? 0),    trend: undefined,                accent: 'bg-purple-500' },
+          { icon: DollarSign,   label: 'Revenue',       value: loading ? null : fmt(summary?.totalRevenue ?? 0),           trend: summary?.vsRevenue,      accent: 'bg-amber-500' },
+          { icon: ShoppingCart, label: 'Orders',        value: loading ? null : (summary?.totalTransactions ?? 0).toString(), trend: summary?.vsTransactions, accent: 'bg-blue-500' },
+          { icon: Users,        label: 'Customers',     value: loading ? null : (data?.totalCustomers ?? 0).toString(),       trend: undefined,               accent: 'bg-emerald-500' },
+          { icon: Package,      label: 'Avg Order',     value: loading ? null : fmt(summary?.avgTransactionValue ?? 0),       trend: undefined,               accent: 'bg-purple-500' },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-3">
