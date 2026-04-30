@@ -12,7 +12,7 @@ const inventorySchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['in', 'out', 'adjustment', 'return', 'damage', 'initial'],
+    enum: ['in', 'out', 'adjustment', 'return', 'damage', 'initial', 'stock_count'],
     required: true
   },
   quantity: {
@@ -33,7 +33,7 @@ const inventorySchema = new mongoose.Schema({
   },
   referenceType: {
     type: String,
-    enum: ['order', 'restock', 'adjustment', 'return', 'damage', 'initial', 'sale'],
+    enum: ['order', 'restock', 'adjustment', 'return', 'damage', 'initial', 'sale', 'stock_count'],
     default: 'adjustment'
   },
   notes: String,

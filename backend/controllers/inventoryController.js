@@ -1,6 +1,7 @@
 const Inventory = require('../models/Inventory');
 const Product = require('../models/Product');
 const Sale = require('../models/Sale');
+const StockCount = require('../models/StockCount');
 
 exports.getAllInventory = async (req, res) => {
   try {
@@ -325,6 +326,141 @@ exports.bulkUpdateStock = async (req, res) => {
     ]);
 
     res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/admin/inventory/stock-count
+// Saves a stock count session and updates actual stock levels
+exports.saveStockCount = async (req, res) => {
+  try {
+    const { items, notes } = req.body;
+    // items: [{ productId, productName, variantIndex, variantLabel, expectedStock, countedStock, variance, notes }]
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items must be a non-empty array' });
+    }
+
+    const productIds = [...new Set(items.map(i => i.productId))];
+    const products = await Product.find({ _id: { $in: productIds } });
+    const productMap = Object.fromEntries(products.map(p => [p._id.toString(), p]));
+
+    const inventoryDocs = [];
+    const sessionItems = [];
+    let discrepancies = 0;
+    let totalVariance = 0;
+
+    for (const item of items) {
+      const { productId, productName, variantIndex, variantLabel, expectedStock, countedStock, variance, notes: itemNotes } = item;
+      const product = productMap[productId];
+      if (!product || product.variants[variantIndex] === undefined) continue;
+
+      const newStock = parseInt(countedStock);
+      const previousStock = product.variants[variantIndex].stock || 0;
+      product.variants[variantIndex].stock = newStock;
+      product.markModified('variants');
+
+      const v = variance ?? (newStock - previousStock);
+      if (v !== 0) discrepancies++;
+      totalVariance += Math.abs(v);
+
+      inventoryDocs.push({
+        product: productId,
+        variantIndex,
+        type: 'stock_count',
+        quantity: newStock - previousStock,
+        previousStock,
+        newStock,
+        referenceType: 'stock_count',
+        notes: itemNotes || (v !== 0 ? `Stock count variance: ${v > 0 ? '+' : ''}${v}` : 'Stock count — no variance'),
+        performedBy: req.user?.id,
+      });
+
+      sessionItems.push({
+        product: productId,
+        productName: productName || product.name,
+        variantIndex,
+        variantLabel: variantLabel || '',
+        expectedStock: previousStock,
+        countedStock: newStock,
+        variance: v,
+        notes: itemNotes || '',
+      });
+    }
+
+    const uniqueProducts = [...new Set(sessionItems.map(i => i.product.toString()))].length;
+
+    const [stockCount] = await Promise.all([
+      StockCount.create({
+        countedBy: req.user?.id,
+        items: sessionItems,
+        summary: {
+          totalProducts: uniqueProducts,
+          totalVariants: sessionItems.length,
+          discrepancies,
+          totalVariance,
+        },
+        notes: notes || '',
+      }),
+      ...products.map(p => p.save()),
+      inventoryDocs.length > 0 ? Inventory.insertMany(inventoryDocs) : Promise.resolve(),
+    ]);
+
+    await stockCount.populate('countedBy', 'name email');
+    res.status(201).json(stockCount);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/admin/inventory/stock-count
+exports.getStockCountHistory = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const [counts, total] = await Promise.all([
+      StockCount.find()
+        .populate('countedBy', 'name email')
+        .sort({ countedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      StockCount.countDocuments(),
+    ]);
+
+    res.json({ counts, total, page, totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/admin/inventory/stock-count/:id
+exports.getStockCountById = async (req, res) => {
+  try {
+    const count = await StockCount.findById(req.params.id)
+      .populate('countedBy', 'name email')
+      .populate('items.product', 'name images')
+      .lean();
+    if (!count) return res.status(404).json({ error: 'Stock count not found' });
+    res.json(count);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/admin/inventory/last-counted — returns last count date per product
+exports.getLastCounted = async (req, res) => {
+  try {
+    // Aggregate last stock_count inventory record per product
+    const records = await Inventory.aggregate([
+      { $match: { type: 'stock_count' } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$product', lastCountedAt: { $first: '$createdAt' } } },
+    ]);
+    const map = Object.fromEntries(records.map(r => [r._id.toString(), r.lastCountedAt]));
+    res.json(map);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

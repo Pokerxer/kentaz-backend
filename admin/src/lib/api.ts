@@ -452,6 +452,29 @@ export const api = {
       const query = threshold ? `?threshold=${threshold}` : '';
       return request<{ items: LowStockItem[]; total: number }>(`/api/admin/inventory/low-stock${query}`);
     },
+
+    saveStockCount: (data: {
+      items: {
+        productId: string; productName?: string; variantIndex: number; variantLabel?: string;
+        expectedStock: number; countedStock: number; variance: number; notes?: string;
+      }[];
+      notes?: string;
+    }) =>
+      request<StockCountSession>('/api/admin/inventory/stock-count', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getStockCountHistory: (page = 1, limit = 20) =>
+      request<{ counts: StockCountSession[]; total: number; page: number; totalPages: number }>(
+        `/api/admin/inventory/stock-count?page=${page}&limit=${limit}`
+      ),
+
+    getStockCountById: (id: string) =>
+      request<StockCountSession>(`/api/admin/inventory/stock-count/${id}`),
+
+    getLastCounted: () =>
+      request<Record<string, string>>('/api/admin/inventory/last-counted'),
   },
 
   upload: {
@@ -1014,6 +1037,25 @@ export interface OrderItem {
 
 export interface OrderStatusCounts {
   [status: string]: { count: number; revenue: number };
+}
+
+export interface StockCountSession {
+  _id: string;
+  countedAt: string;
+  countedBy?: { _id: string; name: string; email: string };
+  items: {
+    product: string | { _id: string; name: string; images?: { url: string }[] };
+    productName: string;
+    variantIndex: number;
+    variantLabel: string;
+    expectedStock: number;
+    countedStock: number;
+    variance: number;
+    notes: string;
+  }[];
+  summary: { totalProducts: number; totalVariants: number; discrepancies: number; totalVariance: number };
+  notes: string;
+  createdAt: string;
 }
 
 export interface AvailabilitySettings {
