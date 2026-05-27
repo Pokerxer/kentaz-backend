@@ -26,17 +26,14 @@ function calcChange(total: number, paid: number) {
 
 // ── Variant Picker Modal ───────────────────────────────────────
 
-const POS_COLOR_MAP: Record<string, string> = {
-  black: '#000000', white: '#FFFFFF', blue: '#1E40AF', navy: '#1E3A8A',
-  red: '#DC2626', tan: '#D2B48C', cognac: '#9A6324', burgundy: '#722F37',
-  nude: '#E3BC9A', brown: '#8B4513', pink: '#EC4899', green: '#059669',
-  yellow: '#FACC15', purple: '#7C3AED', gray: '#6B7280', grey: '#6B7280',
-  silver: '#C0C0C0', gold: '#FFD700', cream: '#FFFDD0', beige: '#F5F5DC',
-  orange: '#F97316', emerald: '#10B981', khaki: '#C3B091', camel: '#C19A6B',
-  olive: '#808000', teal: '#008080', coral: '#FF6B6B', lavender: '#967BB6',
-};
-function posColorHex(name: string) { return POS_COLOR_MAP[name.toLowerCase().trim()] || '#9CA3AF'; }
-function posIsLight(name: string) { return ['white', 'cream', 'beige', 'nude', 'yellow', 'silver', 'ivory'].some(c => name.toLowerCase().includes(c)); }
+// Returns true if a hex color is light (needs dark border for visibility)
+function isHexLight(hex: string): boolean {
+  if (!hex || hex.length < 7) return false;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 180;
+}
 
 function VariantModal({ product, onSelect, onClose, preselectedVariantIndex }: { product: PosProduct; onSelect: (vi: number) => void; onClose: () => void; preselectedVariantIndex?: number }) {
   const variants = product.variants;
@@ -106,9 +103,10 @@ function VariantModal({ product, onSelect, onClose, preselectedVariantIndex }: {
                 {colorsForSize.map(c => {
                   const inStock = colorInStock(c);
                   const selected = selectedColor === c;
-                  const hex = posColorHex(c);
-                  const light = posIsLight(c);
-                  return <button key={c} type="button" onClick={() => inStock && setSelectedColor(c)} title={c.charAt(0).toUpperCase() + c.slice(1)} className={`relative w-9 h-9 rounded-full border-2 transition-all ${selected ? 'border-gray-900 ring-2 ring-gray-900 ring-offset-2' : inStock ? light ? 'border-gray-300 hover:border-gray-600' : 'border-transparent hover:border-gray-400' : 'border-gray-200 opacity-40 cursor-not-allowed'}`} style={{ backgroundColor: hex }}>{!inStock && <svg className="absolute inset-0 w-full h-full rounded-full" viewBox="0 0 36 36"><line x1="4" y1="32" x2="32" y2="4" stroke="rgba(0,0,0,0.35)" strokeWidth="2.5" /></svg>}</button>;
+                  const variantForColor = variants.find(vv => (selectedSize ? vv.size === selectedSize : true) && vv.color === c);
+                  const hex = variantForColor?.colorHex || '#9CA3AF';
+                  const light = isHexLight(hex);
+                  return <button key={c} type="button" onClick={() => inStock && setSelectedColor(c)} title={c.charAt(0).toUpperCase() + c.slice(1).toLowerCase()} className={`relative w-9 h-9 rounded-full border-2 transition-all ${selected ? 'border-gray-900 ring-2 ring-gray-900 ring-offset-2' : inStock ? light ? 'border-gray-300 hover:border-gray-600' : 'border-transparent hover:border-gray-400' : 'border-gray-200 opacity-40 cursor-not-allowed'}`} style={{ backgroundColor: hex }}>{!inStock && <svg className="absolute inset-0 w-full h-full rounded-full" viewBox="0 0 36 36"><line x1="4" y1="32" x2="32" y2="4" stroke="rgba(0,0,0,0.35)" strokeWidth="2.5" /></svg>}</button>;
                 })}
               </div>
             </div>

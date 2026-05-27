@@ -203,6 +203,7 @@ export function hasPosPermission(user: PosUser | null, perm: string): boolean {
 export interface PosVariant {
   size: string;
   color: string;
+  colorHex?: string;
   price: number;
   costPrice?: number;
   stock?: number;
