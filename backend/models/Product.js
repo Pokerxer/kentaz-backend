@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const variantSchema = new mongoose.Schema({
   size: String,
   color: String,
+  colorHex: String,
   price: { type: Number, required: true },
   costPrice: { type: Number, default: 0 },
   markup: { type: Number, default: 0 },
