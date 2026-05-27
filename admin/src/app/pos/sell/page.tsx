@@ -1288,7 +1288,7 @@ export default function PosPage() {
                     disabled={disabled}
                     onClick={() => { if (!disabled) { setNumpadMode(m); setNumpadInput(''); } }}
                     title={disabled ? 'Price override not permitted' : undefined}
-                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wide transition border-r last:border-r-0 ${
+                    className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wide transition border-r last:border-r-0 ${
                       disabled
                         ? 'text-gray-300 cursor-not-allowed bg-gray-50'
                         : numpadMode === m
@@ -1305,7 +1305,7 @@ export default function PosPage() {
                 );
               })}
               <div className="flex-[2] flex items-center justify-end px-3">
-                <span className="text-xl font-black text-gray-900 font-mono">
+                <span className="text-base font-black text-gray-900 font-mono">
                   {numpadInput !== '' ? numpadInput : (
                     selectedCartItemIdx !== null && numpadMode !== 'disc'
                       ? (numpadMode === 'qty' ? cart[selectedCartItemIdx]?.quantity : formatPrice(cart[selectedCartItemIdx]?.price || 0))
@@ -1322,13 +1322,13 @@ export default function PosPage() {
                 <button
                   key={key}
                   onClick={() => key === '⌫' ? pressNumpad('⌫') : pressNumpad(key)}
-                  className={`py-4 text-lg font-bold transition active:scale-95 ${
+                  className={`py-2.5 text-base font-bold transition active:scale-95 ${
                     key === '⌫'
                       ? 'bg-red-50 text-red-500 hover:bg-red-100'
                       : 'bg-white text-gray-800 hover:bg-gray-50'
                   }`}
                 >
-                  {key === '⌫' ? <ArrowLeftRight className="w-5 h-5 mx-auto rotate-180" /> : key}
+                  {key === '⌫' ? <ArrowLeftRight className="w-4 h-4 mx-auto rotate-180" /> : key}
                 </button>
               ))}
             </div>
