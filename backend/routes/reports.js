@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const { auth, adminOnly, posAccess } = require('../middleware/auth');
+const { auth, adminOnly, posAccess, adminOrStaff } = require('../middleware/auth');
 const Order    = require('../models/Order');
 const Sale     = require('../models/Sale');
 const Product  = require('../models/Product');
@@ -27,7 +27,7 @@ function pct(part, whole) {
 
 // ── GET /api/admin/reports/sales ─────────────────────────────────
 // Tracks: online orders, POS sales, POS refunds → net revenue per period
-router.get('/sales', auth, adminOnly, async (req, res) => {
+router.get('/sales', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const { from, to } = parseDates(req.query);
     const groupBy = req.query.groupBy || 'day'; // day | month
@@ -101,7 +101,7 @@ router.get('/sales', auth, adminOnly, async (req, res) => {
 
 // ── GET /api/admin/reports/products ──────────────────────────────
 // Includes: POS refunds, current stock, margin %
-router.get('/products', auth, adminOnly, async (req, res) => {
+router.get('/products', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const { from, to } = parseDates(req.query);
 
@@ -220,7 +220,7 @@ router.get('/products', auth, adminOnly, async (req, res) => {
 });
 
 // ── GET /api/admin/reports/orders ────────────────────────────────
-router.get('/orders', auth, adminOnly, async (req, res) => {
+router.get('/orders', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const { from, to } = parseDates(req.query);
     const match = { createdAt: { $gte: from, $lte: to } };
@@ -260,7 +260,7 @@ router.get('/orders', auth, adminOnly, async (req, res) => {
 });
 
 // ── GET /api/admin/reports/customers ─────────────────────────────
-router.get('/customers', auth, adminOnly, async (req, res) => {
+router.get('/customers', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const { from, to } = parseDates(req.query);
 
@@ -316,7 +316,7 @@ router.get('/customers', auth, adminOnly, async (req, res) => {
 
 // ── GET /api/admin/reports/inventory ─────────────────────────────
 // Includes: retail value per line, total retail value in summary
-router.get('/inventory', auth, adminOnly, async (req, res) => {
+router.get('/inventory', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const filter = req.query.filter || 'all'; // all | low | out
 
@@ -366,7 +366,7 @@ router.get('/inventory', auth, adminOnly, async (req, res) => {
 
 // ── GET /api/admin/reports/staff ─────────────────────────────────
 // Fixes: $ifNull bug, adds itemsSold, refunds, netRevenue
-router.get('/staff', auth, adminOnly, async (req, res) => {
+router.get('/staff', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const { from, to } = parseDates(req.query);
 
@@ -437,7 +437,7 @@ router.get('/staff', auth, adminOnly, async (req, res) => {
 });
 
 // ── GET /api/admin/reports/purchases ─────────────────────────────
-router.get('/purchases', auth, adminOnly, async (req, res) => {
+router.get('/purchases', auth, adminOrStaff('/reports'), async (req, res) => {
   try {
     const { from, to } = parseDates(req.query);
 
@@ -488,7 +488,7 @@ const {
 router.get('/pos/x', auth, posAccess, getXReport);
 router.get('/pos/z', auth, posAccess, getZReport);
 router.get('/pos/hourly', auth, posAccess, getHourlySales);
-router.get('/pos/staff', auth, adminOnly, getStaffPerformance);
-router.get('/pos/summary', auth, adminOnly, getSummary);
+router.get('/pos/staff', auth, adminOrStaff('/reports'), getStaffPerformance);
+router.get('/pos/summary', auth, adminOrStaff('/reports'), getSummary);
 
 module.exports = router;

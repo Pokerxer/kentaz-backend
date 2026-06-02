@@ -542,12 +542,13 @@ exports.createStaff = async (req, res) => {
 // PUT /api/admin/staff/:id
 exports.updateStaff = async (req, res) => {
   try {
-    const { name, email, isActive, password } = req.body;
+    const { name, email, isActive, password, permissions } = req.body;
     const update = {};
     if (name) update.name = name;
     if (email) update.email = email;
     if (typeof isActive === 'boolean') update.isActive = isActive;
     if (password) update.password = await bcrypt.hash(password, 10);
+    if (Array.isArray(permissions)) update.permissions = permissions;
 
     const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).select('-password');
     if (!user) return res.status(404).json({ error: 'Staff not found' });

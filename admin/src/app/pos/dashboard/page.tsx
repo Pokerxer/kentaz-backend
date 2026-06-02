@@ -292,6 +292,13 @@ export default function PosDashboard() {
       {/* Header */}
       <header className="bg-gray-900 text-white px-4 sm:px-6 py-4 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
+          <a
+            href="/products"
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
+            title="Back to Products"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </a>
           <div className="w-9 h-9 rounded-xl bg-[#C9A84C] flex items-center justify-center">
             <LayoutGrid className="w-5 h-5 text-white" />
           </div>

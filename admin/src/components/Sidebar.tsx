@@ -61,10 +61,10 @@ type NavItem = {
 };
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard',    href: '/dashboard',    icon: BarChart3 },
+  { name: 'Dashboard',    href: '/dashboard',    icon: BarChart3,     roles: ['admin'] },
   { name: 'Point of Sale',href: '/pos/dashboard',icon: Monitor,       external: true },
   { name: 'POS Sales',    href: '/pos/sales',    icon: Receipt,       external: true },
-  { name: 'Products',     href: '/products',     icon: Package,       hasDropdown: true, roles: ['admin'] },
+  { name: 'Products',     href: '/products',     icon: Package,       hasDropdown: true, roles: ['admin', 'staff'] },
   { name: 'Inventory',    href: '/inventory',    icon: Box,           roles: ['admin'] },
   { name: 'Purchases',    href: '/purchases',    icon: ShoppingBag,   roles: ['admin'] },
   { name: 'Orders',       href: '/orders',       icon: ShoppingCart },
@@ -203,7 +203,9 @@ export function Sidebar() {
 
                   {productsDropdownOpen && (
                     <div className="mt-0.5 ml-3 space-y-0.5 animate-fade-in">
-                      {productsSubMenu.map(subItem => {
+                      {productsSubMenu.filter(subItem =>
+                        userRole === 'admin' || subItem.href === '/products' || subItem.href === '/products/stock-count'
+                      ).map(subItem => {
                         const isSubActive = pathname === subItem.href;
                         return (
                           <Link

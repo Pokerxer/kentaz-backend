@@ -37,22 +37,36 @@ function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' | 'lg'
 
 // ── StaffModal ─────────────────────────────────────────────────
 
+const GRANTABLE_SECTIONS = [
+  { path: '/products',  label: 'Products',   desc: 'Browse product catalogue & stock counts' },
+  { path: '/inventory', label: 'Inventory',  desc: 'Stock levels and adjustments' },
+  { path: '/purchases', label: 'Purchases',  desc: 'Supplier purchase orders' },
+  { path: '/customers', label: 'Customers',  desc: 'Customer list and profiles' },
+  { path: '/reports',   label: 'Reports',    desc: 'Sales, product & staff reports' },
+  { path: '/analytics', label: 'Analytics',  desc: 'Business analytics dashboard' },
+];
+
 function StaffModal({
   staff,
   onSave,
   onClose,
 }: {
   staff: StaffMember | null;
-  onSave: (data: { name: string; email: string; password: string; isActive: boolean }) => Promise<void>;
+  onSave: (data: { name: string; email: string; password: string; isActive: boolean; permissions: string[] }) => Promise<void>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(staff?.name || '');
   const [email, setEmail] = useState(staff?.email || '');
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(staff?.isActive ?? true);
+  const [permissions, setPermissions] = useState<string[]>(staff?.permissions ?? []);
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  function togglePerm(path: string) {
+    setPermissions(prev => prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +74,7 @@ function StaffModal({
     setLoading(true);
     setError('');
     try {
-      await onSave({ name, email, password, isActive });
+      await onSave({ name, email, password, isActive, permissions });
       onClose();
     } catch (err: any) {
       setError(err.message);
@@ -71,12 +85,12 @@ function StaffModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
           <h3 className="font-bold text-gray-900">{staff ? 'Edit Staff' : 'Add Staff'}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
@@ -111,6 +125,28 @@ function StaffModal({
               </button>
             </div>
           </div>
+
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-1">Admin Panel Access</p>
+            <p className="text-xs text-gray-400 mb-2.5">Dashboard, Orders, Bookings & POS are always available. Grant extra sections below.</p>
+            <div className="space-y-1.5">
+              {GRANTABLE_SECTIONS.map(s => (
+                <label key={s.path} className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={permissions.includes(s.path)}
+                    onChange={() => togglePerm(s.path)}
+                    className="w-4 h-4 rounded accent-blue-600"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{s.label}</p>
+                    <p className="text-xs text-gray-400">{s.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {staff && (
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
               <div>
@@ -294,10 +330,24 @@ function StaffDetail({
           </div>
         )}
 
-        {/* POS access note */}
-        <div className="mt-5 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2">
-          <ShieldCheck className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-blue-600">Staff can only access the POS terminal — no admin panel access.</p>
+        {/* Admin panel access summary */}
+        <div className="mt-5 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+          <div className="flex items-center gap-2 mb-1.5">
+            <ShieldCheck className="w-4 h-4 text-blue-500 flex-shrink-0" />
+            <p className="text-xs font-semibold text-blue-700">Admin Panel Access</p>
+          </div>
+          <p className="text-xs text-blue-600 mb-1.5">Always: Dashboard, Orders, Bookings, POS</p>
+          {staff.permissions && staff.permissions.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {staff.permissions.map(p => (
+                <span key={p} className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium capitalize">
+                  {p.replace('/', '')}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-blue-500 italic">No extra sections granted</p>
+          )}
         </div>
       </div>
     </div>
@@ -356,14 +406,17 @@ export default function StaffPage() {
     if (!selectedId && filtered.length > 0) setSelectedId(filtered[0]._id);
   }, [filtered]);
 
-  async function handleSave(data: { name: string; email: string; password: string; isActive: boolean }) {
+  async function handleSave(data: { name: string; email: string; password: string; isActive: boolean; permissions: string[] }) {
     if (modalStaff === 'new') {
       const created = await staffApi.create({ name: data.name, email: data.email, password: data.password });
+      if (data.permissions.length > 0) {
+        await staffApi.update(created._id, { permissions: data.permissions });
+      }
       showToast('Staff created');
       await loadStaff();
       setSelectedId(created._id);
     } else if (modalStaff) {
-      const payload: any = { name: data.name, email: data.email, isActive: data.isActive };
+      const payload: any = { name: data.name, email: data.email, isActive: data.isActive, permissions: data.permissions };
       if (data.password) payload.password = data.password;
       await staffApi.update((modalStaff as StaffMember)._id, payload);
       showToast('Staff updated');

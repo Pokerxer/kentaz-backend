@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { auth, adminOnly } = require('../middleware/auth');
+const { auth, adminOnly, adminOrStaff } = require('../middleware/auth');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Booking = require('../models/Booking');
 
-router.get('/', auth, adminOnly, async (req, res) => {
+router.get('/', auth, adminOrStaff('/customers'), async (req, res) => {
   try {
     const { page = 1, limit = 20, role, search } = req.query;
     const query = {};
@@ -45,7 +45,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
   }
 });
 
-router.get('/:id', auth, adminOnly, async (req, res) => {
+router.get('/:id', auth, adminOrStaff('/customers'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password').lean();
     if (!user) return res.status(404).json({ error: 'User not found' });

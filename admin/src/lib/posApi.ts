@@ -161,7 +161,7 @@ export const staffApi = {
       headers: { Authorization: `Bearer ${adminToken()}` },
     }),
 
-  update: (id: string, data: { name?: string; email?: string; isActive?: boolean; password?: string }) =>
+  update: (id: string, data: { name?: string; email?: string; isActive?: boolean; password?: string; permissions?: string[] }) =>
     posRequest<StaffMember>(`/api/admin/staff/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -297,6 +297,7 @@ export interface StaffMember {
   email: string;
   role: 'staff';
   isActive: boolean;
+  permissions: string[];
   createdAt: string;
 }
 

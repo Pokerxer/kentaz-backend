@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { api, Product, Variant } from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
 import { formatPrice } from '@/lib/utils';
 
 function StatusBadge({ status }: { status: string }) {
@@ -71,6 +72,8 @@ export default function ProductViewPage() {
   const router = useRouter();
   const params = useParams();
   const productId = params.id as string;
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,20 +153,22 @@ export default function ProductViewPage() {
               <p className="text-sm text-gray-500">Product Details</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/products/${productId}/edit`}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
-            >
-              <Edit className="w-4 h-4" /> Edit Product
-            </Link>
-            <button
-              onClick={() => setDeleteConfirm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
-            >
-              <Trash2 className="w-4 h-4" /> Delete
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/products/${productId}/edit`}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+              >
+                <Edit className="w-4 h-4" /> Edit Product
+              </Link>
+              <button
+                onClick={() => setDeleteConfirm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Delete Confirm Dialog */}
@@ -675,20 +680,22 @@ export default function ProductViewPage() {
         </div>
 
         {/* Bottom action bar (mobile) */}
-        <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 p-4 flex gap-3 z-40">
-          <Link
-            href={`/products/${productId}/edit`}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold"
-          >
-            <Edit className="w-4 h-4" /> Edit Product
-          </Link>
-          <button
-            onClick={() => setDeleteConfirm(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-semibold"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {isAdmin && (
+          <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 p-4 flex gap-3 z-40">
+            <Link
+              href={`/products/${productId}/edit`}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold"
+            >
+              <Edit className="w-4 h-4" /> Edit Product
+            </Link>
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-semibold"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="md:hidden h-20" />
 
       </div>

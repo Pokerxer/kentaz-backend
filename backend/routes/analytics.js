@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { auth, adminOnly } = require('../middleware/auth');
+const { auth, adminOrStaff } = require('../middleware/auth');
 const Order = require('../models/Order');
 const Sale = require('../models/Sale');
 const User = require('../models/User');
 const Product = require('../models/Product');
 
 // ── GET /api/admin/analytics?period=7d|30d|90d|12m ──────────────
-router.get('/', auth, adminOnly, async (req, res) => {
+router.get('/', auth, adminOrStaff('/analytics'), async (req, res) => {
   try {
     const period = req.query.period || '30d';
     const now = new Date();

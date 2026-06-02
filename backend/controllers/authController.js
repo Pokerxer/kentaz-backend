@@ -37,7 +37,7 @@ exports.login = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, role: user.role, permissions: user.permissions || [] }, JWT_SECRET, { expiresIn: '7d' });
     const { password: _, ...userObj } = user.toObject();
     res.json({ user: userObj, token });
   } catch (err) {

@@ -12,7 +12,7 @@ const {
   cancelBooking,
   getTherapists,
 } = require('../controllers/bookingController');
-const { auth, adminOnly } = require('../middleware/auth');
+const { auth, adminOnly, staffOrAdmin } = require('../middleware/auth');
 
 router.post('/', auth, createBooking);
 router.get('/', auth, getBookings);
@@ -23,7 +23,7 @@ router.post('/:id/pay', auth, initializeBookingPayment);
 router.post('/:id/verify', auth, verifyBookingPayment);
 router.post('/:id/cancel', auth, cancelBooking);
 
-router.get('/admin/bookings', auth, adminOnly, getAdminBookings);
-router.put('/:id/status', auth, adminOnly, updateBookingStatus);
+router.get('/admin/bookings', auth, staffOrAdmin, getAdminBookings);
+router.put('/:id/status', auth, staffOrAdmin, updateBookingStatus);
 
 module.exports = router;

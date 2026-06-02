@@ -25,6 +25,7 @@ import {
 import { formatPrice } from '@/lib/utils';
 import { api, Product } from '@/lib/api';
 import { AdminLayout } from '@/components/AdminLayout';
+import { useAuthStore } from '@/store/auth-store';
 
 function exportProductsCSV(products: Product[]) {
   const headers = ['Name', 'Category', 'Subcategory', 'Status', 'SKU', 'Price', 'Stock', 'Tags'];
@@ -79,6 +80,8 @@ const LIMIT = 100;
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -256,13 +259,15 @@ export default function ProductsPage() {
             <p className="text-gray-500 mt-1 ml-5">Manage your product catalogue</p>
           </div>
           <div className="flex gap-2">
-            <Link
-              href="/products/new"
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20"
-            >
-              <Plus className="h-4 w-4" />
-              Add Product
-            </Link>
+            {isAdmin && (
+              <Link
+                href="/products/new"
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20"
+              >
+                <Plus className="h-4 w-4" />
+                Add Product
+              </Link>
+            )}
             <button
               onClick={handleExportAll}
               disabled={products.length === 0 || exporting}
@@ -470,17 +475,21 @@ export default function ProductsPage() {
                             <Link href={`/products/${product._id}`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" title="View">
                               <Eye className="h-4 w-4" />
                             </Link>
-                            <Link href={`/products/${product._id}/edit`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#C9A84C] transition-colors" title="Edit">
-                              <Edit className="h-4 w-4" />
-                            </Link>
-                            <button
-                              onClick={() => handleDelete(product)}
-                              disabled={isDeleting}
-                              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
-                              title="Delete"
-                            >
-                              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                            </button>
+                            {isAdmin && (
+                              <Link href={`/products/${product._id}/edit`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#C9A84C] transition-colors" title="Edit">
+                                <Edit className="h-4 w-4" />
+                              </Link>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDelete(product)}
+                                disabled={isDeleting}
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
+                                title="Delete"
+                              >
+                                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -537,21 +546,25 @@ export default function ProductsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Link>
-                        <Link
-                          href={`/products/${product._id}/edit`}
-                          className="p-2 bg-white rounded-xl text-gray-700 hover:text-[#C9A84C] shadow-md transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Link>
-                        <button
-                          onClick={() => handleDelete(product)}
-                          disabled={isDeleting}
-                          className="p-2 bg-white rounded-xl text-gray-700 hover:text-red-600 shadow-md transition-colors disabled:opacity-40"
-                          title="Delete"
-                        >
-                          {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        </button>
+                        {isAdmin && (
+                          <Link
+                            href={`/products/${product._id}/edit`}
+                            className="p-2 bg-white rounded-xl text-gray-700 hover:text-[#C9A84C] shadow-md transition-colors"
+                            title="Edit"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Link>
+                        )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDelete(product)}
+                            disabled={isDeleting}
+                            className="p-2 bg-white rounded-xl text-gray-700 hover:text-red-600 shadow-md transition-colors disabled:opacity-40"
+                            title="Delete"
+                          >
+                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </button>
+                        )}
                       </div>
                     </div>
 

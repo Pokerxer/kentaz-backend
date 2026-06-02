@@ -6,8 +6,9 @@ import { useAuthStore } from '@/store/auth-store';
 import type { User } from '@/lib/api';
 
 // Routes that require explicit role or custom permission to access
+const PRODUCTS_WRITE_PATHS = ['/products/new', '/products/import', '/products/adjustment'];
+
 const ADMIN_ONLY_PATHS = [
-  '/products',
   '/inventory',
   '/purchases',
   '/customers',
@@ -26,6 +27,12 @@ const ADMIN_ONLY_PATHS = [
 
 export function canAccessPath(pathname: string, user: User): boolean {
   if (user.role === 'admin') return true;
+
+  // Staff can view products list/detail but not write paths
+  if (user.role === 'staff') {
+    if (PRODUCTS_WRITE_PATHS.some(p => pathname.startsWith(p))) return false;
+    if (pathname.startsWith('/products/') && pathname.endsWith('/edit')) return false;
+  }
 
   const restricted = ADMIN_ONLY_PATHS.find(p => pathname.startsWith(p));
   if (!restricted) return true; // Unrestricted route
@@ -76,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated && !isPublicPath) {
       router.push('/login');
     } else if (isAuthenticated && isPublicPath) {
-      router.push('/dashboard');
+      router.push(user?.role === 'staff' ? '/pos/dashboard' : '/dashboard');
     } else if (isAuthenticated && user && !canAccessPath(pathname, user)) {
       // Authenticated but lacks permission for this route → back to dashboard
       router.push('/dashboard');

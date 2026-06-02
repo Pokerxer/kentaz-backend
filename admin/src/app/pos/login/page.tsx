@@ -83,6 +83,13 @@ export default function PosLoginPage() {
       {/* Top bar */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-white/5">
         <div className="flex items-center gap-3">
+          <a
+            href="/products"
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white"
+            title="Back to Products"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </a>
           <div className="w-9 h-9 rounded-xl bg-[#C9A84C] flex items-center justify-center">
             <LayoutGrid className="w-4 h-4 text-white" />
           </div>

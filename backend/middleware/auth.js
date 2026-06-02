@@ -28,3 +28,17 @@ exports.posAccess = async (req, res, next) => {
   }
   next();
 };
+
+// Any authenticated staff or admin (for routes all staff can access regardless of permissions)
+exports.staffOrAdmin = (req, res, next) => {
+  if (req.user.role === 'admin' || req.user.role === 'staff') return next();
+  return res.status(403).json({ error: 'Access denied' });
+};
+
+// Admin OR staff who has the given permission path embedded in their JWT.
+// Staff must re-login after admin updates their permissions.
+exports.adminOrStaff = (permPath) => (req, res, next) => {
+  if (req.user.role === 'admin') return next();
+  if (req.user.role === 'staff' && (req.user.permissions || []).includes(permPath)) return next();
+  return res.status(403).json({ error: 'Access denied' });
+};
