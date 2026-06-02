@@ -303,7 +303,7 @@ export default function PosDashboard() {
             <LayoutGrid className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="font-black text-base leading-none">Kentaz POS</p>
+            <p className="font-black text-base leading-none">Kentaz Emporium</p>
             <p className="text-gray-400 text-xs mt-0.5">
               {new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>

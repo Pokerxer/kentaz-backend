@@ -125,7 +125,7 @@ export default function SaleDetailPage() {
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#C9A84C] mb-3">
                 <ShoppingBag className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-black tracking-tight">KENTAZ</h2>
+              <h2 className="text-2xl font-black tracking-tight">Kentaz Emporium</h2>
               <p className="text-xs text-gray-400 mt-1">Point of Sale Receipt</p>
               <div className="mt-3 space-y-1">
                 <p className="font-mono text-sm font-semibold text-gray-700">{sale.receiptNumber}</p>
@@ -200,7 +200,7 @@ export default function SaleDetailPage() {
             <div className="border-t pt-4 text-center space-y-1">
               <p className="text-xs text-gray-500">Cashier: <span className="font-medium">{sale.cashierName || sale.cashier?.name}</span></p>
               {sale.notes && <p className="text-xs text-gray-400 italic">{sale.notes}</p>}
-              <p className="text-xs text-gray-300 mt-3">Thank you for shopping at Kentaz!</p>
+              <p className="text-xs text-gray-300 mt-3">Thank you for shopping at Kentaz Emporium!</p>
             </div>
           </div>
         </div>

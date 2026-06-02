@@ -160,7 +160,7 @@ function OrderDetail({
       </head>
       <body>
         <div class="header">
-          <h1>KENTAZ</h1>
+          <h1>Kentaz Emporium</h1>
           <div class="receipt-no">${saleData.receiptNumber}</div>
           <div class="date">${new Date(saleData.createdAt).toLocaleString()}</div>
         </div>
@@ -174,7 +174,7 @@ function OrderDetail({
         </div>
         <div class="footer">
           <div>Cashier: ${saleData.cashierName || saleData.cashier?.name}</div>
-          <div style="margin-top: 4px;">Thank you for shopping at Kentaz!</div>
+          <div style="margin-top: 4px;">Thank you for shopping at Kentaz Emporium!</div>
         </div>
       </body>
       </html>
@@ -209,7 +209,7 @@ function OrderDetail({
       @media print{body{padding:20px}}
     </style></head><body>
       <div class="header">
-        <div><h1>KENTAZ</h1><div style="color:#666;margin-top:4px">Tax Invoice</div></div>
+        <div><h1>Kentaz Emporium</h1><div style="color:#666;margin-top:4px">Tax Invoice</div></div>
         <div style="text-align:right">
           <div class="label">Invoice No.</div>
           <div style="font-weight:bold;font-size:16px">${sale.receiptNumber}</div>
@@ -233,7 +233,7 @@ function OrderDetail({
         <div>${sale.paymentMethod.charAt(0).toUpperCase() + sale.paymentMethod.slice(1)} — ${formatPrice(sale.amountPaid)}${sale.change > 0 ? ` (Change: ${formatPrice(sale.change)})` : ''}</div>
       </div>
       ${sale.notes ? `<div style="margin-top:16px;padding:12px;background:#fffbea;border-radius:8px"><div class="label">Notes</div><div>${sale.notes}</div></div>` : ''}
-      <div class="footer"><p>Thank you for shopping at Kentaz!</p></div>
+      <div class="footer"><p>Thank you for shopping at Kentaz Emporium!</p></div>
     </body></html>`);
     w.document.close();
     w.print();
@@ -495,7 +495,7 @@ function OrderDetail({
       {/* Hidden receipt for printing */}
       <div ref={printRef} style={{ display: 'none' }}>
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <h2>KENTAZ</h2>
+          <h2>Kentaz Emporium</h2>
           <p>{sale.receiptNumber}</p>
           <p>{new Date(sale.createdAt).toLocaleString('en-NG')}</p>
         </div>
@@ -523,7 +523,7 @@ function OrderDetail({
         </table>
         <div className="line" />
         <p className="center">Cashier: {sale.cashierName || sale.cashier?.name}</p>
-        <p className="center">Thank you for shopping at Kentaz!</p>
+        <p className="center">Thank you for shopping at Kentaz Emporium!</p>
       </div>
 
       {/* Void modal */}

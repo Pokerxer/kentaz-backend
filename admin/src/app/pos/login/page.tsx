@@ -94,7 +94,7 @@ export default function PosLoginPage() {
             <LayoutGrid className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="text-white font-bold text-sm leading-none">Kentaz POS</p>
+            <p className="text-white font-bold text-sm leading-none">Kentaz Emporium</p>
             <p className="text-gray-500 text-xs mt-0.5">Point of Sale</p>
           </div>
         </div>

@@ -400,10 +400,10 @@ export default function PurchaseDetailPage() {
               </div>
               <div className="text-right">
                 <div className="flex items-center justify-end gap-2 mb-1">
-                  <div className="h-8 w-8 rounded-lg bg-[#C9A84C] flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">K</span>
+                  <div className="h-8 w-8 rounded-lg bg-[#C9A84C] flex items-center justify-center overflow-hidden">
+                    <img src="/logo.png" alt="Kentaz Emporium" className="w-full h-full object-contain p-0.5" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none'; }} />
                   </div>
-                  <span className="font-bold text-lg text-gray-900">Kentaz</span>
+                  <span className="font-bold text-lg text-gray-900">Kentaz Emporium</span>
                 </div>
                 <p className="text-xs text-gray-400">Luxury · Lifestyle · Wellness</p>
               </div>

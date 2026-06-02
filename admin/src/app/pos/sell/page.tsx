@@ -335,21 +335,24 @@ function PaymentModal({
 // ── Receipt Modal ──────────────────────────────────────────────
 
 function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () => void; onNewSale: () => void }) {
+  const paymentLabel: Record<string, string> = { cash: 'Cash', card: 'Card', transfer: 'Bank Transfer' };
+  const dateStr = new Date(sale.createdAt).toLocaleString('en-NG', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
   function print() {
-    const receiptEl = document.getElementById('receipt');
-    if (!receiptEl) return;
-
-    const printWindow = window.open('', '_blank', 'width=350,height=600');
-    if (!printWindow) return;
-
+    const logoUrl = window.location.origin + '/logo.png';
     const itemsHtml = sale.items.map(item => `
       <tr>
-        <td style="padding: 3px 0;">
-          <div style="font-weight: 500; font-size: 12px;">${item.productName}</div>
-          ${item.variantLabel ? `<div style="font-size: 10px; color: #666;">${item.variantLabel}</div>` : ''}
-          <div style="font-size: 10px; color: #888;">${item.quantity} × ₦${item.price.toLocaleString()}</div>
+        <td style="padding:5px 0; border-bottom:1px solid #f0f0f0; vertical-align:top;">
+          <div style="font-weight:600; font-size:12px; color:#111;">${item.productName}</div>
+          ${item.variantLabel ? `<div style="font-size:10px;color:#888;margin-top:1px;">${item.variantLabel}</div>` : ''}
+          <div style="font-size:11px;color:#666;margin-top:2px;">${item.quantity} × ₦${item.price.toLocaleString()}</div>
         </td>
-        <td style="text-align: right; font-weight: 600; font-size: 12px;">₦${item.total.toLocaleString()}</td>
+        <td style="padding:5px 0; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; font-size:12px; color:#111; white-space:nowrap; vertical-align:top;">
+          ₦${item.total.toLocaleString()}
+        </td>
       </tr>
     `).join('');
 
@@ -358,132 +361,201 @@ function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () =>
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Receipt - ${sale.receiptNumber}</title>
+        <title>Receipt · ${sale.receiptNumber}</title>
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; font-size: 12px; color: #111; }
-          .header { text-align: center; padding-bottom: 10px; border-bottom: 1px dashed #333; margin-bottom: 10px; }
-          .header h1 { font-size: 18px; font-weight: 800; letter-spacing: 1px; }
-          .header .subtitle { font-size: 10px; color: #666; margin-top: 2px; }
-          .header .receipt-no { font-size: 10px; font-family: monospace; color: #444; margin-top: 4px; }
-          .header .date { font-size: 10px; color: #888; margin-top: 2px; }
-          table { width: 100%; border-collapse: collapse; }
-          .totals { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
-          .totals-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-          .totals-row.total { font-weight: 700; font-size: 14px; border-top: 2px solid #111; margin-top: 4px; padding-top: 6px; }
-          .totals-row.discount { color: #dc2626; }
-          .totals-row.change { background: #dcfce7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
-          .footer { text-align: center; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #333; font-size: 10px; color: #888; }
-          @media print { body { padding: 10px; } }
+          * { margin:0; padding:0; box-sizing:border-box; }
+          body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; background:#fff; color:#111; width:320px; margin:0 auto; padding:24px 16px; }
+          .logo-wrap { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:4px; }
+          .logo-circle { width:36px; height:36px; border-radius:10px; background:#C9A84C; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
+          .logo-circle img { width:100%; height:100%; object-fit:contain; padding:3px; }
+          .brand { font-size:22px; font-weight:900; letter-spacing:2px; color:#111; }
+          .tagline { font-size:10px; color:#999; text-align:center; margin-bottom:8px; letter-spacing:1px; text-transform:uppercase; }
+          .dash { border:none; border-top:1px dashed #ccc; margin:10px 0; }
+          .receipt-meta { text-align:center; font-size:10px; color:#666; line-height:1.7; }
+          .receipt-meta .rnum { font-family:monospace; font-size:11px; color:#333; font-weight:600; }
+          table { width:100%; border-collapse:collapse; margin:10px 0; }
+          .totals-section { margin-top:4px; }
+          .row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:12px; }
+          .row.muted { color:#666; }
+          .row.discount { color:#dc2626; }
+          .row.total-row { font-size:15px; font-weight:900; padding:7px 0; border-top:2px solid #111; margin-top:4px; }
+          .row.payment { color:#555; }
+          .change-box { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:#16a34a; margin-top:6px; }
+          ${sale.customerName ? `.customer-box { background:#fafafa; border:1px solid #eee; border-radius:6px; padding:7px 10px; font-size:11px; color:#555; margin-bottom:8px; }` : ''}
+          .footer { text-align:center; margin-top:14px; font-size:10px; color:#aaa; line-height:1.8; }
+          .footer .ty { font-size:11px; font-weight:600; color:#C9A84C; letter-spacing:0.5px; }
+          .cashier { font-size:10px; color:#bbb; text-align:center; margin-top:6px; }
+          @media print { body { width:100%; padding:8px; } }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>KENTAZ</h1>
-          <div class="subtitle">Point of Sale Receipt</div>
-          <div class="receipt-no">${sale.receiptNumber}</div>
-          <div class="date">${new Date(sale.createdAt).toLocaleString()}</div>
+        <div class="logo-wrap">
+          <div class="logo-circle"><img src="${logoUrl}" alt="Kentaz Emporium" onerror="this.style.display='none'"></div>
+          <span class="brand">Kentaz Emporium</span>
         </div>
+        <div class="tagline">Sales Receipt</div>
+        <hr class="dash">
+        <div class="receipt-meta">
+          <div class="rnum">${sale.receiptNumber}</div>
+          <div>${dateStr}</div>
+        </div>
+        <hr class="dash">
+        ${sale.customerName ? `
+        <div class="customer-box">
+          <strong>${sale.customerName}</strong>${sale.customerPhone ? ` &nbsp;·&nbsp; ${sale.customerPhone}` : ''}
+        </div>` : ''}
         <table>${itemsHtml}</table>
-        <div class="totals">
-          <div class="totals-row"><span>Subtotal</span><span>₦${sale.subtotal.toLocaleString()}</span></div>
-          ${sale.discountAmount > 0 ? `<div class="totals-row discount"><span>Discount</span><span>-₦${sale.discountAmount.toLocaleString()}</span></div>` : ''}
-          <div class="totals-row total"><span>TOTAL</span><span>₦${sale.total.toLocaleString()}</span></div>
-          <div class="totals-row"><span>Payment (${sale.paymentMethod})</span><span>₦${sale.amountPaid.toLocaleString()}</span></div>
-          ${sale.change > 0 ? `<div class="totals-row change"><span>Change</span><span>₦${sale.change.toLocaleString()}</span></div>` : ''}
+        <hr class="dash">
+        <div class="totals-section">
+          <div class="row muted"><span>Subtotal</span><span>₦${sale.subtotal.toLocaleString()}</span></div>
+          ${sale.discountAmount > 0 ? `<div class="row discount"><span>Discount (${sale.discount}${sale.discountType === 'percent' ? '%' : ' off'})</span><span>−₦${sale.discountAmount.toLocaleString()}</span></div>` : ''}
+          <div class="row total-row"><span>TOTAL</span><span>₦${sale.total.toLocaleString()}</span></div>
+          <div class="row payment"><span>${paymentLabel[sale.paymentMethod] ?? sale.paymentMethod}</span><span>₦${sale.amountPaid.toLocaleString()}</span></div>
+          ${sale.change > 0 ? `<div class="change-box"><span>Change</span><span>₦${sale.change.toLocaleString()}</span></div>` : ''}
         </div>
+        <hr class="dash">
         <div class="footer">
-          <div>Cashier: ${sale.cashierName}</div>
-          <div style="margin-top: 4px;">Thank you for shopping at Kentaz!</div>
+          <div class="ty">Thank you for shopping with us!</div>
+          <div>We appreciate your business.</div>
+          <div style="margin-top:6px;">Served by: <strong>${sale.cashierName}</strong></div>
         </div>
       </body>
       </html>
     `;
 
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.print();
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      document.body.removeChild(iframe);
+    }, 300);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl print:shadow-none print:rounded-none print:max-w-none">
-        <div className="print:hidden flex items-center justify-between px-5 py-4 border-b">
-          <div className="flex items-center gap-2 text-green-600">
+      <div className="bg-white rounded-2xl w-full max-w-xs shadow-2xl overflow-hidden">
+
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b bg-green-50">
+          <div className="flex items-center gap-2 text-green-700">
             <CheckCircle className="w-5 h-5" />
-            <span className="font-bold">Sale Complete!</span>
+            <span className="font-bold text-sm">Sale Complete!</span>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-green-100 text-green-600 transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Receipt body */}
-        <div id="receipt" className="p-6 space-y-4">
-          <div className="text-center border-b pb-4">
-            <h2 className="text-xl font-black tracking-tight">KENTAZ</h2>
-            <p className="text-xs text-gray-500">Point of Sale Receipt</p>
-            <p className="text-xs font-mono text-gray-600 mt-1">{sale.receiptNumber}</p>
-            <p className="text-xs text-gray-400">{new Date(sale.createdAt).toLocaleString()}</p>
-          </div>
+        {/* Receipt scroll area */}
+        <div className="overflow-y-auto max-h-[70vh]">
+          <div id="receipt" className="px-5 py-5 space-y-4 font-[system-ui]">
 
-          {sale.customerName && (
-            <div className="text-sm">
-              <span className="text-gray-500">Customer: </span>
-              <span className="font-medium">{sale.customerName}</span>
-              {sale.customerPhone && <span className="text-gray-400"> · {sale.customerPhone}</span>}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {sale.items.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <div className="flex-1 pr-2">
-                  <p className="font-medium text-gray-800">{item.productName}</p>
-                  {item.variantLabel && <p className="text-xs text-gray-400">{item.variantLabel}</p>}
-                  <p className="text-xs text-gray-500">{item.quantity} × {formatPrice(item.price)}</p>
+            {/* Brand header */}
+            <div className="text-center space-y-1">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#B8953F] flex items-center justify-center shadow-md overflow-hidden flex-shrink-0">
+                  <img src="/logo.png" alt="Kentaz Emporium" className="w-full h-full object-contain p-0.5" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                 </div>
-                <span className="font-semibold text-gray-900">{formatPrice(item.total)}</span>
+                <span className="text-2xl font-black tracking-widest text-gray-900">Kentaz Emporium</span>
               </div>
-            ))}
-          </div>
+              <p className="text-[10px] uppercase tracking-[3px] text-gray-400">Sales Receipt</p>
+            </div>
 
-          <div className="border-t pt-3 space-y-1.5 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>Subtotal</span><span>{formatPrice(sale.subtotal)}</span>
-            </div>
-            {sale.discountAmount > 0 && (
-              <div className="flex justify-between text-red-500">
-                <span>Discount</span><span>-{formatPrice(sale.discountAmount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-base pt-1 border-t">
-              <span>TOTAL</span><span>{formatPrice(sale.total)}</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Payment ({sale.paymentMethod})</span><span>{formatPrice(sale.amountPaid)}</span>
-            </div>
-            {sale.change > 0 && (
-              <div className="flex justify-between font-semibold text-green-700">
-                <span>Change</span><span>{formatPrice(sale.change)}</span>
-              </div>
-            )}
-          </div>
+            {/* Dashed divider */}
+            <div className="border-t border-dashed border-gray-300" />
 
-          <div className="border-t pt-3 text-center text-xs text-gray-400">
-            <p>Cashier: {sale.cashierName}</p>
-            <p className="mt-1">Thank you for shopping at Kentaz!</p>
+            {/* Meta */}
+            <div className="text-center space-y-0.5">
+              <p className="font-mono text-xs font-semibold text-gray-600">{sale.receiptNumber}</p>
+              <p className="text-xs text-gray-400">{dateStr}</p>
+            </div>
+
+            {/* Customer */}
+            {sale.customerName && (
+              <>
+                <div className="border-t border-dashed border-gray-300" />
+                <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-600">
+                  <span className="font-semibold text-gray-800">{sale.customerName}</span>
+                  {sale.customerPhone && <span className="text-gray-400"> · {sale.customerPhone}</span>}
+                </div>
+              </>
+            )}
+
+            {/* Dashed divider */}
+            <div className="border-t border-dashed border-gray-300" />
+
+            {/* Items */}
+            <div className="space-y-3">
+              {sale.items.map((item, i) => (
+                <div key={i} className="flex justify-between items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">{item.productName}</p>
+                    {item.variantLabel && <p className="text-[10px] text-gray-400 mt-0.5">{item.variantLabel}</p>}
+                    <p className="text-[11px] text-gray-500 mt-0.5">{item.quantity} × {formatPrice(item.price)}</p>
+                  </div>
+                  <span className="text-sm font-bold text-gray-900 flex-shrink-0">{formatPrice(item.total)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Dashed divider */}
+            <div className="border-t border-dashed border-gray-300" />
+
+            {/* Totals */}
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-gray-500">
+                <span>Subtotal</span><span>{formatPrice(sale.subtotal)}</span>
+              </div>
+              {sale.discountAmount > 0 && (
+                <div className="flex justify-between text-red-500 text-xs">
+                  <span>Discount ({sale.discount}{sale.discountType === 'percent' ? '%' : ' off'})</span>
+                  <span>−{formatPrice(sale.discountAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center font-black text-base border-t-2 border-gray-900 pt-2 mt-1">
+                <span>TOTAL</span>
+                <span className="text-[#C9A84C]">{formatPrice(sale.total)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500 text-xs">
+                <span>{paymentLabel[sale.paymentMethod] ?? sale.paymentMethod}</span>
+                <span>{formatPrice(sale.amountPaid)}</span>
+              </div>
+              {sale.change > 0 && (
+                <div className="flex justify-between items-center bg-green-50 border border-green-200 rounded-lg px-3 py-2 font-semibold text-green-700 text-sm">
+                  <span>Change</span><span>{formatPrice(sale.change)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Dashed divider */}
+            <div className="border-t border-dashed border-gray-300" />
+
+            {/* Footer */}
+            <div className="text-center space-y-1">
+              <p className="text-xs font-semibold text-[#C9A84C] tracking-wide">Thank you for shopping with us!</p>
+              <p className="text-[10px] text-gray-400">We appreciate your business.</p>
+              <p className="text-[10px] text-gray-400 pt-1">Served by: <span className="font-semibold text-gray-600">{sale.cashierName}</span></p>
+            </div>
           </div>
         </div>
 
-        <div className="print:hidden px-5 pb-5 flex gap-3">
+        {/* Actions */}
+        <div className="px-5 py-4 border-t flex gap-3 bg-gray-50">
           <button
             onClick={print}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 bg-white rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition shadow-sm"
           >
             <Printer className="w-4 h-4" /> Print
           </button>
           <button
             onClick={onNewSale}
-            className="flex-1 py-2.5 bg-[#C9A84C] hover:bg-[#b8973e] text-white rounded-xl text-sm font-bold transition"
+            className="flex-1 py-2.5 bg-[#C9A84C] hover:bg-[#B8953F] text-white rounded-xl text-sm font-bold transition shadow-md shadow-[#C9A84C]/20"
           >
             New Sale
           </button>
@@ -1037,7 +1109,7 @@ export default function PosPage() {
             <LayoutGrid className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="font-bold text-sm leading-none">Kentaz POS</p>
+            <p className="font-bold text-sm leading-none">Kentaz Emporium</p>
             <p className="text-gray-400 text-xs">{new Date().toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
           </div>
         </div>
@@ -1222,50 +1294,37 @@ export default function PosPage() {
                     <div
                       key={idx}
                       onClick={() => selectCartItem(idx)}
-                      className={`px-3 py-2 flex items-center gap-2 cursor-pointer transition ${isSelected ? 'bg-amber-50 border-l-2 border-[#C9A84C]' : 'hover:bg-gray-50'}`}
+                      className={`px-4 py-3 cursor-pointer transition border-b border-gray-100 last:border-b-0 ${isSelected ? 'bg-[#C9A84C]/5 outline outline-2 outline-[#C9A84C] outline-offset-[-2px] rounded-sm' : 'hover:bg-gray-50'}`}
                     >
-                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
-                        {item.product.images[0] ? (
-                          <img src={item.product.images[0].url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-                            <span className="text-sm font-bold text-gray-400">{item.product.name.charAt(0).toUpperCase()}</span>
-                          </div>
-                        )}
+                      {/* Row 1: name + total */}
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-bold text-sm leading-snug flex-1 text-gray-900">
+                          {item.product.name}{item.variantLabel ? ` - ${item.variantLabel}` : ''}
+                        </p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <p className="text-sm font-bold text-gray-900">
+                            {formatPrice((isSelected && numpadMode === 'price' && numpadInput ? parseFloat(numpadInput) || item.price : item.price) * item.quantity)}
+                          </p>
+                          <button
+                            onClick={e => { e.stopPropagation(); removeItem(idx); }}
+                            className="text-gray-300 hover:text-red-500 transition"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">{item.product.name}</p>
-                        {item.variantLabel && <p className="text-[10px] text-gray-400 leading-none mt-0.5">{item.variantLabel}</p>}
-                        <p className="text-xs text-gray-500 mt-0.5">{formatPrice(item.price)}</p>
-                      </div>
-
-                      {/* Quantity controls - Odoo style */}
-                      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                        <button
-                          onClick={e => { e.stopPropagation(); updateQty(idx, -1); }}
-                          disabled={item.quantity <= 1}
-                          className="w-7 h-7 rounded flex items-center justify-center text-sm font-bold bg-white text-gray-700 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
-                        <button
-                          onClick={e => { e.stopPropagation(); updateQty(idx, 1); }}
-                          disabled={item.quantity >= maxQty}
-                          className="w-7 h-7 rounded flex items-center justify-center text-sm font-bold bg-white text-gray-700 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <div className="text-right flex-shrink-0 min-w-[65px]">
-                        <p className="text-sm font-bold text-gray-900">{formatPrice(item.price * item.quantity)}</p>
-                        <button
-                          onClick={e => { e.stopPropagation(); removeItem(idx); }}
-                          className="text-red-400 hover:text-red-600 mt-0.5"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Row 2: qty box × unit price / Units */}
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className={`border rounded px-2 py-0.5 text-sm font-semibold min-w-[48px] text-center ${
+                          isSelected && numpadMode === 'qty'
+                            ? 'border-[#C9A84C] bg-white text-[#C9A84C] ring-1 ring-[#C9A84C]/30'
+                            : 'border-gray-300 bg-white text-gray-800'
+                        }`}>
+                          {isSelected && numpadMode === 'qty' && numpadInput ? numpadInput : item.quantity}.00
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          x {formatPrice(isSelected && numpadMode === 'price' && numpadInput ? parseFloat(numpadInput) || item.price : item.price)} / Units
+                        </span>
                       </div>
                     </div>
                   );
@@ -1274,101 +1333,119 @@ export default function PosPage() {
             )}
           </div>
 
-          {/* Numpad */}
-          <div className="border-t bg-gray-50 flex-shrink-0">
-            {/* Mode + display */}
-            <div className="flex items-stretch border-b bg-white">
-              {(['qty', 'price', 'disc'] as const).map(m => {
-                const isPriceMode = m === 'price';
-                const priceAllowed = hasPosPermission(user, POS_PERMS.PRICE_OVERRIDE);
-                const disabled = isPriceMode && !priceAllowed;
-                return (
-                  <button
-                    key={m}
-                    disabled={disabled}
-                    onClick={() => { if (!disabled) { setNumpadMode(m); setNumpadInput(''); } }}
-                    title={disabled ? 'Price override not permitted' : undefined}
-                    className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wide transition border-r last:border-r-0 ${
-                      disabled
-                        ? 'text-gray-300 cursor-not-allowed bg-gray-50'
-                        : numpadMode === m
-                        ? 'bg-[#C9A84C] text-white'
-                        : 'text-gray-500 hover:bg-gray-100'
-                    }`}
-                  >
-                    {m === 'qty' ? 'Qty' : m === 'price' ? (
-                      <span className="flex items-center justify-center gap-1">
-                        Price {disabled && <Lock className="w-3 h-3" />}
-                      </span>
-                    ) : 'Disc%'}
-                  </button>
-                );
-              })}
-              <div className="flex-[2] flex items-center justify-end px-3">
-                <span className="text-base font-black text-gray-900 font-mono">
-                  {numpadInput !== '' ? numpadInput : (
-                    selectedCartItemIdx !== null && numpadMode !== 'disc'
-                      ? (numpadMode === 'qty' ? cart[selectedCartItemIdx]?.quantity : formatPrice(cart[selectedCartItemIdx]?.price || 0))
-                      : numpadMode === 'disc' ? (orderDiscount || '0') + '%' : '—'
-                  )}
-                  {numpadInput !== '' && <span className="text-[#C9A84C] animate-pulse">|</span>}
-                </span>
-              </div>
-            </div>
-
-            {/* Keys */}
-            <div className="grid grid-cols-3 gap-px bg-gray-200">
-              {['7','8','9','4','5','6','1','2','3','.','0','⌫'].map(key => (
-                <button
-                  key={key}
-                  onClick={() => key === '⌫' ? pressNumpad('⌫') : pressNumpad(key)}
-                  className={`py-2.5 text-base font-bold transition active:scale-95 ${
-                    key === '⌫'
-                      ? 'bg-red-50 text-red-500 hover:bg-red-100'
-                      : 'bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  {key === '⌫' ? <ArrowLeftRight className="w-4 h-4 mx-auto rotate-180" /> : key}
-                </button>
-              ))}
+          {/* Total */}
+          <div className="border-t px-4 py-3 flex items-center justify-between bg-white flex-shrink-0">
+            <span className="font-bold text-gray-900 text-base">Total</span>
+            <div className="text-right">
+              {orderDiscount > 0 && (
+                <p className="text-xs text-red-400 line-through">{formatPrice(subtotal)}</p>
+              )}
+              <span className="font-bold text-gray-900 text-base">{formatPrice(cartTotal)}</span>
             </div>
           </div>
 
-          {/* Action + footer */}
-          <div className="border-t bg-white flex-shrink-0 p-3 space-y-2.5">
-            {/* Action button */}
+          {/* Toolbar: Customer | Internal Note | Actions */}
+          <div className="border-t flex items-stretch bg-white flex-shrink-0">
+            <button
+              onClick={() => setShowCustomerModal(true)}
+              className="px-4 py-2.5 text-sm font-medium border-r border-gray-200 hover:bg-gray-50 transition whitespace-nowrap"
+            >
+              {customer ? <span className="text-[#C9A84C] truncate max-w-[80px] block">{customer.name}</span> : <span className="text-gray-700">Customer</span>}
+            </button>
+            <input
+              type="text"
+              placeholder="Internal Note"
+              value={orderNote}
+              onChange={e => setActiveCartNote(e.target.value)}
+              className="flex-1 px-3 py-2.5 text-sm text-gray-600 placeholder-gray-400 border-r border-gray-200 focus:outline-none bg-white min-w-0"
+            />
             <button
               onClick={() => setShowActions(true)}
-              className="w-full flex items-center justify-center gap-2 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition whitespace-nowrap"
             >
-              <Tag className="w-4 h-4" /> Actions
-              <ChevronDown className="w-3.5 h-3.5 ml-auto" />
-            </button>
-
-            {/* Totals */}
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between text-gray-500">
-                <span>Subtotal</span><span>{formatPrice(subtotal)}</span>
-              </div>
-              {orderDiscount > 0 && (
-                <div className="flex justify-between text-red-500 text-xs">
-                  <span>Discount ({orderDiscount}%)</span><span>-{formatPrice(discountAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-black text-base text-gray-900 pt-1 border-t border-gray-100">
-                <span>Total</span><span className="text-[#C9A84C]">{formatPrice(cartTotal)}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowPayment(true)}
-              disabled={cart.length === 0 || processing}
-              className="w-full py-3 bg-[#C9A84C] hover:bg-[#b8973e] text-white font-black rounded-xl transition disabled:opacity-40 flex items-center justify-center gap-2 text-sm"
-            >
-              {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
-              {processing ? 'Processing…' : `Charge ${formatPrice(cartTotal)}`}
+              Actions
             </button>
           </div>
+
+          {/* Numpad — only visible when a cart item is selected */}
+          {selectedCartItemIdx !== null && (
+            <div className="border-t bg-white flex-shrink-0">
+              {/* Value display */}
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  {numpadMode === 'qty' ? 'Quantity' : numpadMode === 'price' ? 'Unit Price' : 'Discount %'}
+                </span>
+                <span className="font-mono text-lg font-bold text-gray-900">
+                  {numpadInput !== '' ? (
+                    <>{numpadInput}<span className="text-[#C9A84C] animate-pulse">|</span></>
+                  ) : numpadMode === 'qty' ? (
+                    `${cart[selectedCartItemIdx]?.quantity ?? 1}`
+                  ) : numpadMode === 'price' ? (
+                    formatPrice(cart[selectedCartItemIdx]?.price ?? 0)
+                  ) : (
+                    `${orderDiscount}%`
+                  )}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 border-b border-gray-100">
+                {([
+                  { key: '1' }, { key: '2' }, { key: '3' }, { key: 'Qty',   mode: 'qty'   as const },
+                  { key: '4' }, { key: '5' }, { key: '6' }, { key: '%',     mode: 'disc'  as const },
+                  { key: '7' }, { key: '8' }, { key: '9' }, { key: 'Price', mode: 'price' as const },
+                  { key: '+/-' }, { key: '0' }, { key: '.' }, { key: '⌫' },
+                ] as { key: string; mode?: 'qty' | 'disc' | 'price' }[]).map(({ key, mode }, i) => {
+                  const priceAllowed = hasPosPermission(user, POS_PERMS.PRICE_OVERRIDE);
+                  const isMode = mode !== undefined;
+                  const isModeActive = isMode && numpadMode === mode;
+                  const isDisabled = key === 'Price' && !priceAllowed;
+                  return (
+                    <button
+                      key={i}
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (isDisabled) return;
+                        if (isMode) { setNumpadMode(mode!); setNumpadInput(''); return; }
+                        if (key === '+/-') {
+                          setNumpadInput(prev => prev.startsWith('-') ? prev.slice(1) : prev ? '-' + prev : prev);
+                          return;
+                        }
+                        pressNumpad(key);
+                      }}
+                      className={`py-3.5 text-sm font-semibold border-b border-r border-gray-100 last:border-r-0 transition active:scale-95 ${
+                        isDisabled        ? 'text-gray-300 cursor-not-allowed bg-gray-50' :
+                        isModeActive      ? 'bg-[#C9A84C] text-white' :
+                        isMode            ? 'bg-white text-gray-700 hover:bg-gray-50' :
+                        key === '+/-'     ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' :
+                        key === '.'       ? 'bg-rose-50 text-rose-400 hover:bg-rose-100' :
+                        key === '⌫'       ? 'bg-red-100 text-red-500 hover:bg-red-200' :
+                                            'bg-white text-gray-800 hover:bg-gray-50'
+                      }`}
+                    >
+                      {key === 'Price' && isDisabled
+                        ? <span className="flex items-center justify-center gap-1">Price <Lock className="w-3 h-3" /></span>
+                        : key}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Payment button */}
+          <button
+            onClick={() => setShowPayment(true)}
+            disabled={cart.length === 0 || processing}
+            className="w-full py-4 bg-[#C9A84C] hover:bg-[#B8953F] text-white font-bold text-base transition disabled:opacity-40 flex-shrink-0 flex items-center justify-center gap-3 shadow-lg shadow-[#C9A84C]/20"
+          >
+            {processing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+            ) : (
+              <>
+                <span>Payment</span>
+                {cart.length > 0 && <span className="opacity-80 font-normal text-sm">{formatPrice(cartTotal)}</span>}
+              </>
+            )}
+          </button>
         </div>
 
         {/* Products panel */}

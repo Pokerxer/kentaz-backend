@@ -6,8 +6,8 @@ import { AuthProvider } from '@/components/AuthProvider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Kentaz Admin',
-  description: 'Kentaz E-commerce Admin Dashboard',
+  title: 'Kentaz Emporium Admin',
+  description: 'Kentaz Emporium E-commerce Admin Dashboard',
   manifest: '/manifest.json',
 };
 

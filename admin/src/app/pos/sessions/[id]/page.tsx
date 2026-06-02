@@ -122,7 +122,7 @@ function OrderPanel({
       .footer{margin-top:40px;text-align:center;color:#888;font-size:11px}
     </style></head><body>
     <div class="header">
-      <div><h1>KENTAZ</h1><div style="color:#666;margin-top:4px">${isRefundRecord ? 'Return/Refund' : 'Tax Invoice'}</div></div>
+      <div><h1>Kentaz Emporium</h1><div style="color:#666;margin-top:4px">${isRefundRecord ? 'Return/Refund' : 'Tax Invoice'}</div></div>
       <div style="text-align:right">
         <div class="lbl">No.</div><div style="font-weight:bold;font-size:16px">${sale.receiptNumber}</div>
         <div style="margin-top:8px" class="lbl">Date</div>
@@ -155,7 +155,7 @@ function OrderPanel({
       h2{text-align:center;margin:0 0 2px}.c{text-align:center}.b{font-weight:bold}.ln{border-top:1px dashed #999;margin:8px 0}
       table{width:100%;border-collapse:collapse}td{padding:2px 0}.r{text-align:right}
     </style></head><body>
-    <h2>KENTAZ</h2>
+    <h2>Kentaz Emporium</h2>
     <p class="c">${sale.receiptNumber}</p>
     <p class="c">${new Date(sale.createdAt).toLocaleString('en-NG')}</p>
     ${isRefundRecord ? '<p class="c b" style="color:orange">RETURN / REFUND</p>' : ''}
@@ -171,7 +171,7 @@ function OrderPanel({
     </table>
     <div class="ln"></div>
     <p class="c">Cashier: ${sale.cashierName}</p>
-    <p class="c">Thank you for shopping at Kentaz!</p>
+    <p class="c">Thank you for shopping at Kentaz Emporium!</p>
     </body></html>`);
     w.document.close(); w.print();
   }
@@ -477,7 +477,7 @@ export default function SessionDetailPage() {
       .ln{border-top:1px dashed #999;margin:10px 0}table{width:100%;border-collapse:collapse}
       td{padding:2px 0}.r{text-align:right}
     </style></head><body>
-    <h2>KENTAZ POS</h2><p class="c">Z-REPORT</p><p class="c">${new Date().toLocaleString('en-NG')}</p>
+    <h2>Kentaz Emporium</h2><p class="c">Z-REPORT</p><p class="c">${new Date().toLocaleString('en-NG')}</p>
     <div class="ln"></div>
     <p>Cashier: ${r.register.cashierName}</p>
     <p>Opened: ${new Date(r.register.openedAt).toLocaleString('en-NG')}</p>

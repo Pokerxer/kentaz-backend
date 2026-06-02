@@ -143,11 +143,11 @@ export function Sidebar() {
             className="flex items-center gap-2 transition-transform hover:scale-105"
             onClick={() => setSidebarOpen(false)}
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#B8953F] shadow-lg shadow-[#C9A84C]/20">
-              <span className="text-white font-bold text-sm">K</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#B8953F] shadow-lg shadow-[#C9A84C]/20 overflow-hidden">
+              <img src="/logo.png" alt="Kentaz Emporium" className="w-full h-full object-contain p-0.5" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none'; }} />
             </div>
             <div>
-              <span className="font-bold text-lg text-gray-900">Kentaz</span>
+              <span className="font-bold text-lg text-gray-900">Kentaz Emporium</span>
               <span className="block text-[10px] text-[#C9A84C] font-medium -mt-1">Admin</span>
             </div>
           </Link>
