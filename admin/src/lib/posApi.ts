@@ -89,7 +89,7 @@ export const posApi = {
       body: JSON.stringify({ userId, pin }),
     }),
 
-  getProducts: (params?: { search?: string; category?: string }) => {
+  getProducts: (params?: { search?: string; category?: string; barcode?: string }) => {
     const filtered = Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v));
     const query = new URLSearchParams(filtered as Record<string, string>).toString();
     return posRequest<PosProduct[]>(`/api/pos/products${query ? '?' + query : ''}`);

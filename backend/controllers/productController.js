@@ -302,7 +302,13 @@ exports.getAdminProducts = async (req, res) => {
     const limitNum = parseInt(limit);
 
     const filter = {};
-    if (search) filter.name = { $regex: search, $options: 'i' };
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { barcode: { $regex: search, $options: 'i' } },
+        { 'variants.sku': { $regex: search, $options: 'i' } },
+      ];
+    }
     if (status) filter.status = status;
     if (category) filter.category = category;
 

@@ -596,6 +596,9 @@ export default function PosPage() {
   const [error, setError] = useState('');
   const [mobileView, setMobileView] = useState<'products' | 'cart'>('products');
   const searchRef = useRef<HTMLInputElement>(null);
+  // Always holds the full unfiltered product list so barcode lookup isn't
+  // broken when products state has been replaced by a narrower search result.
+  const allProductsRef = useRef<PosProduct[]>([]);
 
   // Offline support
   const { isOnline, wasOffline } = useNetworkStatus();
@@ -774,8 +777,10 @@ export default function PosPage() {
         setProducts(data);
         const cats = ['All', ...Array.from(new Set(data.map(p => p.category))).sort()];
         setCategories(cats);
-        // Cache the full product list (only when not filtering)
-        if (!searchTerm) cacheProducts(data).catch(() => {});
+        if (!searchTerm) {
+          allProductsRef.current = data;
+          cacheProducts(data).catch(() => {});
+        }
       } else {
         // Offline: use cache, then filter client-side
         const cached = await getCachedProducts();
@@ -832,15 +837,16 @@ export default function PosPage() {
     return matchCat && matchFavorites && matchSearch;
   });
 
-  // Find variant by barcode or SKU for auto-add
+  // Find variant by barcode or SKU — searches the full unfiltered product list
+  // so narrowed search results never break a scan.
   function findVariantByBarcode(barcodeOrSku: string): { product: PosProduct; variantIndex: number } | null {
     const searchLower = barcodeOrSku.toLowerCase();
-    for (const p of products) {
-      // Check product barcode
+    // Prefer allProductsRef (full list); fall back to current products state
+    const pool = allProductsRef.current.length > 0 ? allProductsRef.current : products;
+    for (const p of pool) {
       if (p.barcode && p.barcode.toLowerCase() === searchLower) {
         return { product: p, variantIndex: 0 };
       }
-      // Check variant SKU
       for (let i = 0; i < p.variants.length; i++) {
         const v = p.variants[i];
         if (v.sku && v.sku.toLowerCase() === searchLower) {
@@ -1466,8 +1472,9 @@ export default function PosPage() {
                 className="w-full pl-12 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#C9A84C] bg-gray-50"
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                onKeyDown={e => {
+                onKeyDown={async e => {
                   if (e.key === 'Enter' && search.length > 0) {
+                    // 1. Try in-memory match (works even when products is filtered)
                     const variantMatch = findVariantByBarcode(search);
                     if (variantMatch) {
                       const variant = variantMatch.product.variants[variantMatch.variantIndex];
@@ -1477,9 +1484,36 @@ export default function PosPage() {
                         return;
                       }
                     }
+                    // 2. If single name-search result, add it
                     if (filtered.length === 1) {
                       handleProductClick(filtered[0]);
                       setSearch('');
+                      return;
+                    }
+                    // 3. Barcode/SKU not found in memory — ask the API directly
+                    // (handles scans when products list isn't fully loaded yet)
+                    try {
+                      const results = await posApi.getProducts({ barcode: search });
+                      if (results.length === 1) {
+                        const p = results[0];
+                        // Find which variant matched
+                        const vIdx = p.variants.findIndex(v => v.sku && v.sku.toLowerCase() === search.toLowerCase());
+                        const resolvedIdx = vIdx >= 0 ? vIdx : 0;
+                        const variant = p.variants[resolvedIdx];
+                        if (variant && (variant.stock ?? 0) > 0) {
+                          // Merge into allProductsRef so future lookups find it
+                          if (!allProductsRef.current.find(x => x._id === p._id)) {
+                            allProductsRef.current = [...allProductsRef.current, p];
+                          }
+                          addToCart(p, resolvedIdx);
+                          setSearch('');
+                        } else if (results.length > 0) {
+                          handleProductClick(results[0]);
+                          setSearch('');
+                        }
+                      }
+                    } catch {
+                      // Network error — leave search text so user can see what was scanned
                     }
                   }
                   if (e.key === 'Escape') {
