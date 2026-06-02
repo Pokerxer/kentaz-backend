@@ -108,6 +108,7 @@ export function Sidebar() {
   const isProductsPage   = pathname === '/products' || pathname.startsWith('/products/') || pathname.startsWith('/inventory') || pathname.startsWith('/purchases');
 
   const [productsDropdownOpen, setProductsDropdownOpen] = useState(isProductsActive);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   function handleLogout() {
     document.cookie = 'admin_token=; path=/; max-age=0';
@@ -143,13 +144,24 @@ export function Sidebar() {
             className="flex items-center gap-2 transition-transform hover:scale-105"
             onClick={() => setSidebarOpen(false)}
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#B8953F] shadow-lg shadow-[#C9A84C]/20 overflow-hidden">
-              <img src="/logo.png" alt="Kentaz Emporium" className="w-full h-full object-contain p-0.5" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none'; }} />
-            </div>
-            <div>
-              <span className="font-bold text-lg text-gray-900">Kentaz Emporium</span>
-              <span className="block text-[10px] text-[#C9A84C] font-medium -mt-1">Admin</span>
-            </div>
+            {logoFailed ? (
+              <div>
+                <span className="font-bold text-lg bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">Kentaz Emporium</span>
+                <span className="block text-[10px] text-[#C9A84C] font-medium -mt-1">Admin</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#B8953F] shadow-lg shadow-[#C9A84C]/20 overflow-hidden flex-shrink-0">
+                  <img
+                    src="/logo.png"
+                    alt="Kentaz Emporium"
+                    className="w-full h-full object-contain p-0.5"
+                    onError={() => setLogoFailed(true)}
+                  />
+                </div>
+                <span className="block text-[10px] text-[#C9A84C] font-medium">Admin</span>
+              </>
+            )}
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}

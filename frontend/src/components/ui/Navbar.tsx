@@ -10,6 +10,7 @@ import { clearUser, setUser } from "@/store/userSlice";
 import { removeAuthToken } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { WishlistSidebar } from "@/components/cart/WishlistSidebar";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 const navigation = [
   { name: "Products", href: "/products" },
@@ -87,9 +88,7 @@ export function Navbar() {
       <nav className="container mx-auto flex h-16 md:h-20 items-center justify-between px-4">
         <div className="flex items-center gap-8">
           <Link href="/" className="group flex items-center gap-2">
-            <span className="text-xl md:text-2xl font-bold tracking-wider animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
-              KENTAZ
-            </span>
+            <BrandLogo variant="navbar" />
           </Link>
 
           <div className="hidden md:flex md:gap-8">

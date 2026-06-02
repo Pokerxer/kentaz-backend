@@ -58,24 +58,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isAuthenticated, user, checkAuth } = useAuthStore();
   const [isReady, setIsReady] = useState(false);
-  const [mounted, setMounted] = useState(false);
+
+  // useEffect is client-only — no need for a separate mounted gate.
+  // Start the token validation immediately; if the persisted store already
+  // has isAuthenticated=true we show content right away and re-validate silently.
+  useEffect(() => {
+    checkAuth().finally(() => setIsReady(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-
-    const initAuth = async () => {
-      await checkAuth();
-      setIsReady(true);
-    };
-    initAuth();
-  }, [mounted, checkAuth]);
-
-  useEffect(() => {
-    if (!isReady || !mounted) return;
+    if (!isReady) return;
 
     const publicPaths = ['/login', '/auth/login'];
     const isPublicPath = publicPaths.includes(pathname);
@@ -85,12 +77,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else if (isAuthenticated && isPublicPath) {
       router.push(user?.role === 'staff' ? '/pos/dashboard' : '/dashboard');
     } else if (isAuthenticated && user && !canAccessPath(pathname, user)) {
-      // Authenticated but lacks permission for this route → back to dashboard
       router.push('/dashboard');
     }
-  }, [isAuthenticated, user, isReady, mounted, pathname, router]);
+  }, [isAuthenticated, user, isReady, pathname, router]);
 
-  if (!mounted || !isReady) {
+  // If the persisted store already has a valid session, render immediately
+  // while checkAuth silently re-validates in the background.
+  // Only block on the spinner when there is genuinely no cached auth state.
+  if (!isReady && !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin h-8 w-8 border-4 border-[#C9A84C] border-t-transparent rounded-full" />

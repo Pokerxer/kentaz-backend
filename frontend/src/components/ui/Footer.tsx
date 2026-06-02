@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { MessageCircle, MapPin, Instagram, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 export function Footer() {
   return (
@@ -10,9 +11,7 @@ export function Footer() {
       <div className="container mx-auto px-4 py-12 md:py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 md:gap-12">
           <div className="lg:col-span-2">
-            <h3 className="text-2xl md:text-3xl font-bold mb-2 bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
-              KENTAZ EMPORIUM
-            </h3>
+            <BrandLogo variant="footer" className="mb-2" />
             <p className="text-[#888888] text-sm mb-4">Luxury. Lifestyle. Wellness.</p>
             <p className="text-[#888888] text-sm mb-6 max-w-md">Discover premium fashion, luxury hair, skincare, and wellness services curated for the modern individual in Abuja, Nigeria.</p>
             <div className="flex flex-col gap-3 text-sm text-[#888888]">
