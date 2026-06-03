@@ -315,7 +315,7 @@ export function HeroSection() {
           startAutoPlay();
         }}
         className={`absolute left-4 md:left-8 top-1/2 -translate-y-1/2 z-30 w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-[#C9A84C]/20 hover:border-[#C9A84C]/50 transition-all duration-500 ${
-          isHovering ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
+          isHovering ? "opacity-100 translate-x-0" : "opacity-70 translate-x-0 md:opacity-0 md:-translate-x-4"
         }`}
         aria-label="Previous slide"
       >
@@ -328,7 +328,7 @@ export function HeroSection() {
           startAutoPlay();
         }}
         className={`absolute right-4 md:right-8 top-1/2 -translate-y-1/2 z-30 w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#0a0a0a]/50 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-[#C9A84C]/20 hover:border-[#C9A84C]/50 transition-all duration-500 ${
-          isHovering ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4"
+          isHovering ? "opacity-100 translate-x-0" : "opacity-70 translate-x-0 md:opacity-0 md:translate-x-4"
         }`}
         aria-label="Next slide"
       >

@@ -645,14 +645,14 @@ function FeaturedProductsSection() {
                           className={`absolute top-2.5 right-2.5 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 shadow ${
                             inWishlist
                               ? 'bg-red-500 opacity-100'
-                              : 'bg-white/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 hover:bg-red-50'
+                              : 'bg-white/80 backdrop-blur-sm md:opacity-0 md:group-hover:opacity-100 md:translate-y-1 md:group-hover:translate-y-0 hover:bg-red-50'
                           }`}
                         >
                           <Heart className={`h-3.5 w-3.5 transition-colors ${inWishlist ? 'fill-white text-white' : 'text-[#6B6B6B] hover:text-red-500'}`} />
                         </button>
 
-                        {/* Cart + Quick View — shown on hover */}
-                        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex gap-1.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                        {/* Cart + Quick View — always visible on mobile, hover-reveal on desktop */}
+                        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex gap-1.5 md:opacity-0 md:group-hover:opacity-100 md:translate-y-2 md:group-hover:translate-y-0 transition-all duration-300">
                           <button
                             onClick={(e) => handleAddToCart(e, product)}
                             className={`flex-1 h-9 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 shadow-lg transition-colors ${
@@ -893,8 +893,8 @@ function TrendingCard({ product, rank, onQuickView }: { product: any; rank: numb
             </div>
           )}
 
-          {/* Cart + Quick view */}
-          <div className="absolute bottom-3 left-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+          {/* Cart + Quick view — always visible on mobile, hover-reveal on desktop */}
+          <div className="absolute bottom-3 left-3 right-3 flex gap-1.5 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 md:translate-y-2 md:group-hover:translate-y-0">
             <button
               onClick={handleAddToCart}
               className="flex-1 h-8 rounded-full bg-[#C9A84C] text-black text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-[#E8D48A] transition-colors shadow-lg"
