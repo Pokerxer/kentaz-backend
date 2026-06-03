@@ -599,6 +599,9 @@ export default function PosPage() {
   // Always holds the full unfiltered product list so barcode lookup isn't
   // broken when products state has been replaced by a narrower search result.
   const allProductsRef = useRef<PosProduct[]>([]);
+  // Holds the latest barcode-processing function so the global keydown
+  // listener (registered once on mount) always calls the current closure.
+  const processBarcodeRef = useRef<(barcode: string) => void>(() => {});
 
   // Offline support
   const { isOnline, wasOffline } = useNetworkStatus();
@@ -654,6 +657,96 @@ export default function PosPage() {
       });
     }
   }, [isOnline, wasOffline]);
+
+  // Keep processBarcodeRef current after every render so the one-time
+  // global keydown listener always calls the latest closure.
+  useEffect(() => {
+    processBarcodeRef.current = (barcode: string) => {
+      const match = findVariantByBarcode(barcode);
+      if (match) {
+        const variant = match.product.variants[match.variantIndex];
+        if (variant && (variant.stock ?? 0) > 0) {
+          addToCart(match.product, match.variantIndex);
+        } else {
+          handleProductClick(match.product, match.variantIndex);
+        }
+      } else {
+        // Unknown barcode — show in search bar so staff can see it
+        setSearch(barcode);
+        requestAnimationFrame(() => searchRef.current?.focus());
+      }
+    };
+  });
+
+  // Global barcode scanner: accumulates keystrokes from the scanner device
+  // (which types very fast, < 50 ms per char) and processes without requiring
+  // the search input to be focused first.
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    function flush() {
+      const code = buffer;
+      buffer = '';
+      timer = null;
+      if (!code) return;
+      if (code.length >= 3) {
+        processBarcodeRef.current(code);
+      } else {
+        setSearch(s => s + code);
+        requestAnimationFrame(() => searchRef.current?.focus());
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+
+      const now = Date.now();
+      const gap = now - lastKeyTime;
+      lastKeyTime = now;
+
+      if (e.key === 'Escape') {
+        if (timer) { clearTimeout(timer); timer = null; }
+        buffer = '';
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (timer) { clearTimeout(timer); timer = null; }
+        const code = buffer;
+        buffer = '';
+        if (code.length >= 3) {
+          e.preventDefault();
+          processBarcodeRef.current(code);
+        }
+        return;
+      }
+
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (buffer.length > 0 && gap > 100) {
+        // Previous chars were slow (human typing) — flush them to search
+        if (timer) { clearTimeout(timer); timer = null; }
+        const old = buffer;
+        buffer = e.key;
+        setSearch(s => s + old);
+        requestAnimationFrame(() => searchRef.current?.focus());
+      } else {
+        buffer += e.key;
+      }
+
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, 200);
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // Multi-cart helpers
   function getActiveCart(): CartOrder | undefined {
@@ -825,17 +918,22 @@ export default function PosPage() {
 
   useEffect(() => { loadProducts(searchQuery); }, [searchQuery, loadProducts]);
 
-  // Filtered products (also check barcode and SKU client-side)
-  const filtered = products.filter(p => {
-    const matchCat = activeCategory === 'All' || activeCategory === 'Favorites' ? true : p.category === activeCategory;
-    const matchFavorites = activeCategory !== 'Favorites' || p.isFavorite === true;
+  // Filtered products — deduplicated by _id, then category + search filtered.
+  const filtered = (() => {
+    const seen = new Set<string>();
     const searchLower = search.toLowerCase();
-    const matchSearch = !search ||
-      p.name.toLowerCase().includes(searchLower) ||
-      (p.barcode && p.barcode.toLowerCase().includes(searchLower)) ||
-      p.variants.some(v => v.sku && v.sku.toLowerCase().includes(searchLower));
-    return matchCat && matchFavorites && matchSearch;
-  });
+    return products.filter(p => {
+      if (seen.has(p._id)) return false;
+      seen.add(p._id);
+      const matchCat = activeCategory === 'All' || activeCategory === 'Favorites' ? true : p.category === activeCategory;
+      const matchFavorites = activeCategory !== 'Favorites' || p.isFavorite === true;
+      const matchSearch = !search ||
+        p.name.toLowerCase().includes(searchLower) ||
+        (p.barcode && p.barcode.toLowerCase().includes(searchLower)) ||
+        p.variants.some(v => v.sku && v.sku.toLowerCase().includes(searchLower));
+      return matchCat && matchFavorites && matchSearch;
+    });
+  })();
 
   // Find variant by barcode or SKU — searches the full unfiltered product list
   // so narrowed search results never break a scan.
@@ -1614,16 +1712,18 @@ export default function PosPage() {
                   const inCart = cart.filter(i => i.product._id === product._id).reduce((s, i) => s + i.quantity, 0);
 
                   return (
-                    <button
+                    <div
                       key={product._id}
-                      onClick={() => handleProductClick(product)}
-                      disabled={outOfStock}
+                      onClick={() => !outOfStock && handleProductClick(product)}
+                      role="button"
+                      tabIndex={outOfStock ? -1 : 0}
+                      onKeyDown={e => { if (!outOfStock && (e.key === 'Enter' || e.key === ' ')) handleProductClick(product); }}
                       className={`relative bg-white rounded-2xl border-2 text-left overflow-hidden transition group ${
                         outOfStock
                           ? 'opacity-50 cursor-not-allowed border-gray-100'
                           : inCart > 0
-                            ? 'border-[#C9A84C] shadow-md'
-                            : 'border-gray-100 hover:border-[#C9A84C] hover:shadow-md'
+                            ? 'cursor-pointer border-[#C9A84C] shadow-md'
+                            : 'cursor-pointer border-gray-100 hover:border-[#C9A84C] hover:shadow-md'
                       }`}
                     >
                       {/* Favorite button */}
@@ -1668,7 +1768,7 @@ export default function PosPage() {
                           <p className="text-[10px] text-amber-500 font-medium mt-0.5">Only {totalStock} left</p>
                         )}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
