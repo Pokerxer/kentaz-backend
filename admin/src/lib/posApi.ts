@@ -267,7 +267,9 @@ export interface Sale {
   discount: number;
   discountType: 'fixed' | 'percent';
   discountAmount: number;
-  total: number;           // negative for refund records
+  taxRate: number;
+  taxAmount: number;
+  total: number;           // tax-inclusive; negative for refund records
   paymentMethod: 'cash' | 'card' | 'transfer';
   amountPaid: number;      // negative for refund records
   change: number;

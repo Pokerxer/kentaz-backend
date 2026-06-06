@@ -267,7 +267,10 @@ exports.createSale = async (req, res) => {
       }
     }
 
-    const total = Math.max(0, subtotal - discountAmount - loyaltyDiscount);
+    const preTaxTotal = Math.max(0, subtotal - discountAmount - loyaltyDiscount);
+    const TAX_RATE = 0.075;
+    const taxAmount = Math.round(preTaxTotal * TAX_RATE * 100) / 100;
+    const total = parseFloat((preTaxTotal + taxAmount).toFixed(2));
 
     // Handle split payments
     let finalAmountPaid = total;
@@ -289,6 +292,8 @@ exports.createSale = async (req, res) => {
       discount,
       discountType,
       discountAmount,
+      taxRate: TAX_RATE,
+      taxAmount,
       total,
       paymentMethod: finalPaymentMethod,
       splitPayments: paymentMethod === 'split' ? splitPayments : undefined,

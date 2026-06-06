@@ -132,6 +132,7 @@ function PaymentModal({
   preCustomerName = '',
   preCustomerPhone = '',
   preNotes = '',
+  taxRate = 0.075,
   onComplete,
   onClose,
 }: {
@@ -140,6 +141,7 @@ function PaymentModal({
   preCustomerName?: string;
   preCustomerPhone?: string;
   preNotes?: string;
+  taxRate?: number;
   onComplete: (data: {
     paymentMethod: 'cash' | 'card' | 'transfer';
     discount: number;
@@ -165,7 +167,9 @@ function PaymentModal({
       ? (subtotal * parseFloat(discount)) / 100
       : parseFloat(discount)
     : 0;
-  const total = Math.max(0, subtotal - discountAmount);
+  const preTax = Math.max(0, subtotal - discountAmount);
+  const tax = Math.round(preTax * taxRate * 100) / 100;
+  const total = parseFloat((preTax + tax).toFixed(2));
   const paid = parseFloat(amountPaid) || 0;
   const change = paymentMethod === 'cash' ? calcChange(total, paid) : 0;
   const canSubmit = paymentMethod !== 'cash' || paid >= total;
@@ -237,6 +241,9 @@ function PaymentModal({
                 <span>-{formatPrice(discountAmount)}</span>
               </div>
             )}
+            <div className="flex justify-between text-gray-600">
+              <span>Tax (7.5%)</span><span>+{formatPrice(tax)}</span>
+            </div>
             <div className="flex justify-between font-bold text-base text-gray-900 pt-1 border-t border-gray-200">
               <span>Total</span><span>{formatPrice(total)}</span>
             </div>
@@ -516,6 +523,12 @@ function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () =>
                 <div className="flex justify-between text-red-500 text-xs">
                   <span>Discount ({sale.discount}{sale.discountType === 'percent' ? '%' : ' off'})</span>
                   <span>−{formatPrice(sale.discountAmount)}</span>
+                </div>
+              )}
+              {(sale.taxAmount ?? 0) > 0 && (
+                <div className="flex justify-between text-gray-500 text-xs">
+                  <span>Tax (7.5%)</span>
+                  <span>+{formatPrice(sale.taxAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center font-black text-base border-t-2 border-gray-900 pt-2 mt-1">
@@ -1053,9 +1066,12 @@ export default function PosPage() {
     setActiveCartItems(updated);
   }, [numpadInput, numpadMode, selectedCartItemIdx]);
 
+  const TAX_RATE = 0.075;
   const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const discountAmount = orderDiscount > 0 ? (subtotal * orderDiscount) / 100 : 0;
   const cartTotal = Math.max(0, subtotal - discountAmount);
+  const taxAmount = Math.round(cartTotal * TAX_RATE * 100) / 100;
+  const grandTotal = cartTotal + taxAmount;
 
   // Build a local receipt + save to queue when offline
   async function saveOfflineSaleAndShowReceipt(saleData: CreateSaleInput, cartItems: CartItem[]) {
@@ -1071,7 +1087,9 @@ export default function PosPage() {
     const discAmt = saleData.discountType === 'percent'
       ? Math.round(rawSubtotal * (saleData.discount ?? 0) / 100)
       : (saleData.discount ?? 0);
-    const total = Math.max(0, rawSubtotal - discAmt);
+    const preTax = Math.max(0, rawSubtotal - discAmt);
+    const offlineTax = Math.round(preTax * 0.075 * 100) / 100;
+    const total = parseFloat((preTax + offlineTax).toFixed(2));
     const paid  = saleData.amountPaid ?? total;
 
     const mockSale: Sale = {
@@ -1093,6 +1111,8 @@ export default function PosPage() {
       discount:       saleData.discount ?? 0,
       discountType:   saleData.discountType ?? 'fixed',
       discountAmount: discAmt,
+      taxRate:        0.075,
+      taxAmount:      offlineTax,
       total,
       paymentMethod:  saleData.paymentMethod,
       amountPaid:     paid,
@@ -1444,7 +1464,8 @@ export default function PosPage() {
               {orderDiscount > 0 && (
                 <p className="text-xs text-red-400 line-through">{formatPrice(subtotal)}</p>
               )}
-              <span className="font-bold text-gray-900 text-base">{formatPrice(cartTotal)}</span>
+              <p className="text-[10px] text-gray-400">+ {formatPrice(taxAmount)} tax (7.5%)</p>
+              <span className="font-bold text-gray-900 text-base">{formatPrice(grandTotal)}</span>
             </div>
           </div>
 
@@ -1546,7 +1567,7 @@ export default function PosPage() {
             ) : (
               <>
                 <span>Payment</span>
-                {cart.length > 0 && <span className="opacity-80 font-normal text-sm">{formatPrice(cartTotal)}</span>}
+                {cart.length > 0 && <span className="opacity-80 font-normal text-sm">{formatPrice(grandTotal)}</span>}
               </>
             )}
           </button>

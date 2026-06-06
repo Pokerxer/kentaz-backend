@@ -31,7 +31,9 @@ const saleSchema = new Schema({
   discount: { type: Number, default: 0 },
   discountType: { type: String, enum: ['fixed', 'percent'], default: 'fixed' },
   discountAmount: { type: Number, default: 0 },
-  total: { type: Number, required: true },         // negative for refunds
+  taxRate: { type: Number, default: 0.075 },
+  taxAmount: { type: Number, default: 0 },
+  total: { type: Number, required: true },         // tax-inclusive; negative for refunds
   paymentMethod: { type: String, enum: ['cash', 'card', 'transfer', 'split'], default: 'cash' },
   // For split payments: [{ method: 'cash'|'card'|'transfer', amount: number }]
   splitPayments: [{
