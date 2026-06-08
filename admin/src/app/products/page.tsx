@@ -9,7 +9,6 @@ import {
   Search,
   Eye,
   Edit,
-  Trash2,
   Loader2,
   Package,
   ChevronLeft,
@@ -93,7 +92,6 @@ export default function ProductsPage() {
   const [subcategoryFilter, setSubcategoryFilter] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
@@ -193,21 +191,6 @@ export default function ProductsPage() {
     return result;
   }, [products, sortKey, sortOrder]);
 
-  const handleDelete = async (product: Product) => {
-    if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
-    setDeletingId(product._id);
-    try {
-      await api.products.delete(product._id);
-      setMsg({ text: `"${product.name}" deleted.`, type: 'success' });
-      fetchProducts(page);
-    } catch (err: any) {
-      setMsg({ text: err.message || 'Failed to delete product', type: 'error' });
-    } finally {
-      setDeletingId(null);
-      setTimeout(() => setMsg(null), 4000);
-    }
-  };
-
   const getStockCount = (product: Product) =>
     product.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0;
 
@@ -290,55 +273,20 @@ export default function ProductsPage() {
         )}
 
         {/* Filters + View Toggle */}
-        <div className="mb-5 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50/50 hover:bg-gray-50 transition-all"
-            />
-          </div>
-          <div className="flex gap-2 flex-1">
-            {STATUS_FILTERS.map(f => (
-              <button
-                key={f.value}
-                onClick={() => setStatusFilter(f.value)}
-                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  statusFilter === f.value
-                    ? 'bg-[#C9A84C] text-white shadow-md shadow-[#C9A84C]/20'
-                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-            {categories.length > 0 && (
-              <div className="relative">
-                <select
-                  value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
-                  className="appearance-none px-4 py-2.5 pr-10 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 cursor-pointer min-w-[160px]"
-                >
-                  <option value="">All Categories</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            )}
-            <input
-              type="text"
-              placeholder="Subcategory..."
-              value={subcategoryFilter}
-              onChange={e => setSubcategoryFilter(e.target.value)}
-              className="px-3 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] w-40"
-            />
-            {/* View toggle */}
-            <div className="ml-auto flex items-center gap-1 border border-gray-200 rounded-xl p-1 bg-white">
+        <div className="mb-5 space-y-3">
+          {/* Row 1: search + view toggle */}
+          <div className="flex gap-3 items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50/50 hover:bg-gray-50 transition-all"
+              />
+            </div>
+            <div className="flex-shrink-0 flex items-center gap-1 border border-gray-200 rounded-xl p-1 bg-white">
               <button
                 onClick={() => setView('list')}
                 className={`p-1.5 rounded-lg transition-all ${view === 'list' ? 'bg-[#C9A84C] text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
@@ -354,6 +302,45 @@ export default function ProductsPage() {
                 <LayoutGrid className="h-4 w-4" />
               </button>
             </div>
+          </div>
+
+          {/* Row 2: status + category + subcategory — scrollable on mobile */}
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            {STATUS_FILTERS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`flex-none px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                  statusFilter === f.value
+                    ? 'bg-[#C9A84C] text-white shadow-md shadow-[#C9A84C]/20'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+            {categories.length > 0 && (
+              <div className="relative flex-none">
+                <select
+                  value={categoryFilter}
+                  onChange={e => setCategoryFilter(e.target.value)}
+                  className="appearance-none px-4 py-2 pr-8 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 cursor-pointer min-w-[140px]"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              </div>
+            )}
+            <input
+              type="text"
+              placeholder="Subcategory..."
+              value={subcategoryFilter}
+              onChange={e => setSubcategoryFilter(e.target.value)}
+              className="flex-none px-3 py-2 rounded-xl text-sm border border-gray-200 text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] w-36 bg-white"
+            />
           </div>
         </div>
 
@@ -393,7 +380,10 @@ export default function ProductsPage() {
                   <tr>
                     {Object.entries(columnConfig).map(([key, config]) => (
                       <th key={key}
-                        className={`px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase ${config.sortable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+                        className={`px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase
+                          ${key === 'subcategory' ? 'hidden lg:table-cell' : ''}
+                          ${key === 'status' ? 'hidden sm:table-cell' : ''}
+                          ${config.sortable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
                         onClick={() => config.sortable && handleSort(key as SortKey)}
                       >
                         <span className="flex items-center gap-1">
@@ -404,19 +394,15 @@ export default function ProductsPage() {
                         </span>
                       </th>
                     ))}
-                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className="px-4 py-4 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {sortedProducts.map(product => {
                     const stockBadge = getStockBadge(product);
-                    const isDeleting = deletingId === product._id;
                     return (
-                      <tr
-                        key={product._id}
-                        className={`hover:bg-gray-50 transition-colors ${isDeleting ? 'opacity-50' : ''}`}
-                      >
-                        <td className="px-6 py-4">
+                      <tr key={product._id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="relative h-10 w-10 overflow-hidden rounded-lg bg-gray-100 flex-shrink-0">
                               {product.images?.[0]?.url ? (
@@ -427,8 +413,13 @@ export default function ProductsPage() {
                                 </div>
                               )}
                             </div>
-                            <div>
-                              <p className="font-medium text-gray-900">{product.name}</p>
+                            <div className="min-w-0">
+                              <Link
+                                href={`/products/${product._id}/edit`}
+                                className="font-medium text-gray-900 hover:text-[#C9A84C] transition-colors line-clamp-1"
+                              >
+                                {product.name}
+                              </Link>
                               {product.variants?.[0]?.sku ? (
                                 <p className="text-xs text-gray-400 font-mono">{product.variants[0].sku}</p>
                               ) : (
@@ -437,40 +428,40 @@ export default function ProductsPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium whitespace-nowrap">
                             {product.category || 'Uncategorized'}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3 hidden lg:table-cell">
                           {(product as any).subcategory ? (
                             <span className="inline-flex items-center px-2.5 py-1 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">
                               {(product as any).subcategory}
                             </span>
                           ) : (
-                            <span className="text-gray-400 text-xs">-</span>
+                            <span className="text-gray-400 text-xs">—</span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3 hidden sm:table-cell">
                           <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
                             {product.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-medium text-gray-900">
+                        <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                           {formatPrice(getMinPrice(product))}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-700">{getStockCount(product)} units</span>
+                            <span className="text-sm text-gray-700 whitespace-nowrap">{getStockCount(product)} units</span>
                             {stockBadge && (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stockBadge.color}`}>
+                              <span className={`hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${stockBadge.color}`}>
                                 <AlertTriangle className="h-3 w-3" />
                                 {stockBadge.label}
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Link href={`/products/${product._id}`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" title="View">
                               <Eye className="h-4 w-4" />
@@ -479,16 +470,6 @@ export default function ProductsPage() {
                               <Link href={`/products/${product._id}/edit`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#C9A84C] transition-colors" title="Edit">
                                 <Edit className="h-4 w-4" />
                               </Link>
-                            )}
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDelete(product)}
-                                disabled={isDeleting}
-                                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
-                                title="Delete"
-                              >
-                                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                              </button>
                             )}
                           </div>
                         </td>
@@ -503,11 +484,10 @@ export default function ProductsPage() {
             <div className="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {sortedProducts.map(product => {
                 const stockBadge = getStockBadge(product);
-                const isDeleting = deletingId === product._id;
                 return (
                   <div
                     key={product._id}
-                    className={`group relative bg-white rounded-2xl border border-gray-100 hover:border-[#C9A84C]/30 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col ${isDeleting ? 'opacity-50' : ''}`}
+                    className="group relative bg-white rounded-2xl border border-gray-100 hover:border-[#C9A84C]/30 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col"
                   >
                     {/* Image */}
                     <div className="relative aspect-square bg-gray-50 overflow-hidden">
@@ -555,22 +535,14 @@ export default function ProductsPage() {
                             <Edit className="h-4 w-4" />
                           </Link>
                         )}
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleDelete(product)}
-                            disabled={isDeleting}
-                            className="p-2 bg-white rounded-xl text-gray-700 hover:text-red-600 shadow-md transition-colors disabled:opacity-40"
-                            title="Delete"
-                          >
-                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                          </button>
-                        )}
                       </div>
                     </div>
 
                     {/* Info */}
                     <div className="p-3 flex flex-col gap-1 flex-1">
-                      <p className="text-sm font-semibold text-gray-900 leading-tight line-clamp-2">{product.name}</p>
+                      <Link href={`/products/${product._id}/edit`} className="text-sm font-semibold text-gray-900 hover:text-[#C9A84C] transition-colors leading-tight line-clamp-2">
+                        {product.name}
+                      </Link>
                       <p className="text-xs text-gray-400">{product.category || 'Uncategorized'}</p>
                       {(product as any).subcategory && (
                         <span className="text-[10px] text-violet-600 font-medium">{(product as any).subcategory}</span>
