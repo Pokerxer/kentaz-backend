@@ -85,59 +85,72 @@ export default function ProductDetailPage() {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
 
-  // Extract unique sizes and colors from variants
-  const sizes: string[] = product?.variants ? [...new Set(product.variants.map(v => v.size).filter(Boolean))] as string[] : [];
-  const colorsForSize: string[] = selectedSize
-    ? product?.variants
-        .filter(v => v.size === selectedSize && v.color)
-        .map(v => v.color)
-        .filter(Boolean) as string[]
+  const sizes: string[] = product?.variants
+    ? [...new Set(product.variants.map(v => v.size).filter(Boolean))] as string[]
     : [];
-  const uniqueColorsForSize: string[] = [...new Set(colorsForSize)];
 
-  // All unique colors across all variants
-  const allColors: string[] = product?.variants
-    .map(v => v.color)
-    .filter(Boolean) as string[];
-  const uniqueAllColors: string[] = [...new Set(allColors)];
+  const uniqueAllColors: string[] = product?.variants
+    ? [...new Set(product.variants.map(v => v.color).filter(Boolean))] as string[]
+    : [];
 
-  // Check if a color is available for selected size
-  const isColorAvailableForSize = (color: string) => {
-    if (!selectedSize) return true;
-    const variant = product?.variants.find(v => v.size === selectedSize && v.color === color);
-    return variant?.stock && variant.stock > 0;
+  // Availability check handles size-only, color-only, and combined variant structures
+  const isColorAvailable = (color: string): boolean => {
+    if (!product) return false;
+    if (sizes.length > 0 && selectedSize) {
+      const v = product.variants.find(v => v.size === selectedSize && v.color === color);
+      return (v?.stock ?? 0) > 0;
+    }
+    if (sizes.length === 0) {
+      const v = product.variants.find(v => v.color === color);
+      return (v?.stock ?? 0) > 0;
+    }
+    return true;
   };
 
-  // Find the selected variant based on size and color
-  const selectedVariant = product?.variants.find(v =>
-    v.size === selectedSize && v.color === selectedColor
-  ) || product?.variants[0];
+  const selectedVariant = (() => {
+    if (!product) return undefined;
+    const hasSizes = sizes.length > 0;
+    const hasColors = uniqueAllColors.length > 0;
+    if (hasSizes && hasColors)
+      return product.variants.find(v => v.size === selectedSize && v.color === selectedColor);
+    if (hasSizes)
+      return product.variants.find(v => v.size === selectedSize);
+    if (hasColors)
+      return product.variants.find(v => v.color === selectedColor);
+    return product.variants[0];
+  })() ?? product?.variants[0];
 
-  // Auto-select first available size on load
+  // Auto-select first available size + color on product load
   useEffect(() => {
-    if (product && product.variants.length > 0 && !selectedSize) {
-      const firstSize = sizes[0];
-      setSelectedSize(firstSize || null);
-      // Auto-select first available color for this size
-      const colorsForFirstSize = product.variants
-        .filter(v => v.size === firstSize && v.stock && v.stock > 0)
-        .map(v => v.color)
-        .filter(Boolean);
-      if (colorsForFirstSize.length > 0) {
-        setSelectedColor(colorsForFirstSize[0] || null);
-      }
-    }
-  }, [product, sizes, selectedSize]);
+    if (!product || product.variants.length === 0) return;
 
-  // Reset color when size changes
+    let sizeToUse = selectedSize;
+    if (sizes.length > 0 && !selectedSize) {
+      const first = sizes.find(s =>
+        product.variants.some(v => v.size === s && (v.stock ?? 0) > 0)
+      ) ?? sizes[0];
+      setSelectedSize(first);
+      sizeToUse = first;
+    }
+
+    if (uniqueAllColors.length > 0 && !selectedColor) {
+      const pool = sizeToUse
+        ? product.variants.filter(v => v.size === sizeToUse)
+        : product.variants;
+      const first = uniqueAllColors.find(c =>
+        pool.some(v => v.color === c && (v.stock ?? 0) > 0)
+      ) ?? uniqueAllColors[0];
+      setSelectedColor(first);
+    }
+  }, [product]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSizeSelect = (size: string) => {
     setSelectedSize(size);
-    // Find first available color for this size
-    const availableColors = product?.variants
-      .filter(v => v.size === size && v.stock && v.stock > 0)
+    const availableColors = (product?.variants ?? [])
+      .filter(v => v.size === size && (v.stock ?? 0) > 0)
       .map(v => v.color)
-      .filter(Boolean) || [];
-    setSelectedColor(availableColors[0] || null);
+      .filter(Boolean) as string[];
+    setSelectedColor(availableColors[0] ?? null);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -507,71 +520,74 @@ useEffect(() => {
                   <p>{product.description}</p>
                 </motion.div>
 
-                {product.variants && product.variants.length > 0 && sizes.length > 0 && (
+                {(sizes.length > 0 || uniqueAllColors.length > 0) && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.45 }}
-                    className="space-y-6 pt-2"
+                    className="space-y-5 pt-2"
                   >
                     {/* Size Selection */}
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="text-sm font-semibold text-gray-900">
-                          Size
-                          {selectedSize && (
-                            <span className="text-gray-500 font-normal ml-1">: {selectedSize}</span>
-                          )}
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {sizes.map((size, index) => {
-                          const sizeVariants = product.variants.filter(v => v.size === size);
-                          const hasStock = sizeVariants.some(v => v.stock && v.stock > 0);
-                          const isSelected = selectedSize === size;
-                          const isUnavailable = !hasStock;
+                    {sizes.length > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <label className="text-sm font-semibold text-gray-900">
+                            Size
+                            {selectedSize && (
+                              <span className="text-gray-500 font-normal ml-1.5">— {selectedSize}</span>
+                            )}
+                          </label>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {sizes.map((size, index) => {
+                            const hasStock = product.variants
+                              .filter(v => v.size === size)
+                              .some(v => (v.stock ?? 0) > 0);
+                            const isSelected = selectedSize === size;
 
-                          return (
-                            <motion.button
-                              key={size}
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: 0.5 + index * 0.05 }}
-                              whileHover={!isUnavailable ? { scale: 1.05 } : {}}
-                              whileTap={!isUnavailable ? { scale: 0.95 } : {}}
-                              onClick={() => !isUnavailable && handleSizeSelect(size)}
-                              disabled={isUnavailable}
-                              className={`min-w-[70px] px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
-                                isSelected
-                                  ? 'border-gray-900 bg-gray-900 text-white shadow-lg'
-                                  : isUnavailable
-                                  ? 'border-gray-100 text-gray-300 cursor-not-allowed bg-gray-50 line-through'
-                                  : 'border-gray-200 text-gray-700 hover:border-gray-400 hover:shadow-md'
-                              }`}
-                            >
-                              {size}
-                            </motion.button>
-                          );
-                        })}
+                            return (
+                              <motion.button
+                                key={size}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 0.5 + index * 0.05 }}
+                                whileHover={hasStock ? { scale: 1.05 } : {}}
+                                whileTap={hasStock ? { scale: 0.95 } : {}}
+                                onClick={() => hasStock && handleSizeSelect(size)}
+                                disabled={!hasStock}
+                                className={`min-w-[60px] px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
+                                  isSelected
+                                    ? 'border-gray-900 bg-gray-900 text-white shadow-lg'
+                                    : !hasStock
+                                    ? 'border-gray-100 text-gray-300 cursor-not-allowed bg-gray-50 line-through'
+                                    : 'border-gray-200 text-gray-700 hover:border-gray-400 hover:shadow-sm'
+                                }`}
+                              >
+                                {size}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* Color Selection - Show all colors, strike out unavailable */}
-                    {uniqueAllColors.length > 0 && selectedSize && (
+                    {/* Color Selection */}
+                    {uniqueAllColors.length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <label className="text-sm font-semibold text-gray-900">
                             Color
                             {selectedColor && (
-                              <span className="text-gray-500 font-normal ml-1">: {selectedColor}</span>
+                              <span className="text-gray-500 font-normal ml-1.5">— {selectedColor}</span>
                             )}
                           </label>
                         </div>
                         <div className="flex flex-wrap gap-3">
                           {uniqueAllColors.map((color, index) => {
-                            const isUnavailable = !isColorAvailableForSize(color || '');
+                            const unavailable = !isColorAvailable(color ?? '');
                             const isSelected = selectedColor === color;
-                            const colorHex = getColorHex(color || '');
+                            const colorHex = getColorHex(color ?? '');
+                            const light = isLightColor(color ?? '');
 
                             return (
                               <motion.button
@@ -579,65 +595,38 @@ useEffect(() => {
                                 initial={{ opacity: 0, scale: 0.8 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ delay: 0.5 + index * 0.05 }}
-                                whileHover={!isUnavailable ? { scale: 1.1 } : {}}
-                                whileTap={!isUnavailable ? { scale: 0.95 } : {}}
-                                onClick={() => !isUnavailable && color && setSelectedColor(color)}
-                                disabled={isUnavailable}
-                                title={isUnavailable ? `Not available in ${selectedSize}` : color}
-                                className={`group relative w-12 h-12 rounded-full border-2 transition-all ${
+                                whileHover={!unavailable ? { scale: 1.1 } : {}}
+                                whileTap={!unavailable ? { scale: 0.95 } : {}}
+                                onClick={() => !unavailable && color && setSelectedColor(color)}
+                                disabled={unavailable}
+                                title={unavailable
+                                  ? `${color} — not available${selectedSize ? ` in size ${selectedSize}` : ''}`
+                                  : color ?? ''}
+                                className={`group relative w-11 h-11 rounded-full border-2 transition-all ${
                                   isSelected
                                     ? 'border-gray-900 shadow-lg ring-2 ring-gray-900 ring-offset-2'
-                                    : isUnavailable
-                                    ? 'border-gray-200 opacity-40 cursor-not-allowed'
-                                    : 'border-gray-200 hover:border-gray-400 hover:shadow-md'
+                                    : unavailable
+                                    ? 'border-gray-200 opacity-35 cursor-not-allowed'
+                                    : 'border-gray-200 hover:border-gray-500 hover:shadow-md'
                                 }`}
                               >
                                 <span
-                                  className={`absolute inset-1 rounded-full border ${
-                                    isLightColor(color || '') ? 'border-gray-300' : 'border-transparent'
-                                  }`}
+                                  className={`absolute inset-1 rounded-full ${light ? 'border border-gray-300' : ''}`}
                                   style={{ backgroundColor: colorHex }}
                                 />
-                                {/* Strike-through for unavailable */}
-                                {isUnavailable && (
-                                  <span className="absolute inset-0 flex items-center justify-center">
-                                    <span className="w-14 h-0.5 bg-red-500 rotate-45 absolute" />
+                                {unavailable && (
+                                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <span className="w-[150%] h-px bg-red-400 rotate-45 absolute" />
                                   </span>
                                 )}
-                                {isSelected && !isUnavailable && (
-                                  <span className="absolute inset-0 flex items-center justify-center">
-                                    <Check className={`w-5 h-5 ${isLightColor(color || '') ? 'text-gray-900' : 'text-white'}`} />
+                                {isSelected && !unavailable && (
+                                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <Check className={`w-4 h-4 ${light ? 'text-gray-900' : 'text-white'}`} />
                                   </span>
                                 )}
                               </motion.button>
                             );
                           })}
-                        </div>
-                        {selectedColor && (
-                          <p className="mt-2 text-sm text-gray-600">
-                            Color: <span className="font-semibold text-gray-900">{selectedColor}</span>
-                            {!isColorAvailableForSize(selectedColor || '') && (
-                              <span className="ml-2 text-red-500 text-xs">(out of stock)</span>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Selected variant info */}
-                    {selectedVariant && (
-                      <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl">
-                        <div>
-                          <p className="text-sm text-gray-600">
-                            Selected: <span className="font-semibold text-gray-900">{selectedSize}</span>
-                            {selectedColor && (
-                              <span className="text-gray-900"> / {selectedColor}</span>
-                            )}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-500">Price</p>
-                          <p className="font-bold text-gray-900">{formatPrice(selectedVariant.price)}</p>
                         </div>
                       </div>
                     )}
