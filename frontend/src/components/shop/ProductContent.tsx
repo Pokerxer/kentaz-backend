@@ -3,8 +3,7 @@
 import { ProductCard, ProductListView } from '@/components/shop/ProductCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { ArrowRight, X } from 'lucide-react';
-import Link from 'next/link';
+import { X } from 'lucide-react';
 import React from 'react';
 
 interface ProductVariant {
@@ -31,56 +30,6 @@ interface Product {
 
 type ProductContentProps = any;
 
-function GroupedProducts({ products, compareList, onCompareToggle, onQuickView }: {
-  products: Product[];
-  compareList: Product[];
-  onCompareToggle: (p: Product) => void;
-  onQuickView: (p: Product) => void;
-}) {
-  const grouped = products.reduce((acc, p) => {
-    const cat = p.category || 'Other';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(p);
-    return acc;
-  }, {} as Record<string, Product[]>);
-
-  const sortedCategories = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length);
-
-  return (
-    <div className="space-y-12">
-      {sortedCategories.map((cat) => (
-        <section key={cat}>
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-xl font-bold text-gray-900 capitalize">{cat}</h2>
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full font-medium">
-                {grouped[cat].length}
-              </span>
-            </div>
-            <Link
-              href={`/products?category=${encodeURIComponent(cat)}`}
-              className="text-sm text-[#C9A84C] hover:text-[#B8953F] flex items-center gap-1 font-medium transition-colors"
-            >
-              View all ({grouped[cat].length}) <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-            {grouped[cat].slice(0, 8).map((product) => (
-              <ProductCard
-                key={product._id}
-                product={product}
-                showCompare={true}
-                isComparing={compareList.some((p: Product) => p._id === product._id)}
-                onCompareToggle={onCompareToggle}
-                onQuickView={onQuickView}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
-}
 
 export function ProductContent(props: ProductContentProps) {
   const {
@@ -184,29 +133,20 @@ export function ProductContent(props: ProductContentProps) {
             Clear Filters
           </Button>
         </div>
-      ) : loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="aspect-[3/4] bg-gray-200 rounded-xl" />
-              <div className="mt-4 space-y-3">
-                <div className="h-3 bg-gray-200 rounded w-1/2 mx-auto" />
-                <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto" />
-                <div className="h-3 bg-gray-200 rounded w-1/3 mx-auto" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : activeCategory === 'all' && !hasActiveFilters ? (
-        <GroupedProducts
-          products={products}
-          compareList={compareList}
-          onCompareToggle={onCompareToggle}
-          onQuickView={onQuickView}
-        />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-          {products.map((product: Product) => (
+          {loading ? (
+            [...Array(8)].map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="aspect-[3/4] bg-gray-200 rounded-xl" />
+                <div className="mt-4 space-y-3">
+                  <div className="h-3 bg-gray-200 rounded w-1/2 mx-auto" />
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto" />
+                  <div className="h-3 bg-gray-200 rounded w-1/3 mx-auto" />
+                </div>
+              </div>
+            ))
+          ) : products.map((product: Product) => (
             <ProductCard
               key={product._id}
               product={product}
