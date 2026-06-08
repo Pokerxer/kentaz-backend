@@ -202,7 +202,7 @@ function ProductsPage() {
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: (products || []).length };
     (products || []).forEach(p => {
-      const cat = p.category || 'other';
+      const cat = (p.category || 'other').toLowerCase();
       counts[cat] = (counts[cat] || 0) + 1;
     });
     return counts;
@@ -213,7 +213,7 @@ function ProductsPage() {
     let result = [...productsList];
 
     if (activeCategory !== 'all') {
-      result = result.filter(p => p.category === activeCategory);
+      result = result.filter(p => (p.category || '').toLowerCase() === activeCategory.toLowerCase());
     }
 
     result = result.filter(p => {
@@ -315,8 +315,8 @@ function ProductsPage() {
         <div className="px-4 pb-4">
           <ul className="space-y-1">
             {categories.map((category) => {
-              const count = categoryCounts[category.handle] || 0;
-              const isActive = activeCategory === category.handle;
+              const count = categoryCounts[category.handle.toLowerCase()] || 0;
+              const isActive = activeCategory.toLowerCase() === category.handle.toLowerCase();
               return (
                 <li key={category.handle}>
                   <button
@@ -586,7 +586,7 @@ function ProductsPage() {
               onQuickView={(p: any) => { setQuickViewProduct(p); setIsQuickViewOpen(true); }}
               onClearFilters={clearFilters}
               setSearchQuery={setSearchQuery}
-              setActiveCategory={setActiveCategory}
+              setActiveCategory={handleCategoryClick}
               setPriceRange={setPriceRange}
               setSelectedColors={setSelectedColors}
               setSelectedSizes={setSelectedSizes}
