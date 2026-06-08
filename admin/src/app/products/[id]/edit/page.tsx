@@ -249,6 +249,10 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
               onChange={e => onChange('color', e.target.value)} list={`cl-${idx}`}
               className="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white" />
             <datalist id={`cl-${idx}`}>{popularColors.map(c => <option key={c} value={c} />)}</datalist>
+            {variant.color && (
+              <span className={`w-6 h-6 flex-shrink-0 rounded-full self-center border ${isLightColor(variant.color) ? 'border-gray-300' : 'border-transparent'}`}
+                style={{ backgroundColor: getColorHex(variant.color) }} />
+            )}
           </div>
         </td>
         <td className="px-3 py-3">
@@ -284,6 +288,11 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
             </div>
             {margin !== null && <span className="text-[10px] text-green-600 font-medium">{margin}% margin</span>}
           </div>
+        </td>
+        <td className="px-3 py-3">
+          <input type="number" min="0" placeholder="0" value={variant.stock || ''}
+            onChange={e => onChange('stock', parseInt(e.target.value) || 0)}
+            className="w-20 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white" />
         </td>
         <td className="px-3 py-3">
           <div className="flex items-center gap-1">
@@ -339,10 +348,16 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">Color</p>
-            <input type="text" placeholder="e.g. Black" value={variant.color}
-              onChange={e => onChange('color', e.target.value)} list={`mcl-${idx}`}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]" />
-            <datalist id={`mcl-${idx}`}>{popularColors.map(c => <option key={c} value={c} />)}</datalist>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="e.g. Black" value={variant.color}
+                onChange={e => onChange('color', e.target.value)} list={`mcl-${idx}`}
+                className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]" />
+              <datalist id={`mcl-${idx}`}>{popularColors.map(c => <option key={c} value={c} />)}</datalist>
+              {variant.color && (
+                <span className={`w-7 h-7 flex-shrink-0 rounded-full border ${isLightColor(variant.color) ? 'border-gray-300' : 'border-transparent'}`}
+                  style={{ backgroundColor: getColorHex(variant.color) }} />
+              )}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
@@ -385,6 +400,12 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
           </div>
         )}
         <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Stock</p>
+            <input type="number" min="0" placeholder="0" value={variant.stock || ''}
+              onChange={e => onChange('stock', parseInt(e.target.value) || 0)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]" />
+          </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">SKU / Barcode</p>
             <div className="flex items-center gap-1.5">
@@ -522,6 +543,12 @@ export default function EditProductPage() {
     else if (colors.length > 0) { for (const color of colors) combos.push({ ...EMPTY_VARIANT, color }); }
     if (combos.length > 0) {
       setVariants(prev => {
+        // If all existing variants are untyped (no size, no color), replace them and
+        // carry the first variant's pricing/stock into all new combos
+        if (prev.every(v => !v.size && !v.color)) {
+          const base = prev[0];
+          return combos.map(c => ({ ...c, price: base.price, costPrice: base.costPrice, markup: base.markup, useMarkup: base.useMarkup, stock: base.stock }));
+        }
         const existing = prev.filter(v => v.price > 0 || v.stock > 0 || v.sku);
         const newCombos = combos.filter(c => !existing.some(e => e.size === c.size && e.color === c.color));
         return [...existing, ...newCombos];
@@ -940,6 +967,7 @@ export default function EditProductPage() {
                           <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Size / Color</th>
                           <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Cost Price</th>
                           <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Sale Price <span className="text-gray-400 normal-case font-normal">(₦ / auto)</span></th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
                           <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">SKU</th>
                           <th className="px-3 py-2.5 w-16"></th>
                         </tr>

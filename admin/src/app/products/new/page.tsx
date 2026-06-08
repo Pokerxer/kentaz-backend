@@ -323,6 +323,10 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
               className="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white"
             />
             <datalist id={`cl-${idx}`}>{popularColors.map(c => <option key={c} value={c} />)}</datalist>
+            {variant.color && (
+              <span className={`w-6 h-6 flex-shrink-0 rounded-full self-center border ${isLightColor(variant.color) ? 'border-gray-300' : 'border-transparent'}`}
+                style={{ backgroundColor: getColorHex(variant.color) }} />
+            )}
           </div>
         </td>
 
@@ -448,11 +452,17 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">Color</p>
-            <input type="text" placeholder="e.g. Black" value={variant.color}
-              onChange={e => onChange('color', e.target.value)}
-              list={`mcl-${idx}`}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]" />
-            <datalist id={`mcl-${idx}`}>{popularColors.map(c => <option key={c} value={c} />)}</datalist>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="e.g. Black" value={variant.color}
+                onChange={e => onChange('color', e.target.value)}
+                list={`mcl-${idx}`}
+                className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]" />
+              <datalist id={`mcl-${idx}`}>{popularColors.map(c => <option key={c} value={c} />)}</datalist>
+              {variant.color && (
+                <span className={`w-7 h-7 flex-shrink-0 rounded-full border ${isLightColor(variant.color) ? 'border-gray-300' : 'border-transparent'}`}
+                  style={{ backgroundColor: getColorHex(variant.color) }} />
+              )}
+            </div>
           </div>
         </div>
 
@@ -587,6 +597,13 @@ export default function NewProductPage() {
     else if (colors.length > 0) { for (const color of colors) combos.push({ ...EMPTY_VARIANT, color }); }
     if (combos.length > 0) {
       setVariants(prev => {
+        // If all existing variants are untyped (no size, no color), replace them and
+        // carry the first variant's pricing/stock into all new combos
+        if (prev.every(v => !v.size && !v.color)) {
+          const base = prev[0];
+          dirty();
+          return combos.map(c => ({ ...c, price: base.price, costPrice: base.costPrice, markup: base.markup, useMarkup: base.useMarkup, stock: base.stock }));
+        }
         const existing = prev.filter(v => v.price > 0 || v.stock > 0 || v.sku);
         const newCombos = combos.filter(c => !existing.some(e => e.size === c.size && e.color === c.color));
         return [...existing, ...newCombos];
