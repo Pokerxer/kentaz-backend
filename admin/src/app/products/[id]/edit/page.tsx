@@ -418,6 +418,7 @@ export default function EditProductPage() {
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadCount, setUploadCount] = useState(0);
   const [tagInput, setTagInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -531,17 +532,31 @@ export default function EditProductPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+
+    const slots = 10 - formData.images.length;
+    if (slots <= 0) return;
+    const toUpload = files.slice(0, slots);
+
     setUploadingImage(true);
+    setUploadCount(toUpload.length);
     try {
-      for (const file of files) {
-        if (formData.images.length >= 10) break;
-        const result = await api.upload.image(file);
-        addImage(result.url);
+      const results = await Promise.allSettled(toUpload.map(f => api.upload.image(f)));
+      const newUrls = results
+        .filter((r): r is PromiseFulfilledResult<{ url: string }> => r.status === 'fulfilled')
+        .map(r => r.value.url)
+        .filter(url => !formData.images.includes(url));
+
+      if (newUrls.length > 0) {
+        setField('images', [...formData.images, ...newUrls].slice(0, 10));
       }
+
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) setError(`${failed} image${failed !== 1 ? 's' : ''} failed to upload`);
     } catch (err: any) {
       setError(err.message || 'Upload failed');
     } finally {
       setUploadingImage(false);
+      setUploadCount(0);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -839,7 +854,9 @@ export default function EditProductPage() {
                       className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors disabled:opacity-50"
                     >
                       {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      {uploadingImage ? 'Uploading…' : 'Upload from device'}
+                      {uploadingImage
+                        ? uploadCount > 1 ? `Uploading ${uploadCount} images…` : 'Uploading…'
+                        : 'Upload from device'}
                     </button>
 
                     {showUrlInput ? (
