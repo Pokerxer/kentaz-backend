@@ -132,22 +132,21 @@ function ProductsPage() {
     sizes: false,
     rating: false,
   });
-  const [categories, setCategories] = useState(STATIC_CATEGORIES);
-
-  useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
-    fetch(`${apiUrl}/api/admin/categories`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          const cats = data
-            .filter((c: any) => c.name && c.name !== 'Other')
-            .map((c: any) => ({ name: c.name, handle: c.name }));
-          setCategories([{ name: 'All', handle: 'all' }, ...cats]);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const categories = useMemo(() => {
+    const seen = new Set<string>();
+    const cats: { name: string; handle: string }[] = [];
+    for (const p of products) {
+      const name = p.category?.trim();
+      if (!name || name.toLowerCase() === 'other') continue;
+      const key = name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        cats.push({ name, handle: name });
+      }
+    }
+    cats.sort((a, b) => a.name.localeCompare(b.name));
+    return [{ name: 'All', handle: 'all' }, ...cats];
+  }, [products]);
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
