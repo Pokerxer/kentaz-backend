@@ -542,7 +542,7 @@ export default function EditProductPage() {
     try {
       const results = await Promise.allSettled(toUpload.map(f => api.upload.image(f)));
       const newUrls = results
-        .filter((r): r is PromiseFulfilledResult<{ url: string }> => r.status === 'fulfilled')
+        .filter((r): r is PromiseFulfilledResult<{ url: string; publicId: string }> => r.status === 'fulfilled')
         .map(r => r.value.url)
         .filter(url => !formData.images.includes(url));
 
