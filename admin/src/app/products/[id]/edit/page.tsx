@@ -5,6 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Save,
   Loader2,
   X,
@@ -413,6 +415,7 @@ export default function EditProductPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [allProductIds, setAllProductIds] = useState<{ _id: string; name: string }[]>([]);
   const [originalProduct, setOriginalProduct] = useState<Product | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
@@ -440,12 +443,13 @@ export default function EditProductPage() {
 
   const [variants, setVariants] = useState<Variant[]>([{ ...EMPTY_VARIANT }]);
 
-  // Load product + categories in parallel
+  // Load product + categories + all product IDs in parallel
   useEffect(() => {
     Promise.all([
       api.categories.getAll(),
       api.products.getById(productId),
-    ]).then(([cats, product]) => {
+      api.products.getAll({ limit: 1000 }),
+    ]).then(([cats, product, allData]) => {
       setCategories((cats as Category[]).filter((c: any) => c.slug !== 'other'));
       const p = product as Product;
       setOriginalProduct(p);
@@ -473,6 +477,8 @@ export default function EditProductPage() {
             }))
           : [{ ...EMPTY_VARIANT }]
       );
+      const all = (allData as { products: Product[] }).products || [];
+      setAllProductIds(all.map((pr: any) => ({ _id: pr._id, name: pr.name })));
     }).catch(() => {
       setError('Failed to load product');
     }).finally(() => setFetching(false));
@@ -624,20 +630,25 @@ export default function EditProductPage() {
     setError(null);
     setLoading(true);
     try {
-      await api.products.update(productId, {
+      const updated = await api.products.update(productId, {
         ...formData,
         variants: validVariants,
         images: formData.images.map(url => ({ url })),
       });
+      setOriginalProduct(updated as Product);
       setHasChanges(false);
-      setSuccess('Product updated!');
-      setTimeout(() => router.push('/products'), 1200);
+      setSuccess('Saved!');
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.message || 'Failed to update product');
     } finally {
       setLoading(false);
     }
   };
+
+  const currentIndex = allProductIds.findIndex(p => p._id === productId);
+  const prevProduct = currentIndex > 0 ? allProductIds[currentIndex - 1] : null;
+  const nextProduct = currentIndex >= 0 && currentIndex < allProductIds.length - 1 ? allProductIds[currentIndex + 1] : null;
 
   const priceRange = (() => {
     const prices = variants.map(v => v.price).filter(p => p > 0);
@@ -665,10 +676,39 @@ export default function EditProductPage() {
 
         {/* Header */}
         <div className="mb-6">
-          <Link href="/products" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#C9A84C] transition-colors mb-4 group">
-            <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-            Back to Products
-          </Link>
+          <div className="flex items-center justify-between mb-4">
+            <Link href="/products" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#C9A84C] transition-colors group">
+              <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
+              Back to Products
+            </Link>
+            {allProductIds.length > 0 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => prevProduct && router.push(`/products/${prevProduct._id}/edit`)}
+                  disabled={!prevProduct}
+                  title={prevProduct ? prevProduct.name : undefined}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-[#C9A84C] hover:text-[#C9A84C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Prev</span>
+                </button>
+                <span className="px-2 text-xs text-gray-400 tabular-nums">
+                  {currentIndex >= 0 ? `${currentIndex + 1} / ${allProductIds.length}` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => nextProduct && router.push(`/products/${nextProduct._id}/edit`)}
+                  disabled={!nextProduct}
+                  title={nextProduct ? nextProduct.name : undefined}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-[#C9A84C] hover:text-[#C9A84C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
