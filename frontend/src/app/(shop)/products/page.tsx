@@ -50,9 +50,18 @@ interface Product {
   images?: { url: string }[];
   variants: ProductVariant[];
   category?: string;
+  subcategory?: string;
   tags?: string[];
+  featured?: boolean;
   ratings?: { avg: number; count: number };
   createdAt?: string;
+}
+
+function getMinPrice(product: Product): number {
+  const prices = (product.variants || [])
+    .map(v => v.price)
+    .filter((x): x is number => typeof x === 'number' && x > 0);
+  return prices.length ? Math.min(...prices) : 0;
 }
 
 function FilterChip({ label, onRemove, color }: { label: string; onRemove: () => void; color?: string }) {
@@ -164,6 +173,7 @@ function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState(collectionParam || categoryParam || 'all');
   const [sortBy, setSortBy] = useState('featured');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -249,31 +259,62 @@ function ProductsPage() {
     });
   }, [products]);
 
+  // Debounce search input by 300ms to avoid filtering on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Fetch all products via pagination (API caps at 200/page)
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
-    fetch(`${apiUrl}/api/store/products?limit=2000`)
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        return res.json();
-      })
-      .then(data => {
-        const productsArray = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
-        const visible = productsArray.filter((p: any) => {
-          const hasImage = (p.images && p.images.length > 0) || p.thumbnail;
-          const hasStock = p.variants && p.variants.length > 0
-            ? p.variants.some((v: any) => (v.stock ?? 0) > 0)
-            : true;
-          return hasImage && hasStock;
-        });
-        setProducts(visible);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch products:', err);
-        setError('Failed to load products');
-        setProducts([]);
-        setLoading(false);
-      });
+    let cancelled = false;
+
+    async function fetchAll() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${apiUrl}/api/store/products?limit=200&page=1`);
+        if (!res.ok) throw new Error('Failed to fetch products');
+        const data = await res.json();
+
+        const first: any[] = data.products || (Array.isArray(data) ? data : []);
+        const total: number = data.total || first.length;
+        const totalPages = Math.ceil(total / 200);
+
+        // Filter: only hide products where every variant has stock=0
+        const hasStock = (p: any) =>
+          !(p.variants?.length > 0) || p.variants.some((v: any) => (v.stock ?? 0) > 0);
+
+        if (cancelled) return;
+        setProducts(first.filter(hasStock));
+
+        if (totalPages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              fetch(`${apiUrl}/api/store/products?limit=200&page=${i + 2}`)
+                .then(r => r.ok ? r.json() : Promise.reject())
+                .then(d => (d.products || []) as any[])
+                .catch(() => [] as any[])
+            )
+          );
+          if (!cancelled) {
+            setProducts([...first, ...rest.flat()].filter(hasStock));
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to fetch products:', err);
+          setError('Failed to load products. Please try again.');
+          setProducts([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchAll();
+    return () => { cancelled = true; };
   }, []);
 
   // Initialize price range from actual product prices (runs once after first load)
@@ -318,9 +359,10 @@ function ProductsPage() {
       result = result.filter(p => (p.category || '').toLowerCase() === activeCategory.toLowerCase());
     }
 
+    // Use min price across all variants (not just first)
     result = result.filter(p => {
-      const price = p.variants?.[0]?.price || 0;
-      return price >= priceRange[0] && price <= priceRange[1];
+      const minPrice = getMinPrice(p);
+      return minPrice === 0 || (minPrice >= priceRange[0] && minPrice <= priceRange[1]);
     });
 
     if (selectedColors.length > 0) {
@@ -339,21 +381,45 @@ function ProductsPage() {
       result = result.filter(p => (p.ratings?.avg || 0) >= selectedRating);
     }
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(p =>
-        p.name.toLowerCase().includes(query) ||
-        p.description?.toLowerCase().includes(query) ||
-        p.category?.toLowerCase().includes(query)
-      );
+    // Tokenized search with relevance scoring across name, category, subcategory, tags, description
+    let searchScores: Map<string, number> | null = null;
+    if (debouncedSearch.trim()) {
+      const tokens = debouncedSearch.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      const scored = result.map(p => {
+        const name = p.name.toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const cat = (p.category || '').toLowerCase();
+        const subcat = (p.subcategory || '').toLowerCase();
+        const tags = (p.tags || []).join(' ').toLowerCase();
+
+        let score = 0;
+        for (const token of tokens) {
+          // Name: highest weight
+          if (name === token) score += 40;
+          else if (name.startsWith(token + ' ')) score += 25;
+          else if (name.includes(token)) score += 15;
+          // Category / subcategory
+          if (cat === token || subcat === token) score += 10;
+          else if (cat.includes(token) || subcat.includes(token)) score += 6;
+          // Tags
+          if (tags.split(' ').includes(token)) score += 8;
+          else if (tags.includes(token)) score += 4;
+          // Description: lowest weight
+          if (desc.includes(token)) score += 1;
+        }
+        return { p, score };
+      }).filter(({ score }) => score > 0);
+
+      searchScores = new Map(scored.map(({ p, score }) => [p._id, score]));
+      result = scored.map(({ p }) => p);
     }
 
     switch (sortBy) {
       case 'price_asc':
-        result.sort((a, b) => (a.variants?.[0]?.price || 0) - (b.variants?.[0]?.price || 0));
+        result.sort((a, b) => getMinPrice(a) - getMinPrice(b));
         break;
       case 'price_desc':
-        result.sort((a, b) => (b.variants?.[0]?.price || 0) - (a.variants?.[0]?.price || 0));
+        result.sort((a, b) => getMinPrice(b) - getMinPrice(a));
         break;
       case 'bestselling':
         result.sort((a, b) => (b.tags?.includes('bestseller') ? 1 : 0) - (a.tags?.includes('bestseller') ? 1 : 0));
@@ -361,12 +427,17 @@ function ProductsPage() {
       case 'newest':
         result.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         break;
-      default:
-        result.sort((a, b) => (b.tags?.includes('featured') ? 1 : 0) - (a.tags?.includes('featured') ? 1 : 0));
+      default: // featured
+        if (searchScores) {
+          // When searching with "featured" sort, rank by relevance instead
+          result.sort((a, b) => (searchScores!.get(b._id) || 0) - (searchScores!.get(a._id) || 0));
+        } else {
+          result.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+        }
     }
 
     return result;
-  }, [products, activeCategory, searchQuery, sortBy, priceRange, selectedColors, selectedSizes, selectedRating]);
+  }, [products, activeCategory, debouncedSearch, sortBy, priceRange, selectedColors, selectedSizes, selectedRating]);
 
   const handleCategoryClick = (handle: string) => {
     setActiveCategory(handle);
@@ -725,7 +796,11 @@ function ProductsPage() {
                   >
                     <ArrowUpDown className="h-4 w-4" />
                     <span>Sort:</span>
-                    <span className="text-gray-900">{sortOptions.find(o => o.value === sortBy)?.label}</span>
+                    <span className="text-gray-900">
+                      {debouncedSearch.trim() && sortBy === 'featured'
+                        ? 'Relevance'
+                        : sortOptions.find(o => o.value === sortBy)?.label}
+                    </span>
                     <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform duration-200", showSortDropdown && "rotate-180")} />
                   </button>
                   <AnimatePresence>
