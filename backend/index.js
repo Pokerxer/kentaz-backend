@@ -792,6 +792,19 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Centralized error handler — must be registered after all routes. Keeps
+// responses as JSON (not HTML error pages) and maps multer upload errors to
+// sensible status codes so the client can show a useful message.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err && err.name === 'MulterError') {
+    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return res.status(status).json({ error: err.message });
+  }
+  console.error('Unhandled error:', err);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
 // For local development
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {

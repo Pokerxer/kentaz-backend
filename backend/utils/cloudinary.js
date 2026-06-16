@@ -49,6 +49,25 @@ async function deleteImages(publicIds) {
   }
 }
 
+// Produce signed params so the browser can upload directly to Cloudinary,
+// bypassing the ~4.5MB Vercel serverless body limit and letting Cloudinary
+// ingest/convert formats like HEIC server-side.
+function getUploadSignature(folder = 'kentaz/products') {
+  configure();
+  const timestamp = Math.round(Date.now() / 1000);
+  const signature = cloudinary.utils.api_sign_request(
+    { folder, timestamp },
+    process.env.CLOUDINARY_API_SECRET
+  );
+  return {
+    timestamp,
+    signature,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    folder,
+  };
+}
+
 function getOptimizedUrl(url, width = 600) {
   if (!url) return null;
   if (url.includes('cloudinary.com')) {
@@ -57,4 +76,4 @@ function getOptimizedUrl(url, width = 600) {
   return url;
 }
 
-module.exports = { cloudinary, uploadImage, deleteImage, deleteImages, getOptimizedUrl };
+module.exports = { cloudinary, uploadImage, deleteImage, deleteImages, getOptimizedUrl, getUploadSignature };

@@ -480,18 +480,43 @@ export const api = {
   upload: {
     image: async (file: File): Promise<{ url: string; publicId: string }> => {
       const token = await getAuthToken();
-      const form = new FormData();
-      form.append('image', file);
-      const res = await fetch(`${API_URL}/api/admin/upload`, {
-        method: 'POST',
+      // 1) Get short-lived signed params from our backend (tiny request, well
+      //    under Vercel's body limit).
+      const sigRes = await fetch(`${API_URL}/api/admin/upload/signature`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!sigRes.ok) {
+        const err = await sigRes.json().catch(() => ({ error: 'Could not start upload' }));
+        throw new ApiError(err.error || 'Could not start upload', sigRes.status);
+      }
+      const { timestamp, signature, apiKey, cloudName, folder } = await sigRes.json();
+
+      // 2) Upload the file straight to Cloudinary. This bypasses Vercel's
+      //    ~4.5MB serverless body limit and lets Cloudinary ingest/convert
+      //    formats like HEIC (iPhone photos) server-side.
+      const form = new FormData();
+      form.append('file', file);
+      form.append('api_key', apiKey);
+      form.append('timestamp', String(timestamp));
+      form.append('signature', signature);
+      form.append('folder', folder);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
         body: form,
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
-        throw new ApiError(err.error || 'Upload failed', res.status);
+        const err = await res.json().catch(() => ({ error: { message: 'Upload failed' } }));
+        throw new ApiError(err?.error?.message || 'Upload failed', res.status);
       }
-      return res.json();
+      const data = await res.json();
+      // Deliver an optimized, web-safe URL: caps size and uses f_auto so HEIC
+      // sources are served as jpg/webp the browser can render.
+      const url: string = (data.secure_url as string).replace(
+        '/upload/',
+        '/upload/c_limit,w_1200,h_1200,q_auto:good,f_auto/'
+      );
+      return { url, publicId: data.public_id };
     },
     deleteImage: (publicId: string) =>
       request<{ message: string }>('/api/admin/upload', {

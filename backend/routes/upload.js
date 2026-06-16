@@ -4,7 +4,7 @@ const multer = require('multer');
 const os = require('os');
 const path = require('path');
 const { auth, adminOnly } = require('../middleware/auth');
-const { uploadImage, deleteImage } = require('../utils/cloudinary');
+const { uploadImage, deleteImage, getUploadSignature } = require('../utils/cloudinary');
 
 const storage = multer.diskStorage({
   destination: os.tmpdir(),
@@ -19,6 +19,16 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     /jpeg|jpg|png|webp|gif/.test(file.mimetype) ? cb(null, true) : cb(new Error('Only images allowed'));
   },
+});
+
+// GET /api/admin/upload/signature — signed params for direct browser→Cloudinary
+// upload. Lets large images and HEIC bypass the ~4.5MB Vercel serverless limit.
+router.get('/signature', auth, adminOnly, (req, res) => {
+  try {
+    res.json(getUploadSignature('kentaz/products'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/admin/upload  — upload a single image, returns { url, publicId }

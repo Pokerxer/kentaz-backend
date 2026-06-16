@@ -623,13 +623,26 @@ export default function NewProductPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+
+    const slots = 10 - formData.images.length;
+    if (slots <= 0) return;
+    const toUpload = files.slice(0, slots);
+
     setUploadingImage(true);
     try {
-      for (const file of files) {
-        if (formData.images.length >= 10) break;
-        const result = await api.upload.image(file);
-        addImage(result.url);
+      // Upload all selected files in parallel; one failure must not abort the rest.
+      const results = await Promise.allSettled(toUpload.map(f => api.upload.image(f)));
+      const newUrls = results
+        .filter((r): r is PromiseFulfilledResult<{ url: string; publicId: string }> => r.status === 'fulfilled')
+        .map(r => r.value.url)
+        .filter(url => !formData.images.includes(url));
+
+      if (newUrls.length > 0) {
+        setField('images', [...formData.images, ...newUrls].slice(0, 10));
       }
+
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) setError(`${failed} image${failed !== 1 ? 's' : ''} failed to upload`);
     } catch (err: any) {
       setError(err.message || 'Upload failed');
     } finally {
