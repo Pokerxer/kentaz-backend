@@ -1,8 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
 
+const connectDB = require('./utils/db');
 const { auth, adminOnly } = require('./middleware/auth');
 const authRoutes = require('./routes/auth');
 const storeProductRoutes = require('./routes/storeProducts');
@@ -51,21 +51,19 @@ app.use(cors({
 app.use(express.json());
 
 const PORT = process.env.PORT || 9000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kentaz';
 
-const mongoOptions = {
-  serverSelectionTimeoutMS: 60000,
-  socketTimeoutMS: 60000,
-};
-
-console.log('MONGO_URI:', MONGO_URI ? MONGO_URI.replace(/:[^:]+@/, ':****@') : 'not set');
-
-mongoose.connect(MONGO_URI, {
-  serverSelectionTimeoutMS: 60000,
-  socketTimeoutMS: 60000,
-})
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Ensure a live MongoDB connection before any /api request that touches the DB.
+// connectDB() caches the connection across warm serverless invocations and
+// fails fast (instead of hanging the function for 300s) when the cluster is
+// unreachable. Non-DB routes (/, /health) are not under /api and skip this.
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(503).json({ error: 'Database connection failed' });
+  }
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/store/products', storeProductRoutes);
