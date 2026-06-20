@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Grid3X3, List, X, SlidersHorizontal, ChevronDown, Star, ArrowUpDown } from 'lucide-react';
+import { Search, Grid3X3, List, X, SlidersHorizontal, ChevronDown, ChevronLeft, ChevronRight, Star, ArrowUpDown } from 'lucide-react';
 import { QuickViewModal } from '@/components/shop/QuickViewModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +18,9 @@ const COLOR_HEX_MAP: Record<string, string> = {
 };
 
 const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '2XL', '3XL', 'One Size'];
+
+// How many products to show per page. 24 divides evenly into the 2/3/4-column grids.
+const PAGE_SIZE = 24;
 
 const sortOptions = [
   { label: 'Featured', value: 'featured' },
@@ -162,6 +165,70 @@ function FilterSection({
   );
 }
 
+// Build a compact page list with ellipses, e.g. [1, '...', 4, 5, 6, '...', 12].
+function getPageRange(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | '...')[] = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) pages.push('...');
+  for (let i = left; i <= right; i++) pages.push(i);
+  if (right < total - 1) pages.push('...');
+  pages.push(total);
+  return pages;
+}
+
+function Pagination({ currentPage, totalPages, onPageChange }: {
+  currentPage: number; totalPages: number; onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  const pages = getPageRange(currentPage, totalPages);
+
+  return (
+    <nav className="flex items-center justify-center gap-1.5 mt-10" aria-label="Pagination">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        aria-label="Previous page"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        <span className="hidden sm:inline">Prev</span>
+      </button>
+
+      {pages.map((p, i) =>
+        p === '...' ? (
+          <span key={`ellipsis-${i}`} className="px-1.5 text-gray-400 select-none">…</span>
+        ) : (
+          <button
+            key={p}
+            onClick={() => onPageChange(p)}
+            aria-current={p === currentPage ? 'page' : undefined}
+            className={cn(
+              "min-w-[2.5rem] px-3 py-2 text-sm rounded-lg border transition-colors",
+              p === currentPage
+                ? "bg-gray-900 text-white border-gray-900 font-medium"
+                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+            )}
+          >
+            {p}
+          </button>
+        )
+      )}
+
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        aria-label="Next page"
+      >
+        <span className="hidden sm:inline">Next</span>
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </nav>
+  );
+}
+
 function ProductsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -186,7 +253,9 @@ function ProductsPage() {
   const [quickViewProduct, setQuickViewProduct] = useState<any>(null);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const sortDropdownRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const priceInitialized = useRef(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     categories: true,
@@ -282,12 +351,26 @@ function ProductsPage() {
         const total: number = data.total || first.length;
         const totalPages = Math.ceil(total / 200);
 
-        // Filter: only hide products where every variant has stock=0
+        // Hide products where every variant has stock=0
         const hasStock = (p: any) =>
           !(p.variants?.length > 0) || p.variants.some((v: any) => (v.stock ?? 0) > 0);
 
+        // Hide products with no real image (no thumbnail and no image URLs)
+        const hasImage = (p: any) =>
+          Boolean(p.thumbnail?.trim()) ||
+          (Array.isArray(p.images) && p.images.some((img: any) => img?.url?.trim()));
+
+        const isVisible = (p: any) => hasStock(p) && hasImage(p);
+
+        // Drop duplicate _ids (the paginated API can return overlapping items),
+        // which would otherwise cause React duplicate-key errors in the grid.
+        const dedupeById = (arr: any[]) => {
+          const seen = new Set<string>();
+          return arr.filter(p => p?._id && !seen.has(p._id) && seen.add(p._id));
+        };
+
         if (cancelled) return;
-        setProducts(first.filter(hasStock));
+        setProducts(dedupeById(first.filter(isVisible)));
 
         if (totalPages > 1) {
           const rest = await Promise.all(
@@ -299,7 +382,7 @@ function ProductsPage() {
             )
           );
           if (!cancelled) {
-            setProducts([...first, ...rest.flat()].filter(hasStock));
+            setProducts(dedupeById([...first, ...rest.flat()].filter(isVisible)));
           }
         }
       } catch (err) {
@@ -438,6 +521,33 @@ function ProductsPage() {
 
     return result;
   }, [products, activeCategory, debouncedSearch, sortBy, priceRange, selectedColors, selectedSizes, selectedRating]);
+
+  const totalResults = filteredAndSortedProducts.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
+
+  // Reset to the first page whenever the result set changes (filters/sort/search).
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeCategory, debouncedSearch, sortBy, priceRange, selectedColors, selectedSizes, selectedRating]);
+
+  // Clamp the current page if filtering shrinks the result set below it.
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const paginatedProducts = useMemo(
+    () => filteredAndSortedProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredAndSortedProducts, currentPage]
+  );
+
+  const rangeStart = totalResults === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, totalResults);
+
+  const handlePageChange = (page: number) => {
+    const next = Math.min(Math.max(page, 1), totalPages);
+    setCurrentPage(next);
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleCategoryClick = (handle: string) => {
     setActiveCategory(handle);
@@ -688,7 +798,7 @@ function ProductsPage() {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 min-w-0">
+          <div ref={topRef} className="flex-1 min-w-0 scroll-mt-8">
 
             {/* Search Bar */}
             <div className="mb-4">
@@ -849,11 +959,11 @@ function ProductsPage() {
 
             {/* Products */}
             <ProductContent
-              products={filteredAndSortedProducts}
+              products={paginatedProducts}
               loading={loading}
               error={error}
               viewMode={viewMode}
-              hasActiveFilters={hasActiveFilters}
+              hasActiveFilters={false}
               searchQuery={searchQuery}
               activeCategory={activeCategory}
               priceRange={priceRange}
@@ -871,6 +981,20 @@ function ProductsPage() {
               setSelectedSizes={setSelectedSizes}
               setSelectedRating={setSelectedRating}
             />
+
+            {/* Pagination */}
+            {!loading && !error && totalResults > 0 && (
+              <>
+                <p className="mt-8 text-center text-sm text-gray-500">
+                  Showing {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {totalResults.toLocaleString()} products
+                </p>
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
