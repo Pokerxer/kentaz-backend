@@ -233,7 +233,7 @@ export default function ProductsPage() {
     <AdminLayout>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between animate-fade-in">
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-in">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
               <span className="w-2 h-8 bg-[#C9A84C] rounded-full" />
@@ -245,7 +245,7 @@ export default function ProductsPage() {
             {isAdmin && (
               <Link
                 href="/products/new"
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20"
+                className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl font-medium hover:bg-[#B8953F] transition-all shadow-lg shadow-[#C9A84C]/20 whitespace-nowrap"
               >
                 <Plus className="h-4 w-4" />
                 Add Product
@@ -254,7 +254,7 @@ export default function ProductsPage() {
             <button
               onClick={handleExportAll}
               disabled={products.length === 0 || exporting}
-              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all disabled:opacity-40"
+              className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all disabled:opacity-40 whitespace-nowrap"
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Export
