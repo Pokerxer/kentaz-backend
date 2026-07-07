@@ -127,12 +127,12 @@ function OrderDetail({
 
     const itemsHtml = saleData.items.map(item => `
       <tr>
-        <td style="padding: 3px 0;">
-          <div style="font-weight: 500;">${item.productName}</div>
-          ${item.variantLabel ? `<div style="font-size: 10px; color: #666;">${item.variantLabel}</div>` : ''}
-          <div style="font-size: 10px; color: #888;">${item.quantity} × ₦${item.price.toLocaleString()}</div>
+        <td style="padding: 3px 0; vertical-align:top;">
+          <div style="font-weight: 700; font-size: 12px; color:#000;">${item.productName}</div>
+          ${item.variantLabel ? `<div style="font-size: 11px; color:#000;">${item.variantLabel}</div>` : ''}
+          <div style="font-size: 11px; color:#000;">${item.quantity} × ₦${item.price.toLocaleString()}</div>
         </td>
-        <td style="text-align: right; font-weight: 600;">₦${item.total.toLocaleString()}</td>
+        <td style="text-align: right; font-weight: 700; font-size: 12px; color:#000; white-space:nowrap; vertical-align:top;">₦${item.total.toLocaleString()}</td>
       </tr>
     `).join('');
 
@@ -143,26 +143,33 @@ function OrderDetail({
         <meta charset="utf-8">
         <title>Receipt - ${saleData.receiptNumber}</title>
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; font-size: 12px; color: #111; }
-          .header { text-align: center; padding-bottom: 10px; border-bottom: 1px dashed #333; margin-bottom: 10px; }
-          .header h1 { font-size: 18px; font-weight: 800; letter-spacing: 1px; }
-          .header .receipt-no { font-size: 10px; font-family: monospace; color: #444; margin-top: 4px; }
-          .header .date { font-size: 10px; color: #888; margin-top: 2px; }
+          * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+          html, body { background:#fff; }
+          body { font-family: 'Courier New', Courier, monospace; padding: 8px 6px; font-size: 13px; color: #000; width: 300px; margin: 0 auto; font-weight: 500; line-height:1.45; }
+          .header { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #000; margin-bottom: 6px; }
+          .header h1 { font-size: 20px; font-weight: 900; letter-spacing: 1.5px; color:#000; font-family: 'Segoe UI', Arial, sans-serif; }
+          .header .receipt-no { font-size: 12px; color: #000; margin-top: 3px; font-weight: 700; }
+          .header .date { font-size: 11px; color: #000; margin-top: 2px; font-weight: 600; }
+          .shop-info { text-align:center; font-size:10px; color:#000; line-height:1.5; margin-bottom:4px; font-weight:600; }
           table { width: 100%; border-collapse: collapse; }
-          .totals { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
-          .totals-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-          .totals-row.total { font-weight: 700; font-size: 14px; border-top: 2px solid #111; margin-top: 4px; padding-top: 6px; }
-          .totals-row.discount { color: #dc2626; }
-          .totals-row.change { background: #dcfce7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
-          .footer { text-align: center; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #333; font-size: 10px; color: #888; }
+          table td { border-bottom: 1px dotted #000; }
+          .totals { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #000; }
+          .totals-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; color:#000; font-weight:600; }
+          .totals-row.total { font-weight: 900; font-size: 15px; border-top: 2px solid #000; margin-top: 4px; padding-top: 5px; color:#000; }
+          .totals-row.discount { font-weight: 700; }
+          .totals-row.change { border: 2px solid #000; border-radius: 4px; padding: 5px 8px; margin-top: 5px; font-weight: 900; color:#000; font-size: 13px; }
+          .footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #000; font-size: 11px; color: #000; font-weight: 600; line-height: 1.6; }
+          .footer .ty { font-size: 13px; font-weight: 900; color:#000; }
+          @page { margin: 0; size: 80mm auto; }
+          @media print { body { width: 100%; padding: 4px; } }
         </style>
       </head>
       <body>
         <div class="header">
           <h1>Kentaz Emporium</h1>
+          <div class="shop-info">Suite 35, 911 Mall, Usuma Street, Abuja<br>07081856411 · @KENTAZ EMPORIUM</div>
           <div class="receipt-no">${saleData.receiptNumber}</div>
-          <div class="date">${new Date(saleData.createdAt).toLocaleString()}</div>
+          <div class="date">${new Date(saleData.createdAt).toLocaleString('en-NG')}</div>
         </div>
         <table>${itemsHtml}</table>
         <div class="totals">
@@ -170,11 +177,11 @@ function OrderDetail({
           ${saleData.discountAmount > 0 ? `<div class="totals-row discount"><span>Discount</span><span>-₦${saleData.discountAmount.toLocaleString()}</span></div>` : ''}
           <div class="totals-row total"><span>TOTAL</span><span>₦${saleData.total.toLocaleString()}</span></div>
           <div class="totals-row"><span>Payment (${saleData.paymentMethod})</span><span>₦${saleData.amountPaid.toLocaleString()}</span></div>
-          ${saleData.change > 0 ? `<div class="totals-row change"><span>Change</span><span>₦${saleData.change.toLocaleString()}</span></div>` : ''}
+          ${saleData.change > 0 ? `<div class="totals-row change"><span>CHANGE</span><span>₦${saleData.change.toLocaleString()}</span></div>` : ''}
         </div>
         <div class="footer">
+          <div class="ty">Thank you for shopping with us!</div>
           <div>Cashier: ${saleData.cashierName || saleData.cashier?.name}</div>
-          <div style="margin-top: 4px;">Thank you for shopping at Kentaz Emporium!</div>
         </div>
       </body>
       </html>

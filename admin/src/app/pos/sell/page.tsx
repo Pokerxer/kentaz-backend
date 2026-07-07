@@ -352,14 +352,12 @@ function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () =>
     const logoUrl = window.location.origin + '/logo.png';
     const itemsHtml = sale.items.map(item => `
       <tr>
-        <td style="padding:5px 0; border-bottom:1px solid #f0f0f0; vertical-align:top;">
-          <div style="font-weight:600; font-size:12px; color:#111;">${item.productName}</div>
-          ${item.variantLabel ? `<div style="font-size:10px;color:#888;margin-top:1px;">${item.variantLabel}</div>` : ''}
-          <div style="font-size:11px;color:#666;margin-top:2px;">${item.quantity} × ₦${item.price.toLocaleString()}</div>
+        <td style="padding:3px 0; border-bottom:1px dotted #000; vertical-align:top;">
+          <div class="item-name">${item.productName}</div>
+          ${item.variantLabel ? `<div class="item-sub">${item.variantLabel}</div>` : ''}
+          <div class="item-sub">${item.quantity} × ₦${item.price.toLocaleString()}</div>
         </td>
-        <td style="padding:5px 0; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; font-size:12px; color:#111; white-space:nowrap; vertical-align:top;">
-          ₦${item.total.toLocaleString()}
-        </td>
+        <td class="right">₦${item.total.toLocaleString()}</td>
       </tr>
     `).join('');
 
@@ -370,37 +368,56 @@ function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () =>
         <meta charset="utf-8">
         <title>Receipt · ${sale.receiptNumber}</title>
         <style>
-          * { margin:0; padding:0; box-sizing:border-box; }
-          body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; background:#fff; color:#111; width:320px; margin:0 auto; padding:24px 16px; }
-          .logo-wrap { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:4px; }
-          .logo-circle { width:36px; height:36px; border-radius:10px; background:#C9A84C; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
+          * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+          html, body { background:#fff; }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            color:#000; width:300px; margin:0 auto; padding:8px 6px;
+            font-size:13px; line-height:1.45; font-weight:500;
+          }
+          .logo-wrap { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:3px; }
+          .logo-circle { width:34px; height:34px; border-radius:8px; background:#C9A84C; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
           .logo-circle img { width:100%; height:100%; object-fit:contain; padding:3px; }
-          .brand { font-size:22px; font-weight:900; letter-spacing:2px; color:#111; }
-          .tagline { font-size:10px; color:#999; text-align:center; margin-bottom:8px; letter-spacing:1px; text-transform:uppercase; }
-          .dash { border:none; border-top:1px dashed #ccc; margin:10px 0; }
-          .receipt-meta { text-align:center; font-size:10px; color:#666; line-height:1.7; }
-          .receipt-meta .rnum { font-family:monospace; font-size:11px; color:#333; font-weight:600; }
-          table { width:100%; border-collapse:collapse; margin:10px 0; }
+          .brand { font-size:20px; font-weight:900; letter-spacing:1.5px; color:#000; font-family: 'Segoe UI', Arial, sans-serif; }
+          .tagline { font-size:11px; color:#000; text-align:center; margin:2px 0 6px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; }
+          .dash { border:none; border-top:1px dashed #000; margin:6px 0; }
+          .dash.solid { border-top:2px solid #000; }
+          .receipt-meta { text-align:center; font-size:11px; color:#000; line-height:1.5; font-weight:600; }
+          .receipt-meta .rnum { font-size:12px; color:#000; font-weight:700; }
+          table { width:100%; border-collapse:collapse; margin:4px 0; }
+          table td { padding:3px 0; border-bottom:1px dotted #000; vertical-align:top; font-size:12px; color:#000; }
+          table td.right { text-align:right; font-weight:700; white-space:nowrap; }
+          .item-name { font-weight:700; font-size:12px; color:#000; }
+          .item-sub { font-size:11px; color:#000; margin-top:1px; }
           .totals-section { margin-top:4px; }
-          .row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:12px; }
-          .row.muted { color:#666; }
-          .row.discount { color:#dc2626; }
-          .row.total-row { font-size:15px; font-weight:900; padding:7px 0; border-top:2px solid #111; margin-top:4px; }
-          .row.payment { color:#555; }
-          .change-box { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:#16a34a; margin-top:6px; }
-          ${sale.customerName ? `.customer-box { background:#fafafa; border:1px solid #eee; border-radius:6px; padding:7px 10px; font-size:11px; color:#555; margin-bottom:8px; }` : ''}
-          .footer { text-align:center; margin-top:14px; font-size:10px; color:#aaa; line-height:1.8; }
-          .footer .ty { font-size:11px; font-weight:600; color:#C9A84C; letter-spacing:0.5px; }
-          .cashier { font-size:10px; color:#bbb; text-align:center; margin-top:6px; }
-          @media print { body { width:100%; padding:8px; } }
+          .row { display:flex; justify-content:space-between; align-items:center; padding:2px 0; font-size:12px; color:#000; font-weight:600; }
+          .row.discount { font-weight:700; }
+          .row.total-row { font-size:15px; font-weight:900; padding:5px 0; border-top:2px solid #000; margin-top:3px; color:#000; }
+          .row.payment { font-weight:700; }
+          .change-box { border:2px solid #000; border-radius:4px; padding:5px 8px; display:flex; justify-content:space-between; font-size:13px; font-weight:900; color:#000; margin-top:5px; }
+          .change-box .lbl { font-weight:700; }
+          ${sale.customerName ? `.customer-box { border:1px solid #000; border-radius:4px; padding:5px 8px; font-size:11px; color:#000; margin-bottom:4px; font-weight:600; }` : ''}
+          .footer { text-align:center; margin-top:8px; font-size:11px; color:#000; line-height:1.6; font-weight:600; }
+          .footer .ty { font-size:13px; font-weight:900; color:#000; letter-spacing:0.3px; }
+          .cashier { font-size:11px; color:#000; text-align:center; margin-top:4px; font-weight:700; }
+          .shop-info { text-align:center; font-size:10px; color:#000; line-height:1.5; margin-top:4px; font-weight:600; }
+          @page { margin:0; size: 80mm auto; }
+          @media print {
+            body { width:100%; padding:4px; }
+            .no-print { display:none !important; }
+          }
         </style>
       </head>
       <body>
         <div class="logo-wrap">
-          <div class="logo-circle"><img src="${logoUrl}" alt="Kentaz Emporium" onerror="this.style.display='none'"></div>
+          <div class="logo-circle"><img src="${logoUrl}" alt="Kentaz Emporium" onerror="this.parentNode.style.display='none'"></div>
           <span class="brand">Kentaz Emporium</span>
         </div>
         <div class="tagline">Sales Receipt</div>
+        <div class="shop-info">
+          Suite 35, 911 Mall, Usuma Street, Abuja<br>
+          07081856411 &nbsp;·&nbsp; @KENTAZ EMPORIUM
+        </div>
         <hr class="dash">
         <div class="receipt-meta">
           <div class="rnum">${sale.receiptNumber}</div>
@@ -412,20 +429,20 @@ function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () =>
           <strong>${sale.customerName}</strong>${sale.customerPhone ? ` &nbsp;·&nbsp; ${sale.customerPhone}` : ''}
         </div>` : ''}
         <table>${itemsHtml}</table>
-        <hr class="dash">
+        <hr class="dash solid">
         <div class="totals-section">
-          <div class="row muted"><span>Subtotal</span><span>₦${sale.subtotal.toLocaleString()}</span></div>
+          <div class="row"><span>Subtotal</span><span>₦${sale.subtotal.toLocaleString()}</span></div>
           ${sale.discountAmount > 0 ? `<div class="row discount"><span>Discount (${sale.discount}${sale.discountType === 'percent' ? '%' : ' off'})</span><span>−₦${sale.discountAmount.toLocaleString()}</span></div>` : ''}
           <div class="row total-row"><span>TOTAL</span><span>₦${sale.total.toLocaleString()}</span></div>
           <div class="row payment"><span>${paymentLabel[sale.paymentMethod] ?? sale.paymentMethod}</span><span>₦${sale.amountPaid.toLocaleString()}</span></div>
-          ${sale.change > 0 ? `<div class="change-box"><span>Change</span><span>₦${sale.change.toLocaleString()}</span></div>` : ''}
+          ${sale.change > 0 ? `<div class="change-box"><span class="lbl">CHANGE</span><span>₦${sale.change.toLocaleString()}</span></div>` : ''}
         </div>
         <hr class="dash">
         <div class="footer">
           <div class="ty">Thank you for shopping with us!</div>
           <div>We appreciate your business.</div>
-          <div style="margin-top:6px;">Served by: <strong>${sale.cashierName}</strong></div>
         </div>
+        <div class="cashier">Served by: <strong>${sale.cashierName}</strong></div>
       </body>
       </html>
     `;

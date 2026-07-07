@@ -148,30 +148,44 @@ function OrderPanel({
     const w = window.open('', '_blank', 'width=380,height=600');
     if (!w) return;
     const rows = sale.items.map(i =>
-      `<tr><td>${i.productName}${i.variantLabel ? ` (${i.variantLabel})` : ''}</td><td class="r">${i.quantity}×${formatPrice(Math.abs(i.price))}</td><td class="r" style="${i.total<0?'color:red':''}">${i.total<0?'-':''}${formatPrice(Math.abs(i.total))}</td></tr>`
+      `<tr><td style="padding:3px 0;border-bottom:1px dotted #000;vertical-align:top"><div style="font-weight:700">${i.productName}${i.variantLabel ? ` (${i.variantLabel})` : ''}</div><div style="font-size:11px">${i.quantity}×${formatPrice(Math.abs(i.price))}</div></td><td class="r" style="${i.total<0?'font-weight:bold':''}">${i.total<0?'-':''}${formatPrice(Math.abs(i.total))}</td></tr>`
     ).join('');
-    w.document.write(`<html><head><title>Receipt</title><style>
-      body{font-family:monospace;font-size:12px;padding:16px;max-width:300px;margin:0 auto}
-      h2{text-align:center;margin:0 0 2px}.c{text-align:center}.b{font-weight:bold}.ln{border-top:1px dashed #999;margin:8px 0}
-      table{width:100%;border-collapse:collapse}td{padding:2px 0}.r{text-align:right}
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title><style>
+      * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      html, body { background:#fff; }
+      body{font-family:'Courier New',Courier,monospace;font-size:13px;padding:8px 6px;color:#000;max-width:300px;margin:0 auto;font-weight:500;line-height:1.45}
+      h2{text-align:center;margin:0 0 2px;font-size:20px;font-weight:900;letter-spacing:1.5px;font-family:'Segoe UI',Arial,sans-serif}
+      .c{text-align:center}.b{font-weight:700}
+      .ln{border-top:1px dashed #000;margin:6px 0}
+      .ln.solid{border-top:2px solid #000}
+      .shop-info{text-align:center;font-size:10px;color:#000;line-height:1.5;margin-bottom:4px;font-weight:600}
+      table{width:100%;border-collapse:collapse}td{padding:3px 0;color:#000;font-size:12px}.r{text-align:right;font-weight:700;white-space:nowrap}
+      .tot-row{font-weight:900;font-size:15px;border-top:2px solid #000;padding-top:5px;margin-top:3px}
+      .change{border:2px solid #000;border-radius:4px;padding:5px 8px;margin-top:5px;font-weight:900;font-size:13px}
+      .ty{font-size:13px;font-weight:900}
+      @page{margin:0;size:80mm auto}
+      @media print{body{padding:4px}}
     </style></head><body>
     <h2>Kentaz Emporium</h2>
-    <p class="c">${sale.receiptNumber}</p>
+    <div class="shop-info">Suite 35, 911 Mall, Usuma Street, Abuja<br>07081856411 · @KENTAZ EMPORIUM</div>
+    <p class="c b" style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px">Sales Receipt</p>
+    <div class="ln"></div>
+    <p class="c b">${sale.receiptNumber}</p>
     <p class="c">${new Date(sale.createdAt).toLocaleString('en-NG')}</p>
-    ${isRefundRecord ? '<p class="c b" style="color:orange">RETURN / REFUND</p>' : ''}
+    ${isRefundRecord ? '<p class="c b" style="border:2px solid #000;padding:3px;font-weight:900">RETURN / REFUND</p>' : ''}
     <div class="ln"></div>
-    ${sale.customerName ? `<p>Customer: ${sale.customerName}</p>` : ''}
+    ${sale.customerName ? `<p style="font-weight:700">Customer: ${sale.customerName}</p>` : ''}
     <table>${rows}</table>
-    <div class="ln"></div>
+    <div class="ln solid"></div>
     <table>
       <tr><td>Subtotal</td><td class="r">${sale.subtotal < 0 ? '-' : ''}${formatPrice(Math.abs(sale.subtotal))}</td></tr>
-      ${sale.discountAmount > 0 ? `<tr><td>Discount</td><td class="r" style="color:red">-${formatPrice(sale.discountAmount)}</td></tr>` : ''}
-      <tr><td class="b">${isRefundRecord ? 'REFUNDED' : 'TOTAL'}</td><td class="r b" style="${sale.total<0?'color:red':''}">${sale.total<0?'-':''}${formatPrice(Math.abs(sale.total))}</td></tr>
-      ${sale.change > 0 ? `<tr><td>Change</td><td class="r">${formatPrice(sale.change)}</td></tr>` : ''}
+      ${sale.discountAmount > 0 ? `<tr><td style="font-weight:700">Discount</td><td class="r">-${formatPrice(sale.discountAmount)}</td></tr>` : ''}
+      <tr class="tot-row"><td>${isRefundRecord ? 'REFUNDED' : 'TOTAL'}</td><td class="r">${sale.total < 0 ? '-' : ''}${formatPrice(Math.abs(sale.total))}</td></tr>
+      ${sale.change > 0 ? `<tr><td colspan="2"><div class="change" style="display:flex;justify-content:space-between"><span>CHANGE</span><span>${formatPrice(sale.change)}</span></div></td></tr>` : ''}
     </table>
     <div class="ln"></div>
-    <p class="c">Cashier: ${sale.cashierName}</p>
-    <p class="c">Thank you for shopping at Kentaz Emporium!</p>
+    <p class="c b">Cashier: ${sale.cashierName}</p>
+    <p class="c ty">Thank you for shopping at Kentaz Emporium!</p>
     </body></html>`);
     w.document.close(); w.print();
   }
