@@ -242,7 +242,7 @@ export default function CartPage() {
             )}
 
             <p className="text-xs text-center text-muted-foreground mt-4">
-              Secure checkout powered by Paystack
+              Secure checkout powered by Korapay
             </p>
           </Card>
         </div>

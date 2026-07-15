@@ -234,14 +234,14 @@ function OrderDrawer({ orderId, onClose }: { orderId: string; onClose: () => voi
                 <div className="bg-gray-50 rounded-2xl p-4 space-y-1.5">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Status</span>
-                    <span className={`font-semibold capitalize ${order.paystackStatus === 'success' ? 'text-emerald-600' : 'text-gray-600'}`}>
-                      {order.paystackStatus || 'Pending'}
+                    <span className={`font-semibold capitalize ${order.korapayStatus === 'success' ? 'text-emerald-600' : 'text-gray-600'}`}>
+                      {order.korapayStatus || 'Pending'}
                     </span>
                   </div>
-                  {order.paystackRef && (
+                  {order.korapayRef && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Reference</span>
-                      <span className="font-mono text-xs text-gray-600 truncate max-w-[180px]">{order.paystackRef}</span>
+                      <span className="font-mono text-xs text-gray-600 truncate max-w-[180px]">{order.korapayRef}</span>
                     </div>
                   )}
                 </div>

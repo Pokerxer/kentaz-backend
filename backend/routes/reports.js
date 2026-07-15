@@ -243,7 +243,7 @@ router.get('/orders', auth, adminOrStaff('/reports'), async (req, res) => {
       status:        o.status,
       shippingCity:  o.shippingAddress?.city  || '',
       shippingState: o.shippingAddress?.state || '',
-      paymentStatus: o.paystackStatus || 'n/a',
+      paymentStatus: o.korapayStatus || 'n/a',
     }));
 
     const nonCancelled = rows.filter(r => r.status !== 'cancelled');

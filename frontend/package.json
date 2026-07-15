@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",
-    "@paystack/inline-js": "^2.22.2",
     "@reduxjs/toolkit": "^2.11.2",
     "@tanstack/react-query": "^5.75.0",
     "cloudinary": "^2.9.0",

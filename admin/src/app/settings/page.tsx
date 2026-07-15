@@ -19,7 +19,7 @@ export default function SettingsPage() {
     timezone: 'Africa/Lagos', email: 'info@kentazemporium.com', phone: '07081856411',
   });
   const [paymentSettings, setPaymentSettings] = useState({
-    paystackEnabled: true, paystackPublicKey: '', paystackSecretKey: '', codEnabled: true, codFee: 0,
+    korapayEnabled: true, korapayPublicKey: '', korapaySecretKey: '', codEnabled: true, codFee: 0,
   });
   const [shippingSettings, setShippingSettings] = useState({
     enableShipping: true, defaultProcessingDays: 3, freeShippingThreshold: 50000,
@@ -181,30 +181,30 @@ export default function SettingsPage() {
                     <span className="text-green-700 font-bold text-sm">₦</span>
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900">Paystack</p>
+                    <p className="font-medium text-gray-900">Korapay</p>
                     <p className="text-sm text-gray-500">Accept Nigerian payments</p>
                   </div>
                 </div>
                 <label className="relative inline-flex cursor-pointer items-center">
                   <input
                     type="checkbox"
-                    checked={paymentSettings.paystackEnabled}
-                    onChange={(e) => setPaymentSettings({ ...paymentSettings, paystackEnabled: e.target.checked })}
+                    checked={paymentSettings.korapayEnabled}
+                    onChange={(e) => setPaymentSettings({ ...paymentSettings, korapayEnabled: e.target.checked })}
                     className="peer sr-only"
                   />
                   <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all peer-checked:bg-[#C9A84C] peer-checked:after:translate-x-full"></div>
                 </label>
               </div>
 
-              {paymentSettings.paystackEnabled && (
+              {paymentSettings.korapayEnabled && (
                 <div className="space-y-4 pl-14">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Public Key</label>
                     <input
                       type="text"
                       placeholder="pk_test_..."
-                      value={paymentSettings.paystackPublicKey}
-                      onChange={(e) => setPaymentSettings({ ...paymentSettings, paystackPublicKey: e.target.value })}
+                      value={paymentSettings.korapayPublicKey}
+                      onChange={(e) => setPaymentSettings({ ...paymentSettings, korapayPublicKey: e.target.value })}
                       className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:ring-2 focus:ring-[#C9A84C] focus:border-transparent outline-none"
                     />
                   </div>
@@ -213,8 +213,8 @@ export default function SettingsPage() {
                     <input
                       type="password"
                       placeholder="sk_test_..."
-                      value={paymentSettings.paystackSecretKey}
-                      onChange={(e) => setPaymentSettings({ ...paymentSettings, paystackSecretKey: e.target.value })}
+                      value={paymentSettings.korapaySecretKey}
+                      onChange={(e) => setPaymentSettings({ ...paymentSettings, korapaySecretKey: e.target.value })}
                       className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:ring-2 focus:ring-[#C9A84C] focus:border-transparent outline-none"
                     />
                   </div>

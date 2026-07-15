@@ -5,33 +5,33 @@ const { sendEmail, getOrderStatusEmailHtml, getOrderEmailHtml, getAdminOrderEmai
 
 exports.createOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, total, paystackRef } = req.body;
+    const { items, shippingAddress, total, korapayRef } = req.body;
 
-    if (!paystackRef) {
+    if (!korapayRef) {
       return res.status(400).json({ error: 'Payment reference is required' });
     }
 
     // Verify payment server-side before creating the order
-    const secretKey = process.env.PAYSTACK_SECRET_KEY;
-    let paystackStatus = 'pending';
+    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    let korapayStatus = 'pending';
     try {
       const txnRes = await axios.get(
-        `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
+        `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(korapayRef)}`,
         { headers: { Authorization: `Bearer ${secretKey}` } }
       );
       const txn = txnRes.data.data;
-      paystackStatus = txn.status; // 'success' | 'failed' | 'abandoned' …
+      korapayStatus = txn.status; // 'success' | 'failed' | ...
 
       if (txn.status !== 'success') {
         return res.status(402).json({ error: 'Payment not confirmed. Please complete payment before placing the order.' });
       }
     } catch (verifyErr) {
-      // If Paystack is unreachable (e.g. dev environment), warn but allow order through
-      console.warn('[createOrder] Paystack verify failed — proceeding with pending status:', verifyErr.message);
+      // If Korapay is unreachable (e.g. dev environment), warn but allow order through
+      console.warn('[createOrder] Korapay verify failed — proceeding with pending status:', verifyErr.message);
     }
 
     // Prevent duplicate orders for the same payment reference
-    const existing = await Order.findOne({ paystackRef });
+    const existing = await Order.findOne({ korapayRef });
     if (existing) {
       return res.status(200).json(existing);
     }
@@ -41,14 +41,14 @@ exports.createOrder = async (req, res) => {
       items,
       shippingAddress,
       total,
-      paystackRef,
-      paystackStatus,
-      status: paystackStatus === 'success' ? 'processing' : 'pending',
+      korapayRef,
+      korapayStatus,
+      status: korapayStatus === 'success' ? 'processing' : 'pending',
     });
     await order.save();
 
     // Send confirmation emails for verified payments
-    if (paystackStatus === 'success') {
+    if (korapayStatus === 'success') {
       const user = await User.findById(req.user.id).select('name email');
       const adminEmail = process.env.ADMIN_EMAIL;
       if (user) {

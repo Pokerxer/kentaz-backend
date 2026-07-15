@@ -23,8 +23,8 @@ export interface Order {
   total: number;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   shippingAddress: ShippingAddress;
-  paystackRef?: string;
-  paystackStatus?: string;
+  korapayRef?: string;
+  korapayStatus?: string;
   createdAt: string;
 }
 

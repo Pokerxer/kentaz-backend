@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { format, addDays, startOfDay } from 'date-fns';
-import { usePaystack } from '@/lib/paystack';
+import { useKorapay } from '@/lib/korapay';
 
 // ── Service config ──────────────────────────────────────────
 const serviceInfo: Record<string, {
@@ -105,7 +105,7 @@ function formatNGN(n: number) {
 function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isReady: paystackReady } = usePaystack();
+  const { isReady: korapayReady } = useKorapay();
 
   const serviceType = (searchParams.get('type') || 'therapy') as 'therapy' | 'podcast';
   const service = serviceInfo[serviceType] ?? serviceInfo.therapy;
@@ -272,26 +272,32 @@ function BookingPageContent() {
         const d = await initRes.json();
         throw new Error(d.error || 'Failed to initialise payment');
       }
-      const { accessCode, reference } = await initRes.json();
+      const { reference } = await initRes.json();
 
-      // Step 2: open Paystack popup with the booking-tied access code
-      const handler = (window as any).PaystackPop.setup({
-        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
-        email: userData.email,
-        amount: service.priceNGN * 100,
-        access_code: accessCode,
-        ref: reference,
-        callback: async (txn: { reference: string }) => {
+      // Step 2: open Korapay checkout with the booking-tied reference
+      (window as any).Korapay.initialize({
+        key: process.env.NEXT_PUBLIC_KORAPAY_PUBLIC_KEY,
+        reference,
+        amount: service.priceNGN, // Korapay uses naira, not kobo
+        currency: 'NGN',
+        customer: {
+          name: userData.name || 'Customer',
+          email: userData.email,
+        },
+        onClose: () => {
+          setError('Payment was cancelled. Your booking is saved — return to pay later.');
+        },
+        onSuccess: async (txn: { reference: string }) => {
           try {
             // Step 3: verify on backend — marks booking paid + confirmed
             const vRes = await fetch(`${BASE}/api/store/bookings/${bookingId}/verify`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ reference: txn.reference }),
+              body: JSON.stringify({ reference: txn.reference || reference }),
             });
             if (!vRes.ok) {
               const d = await vRes.json();
-              setError(`Paid but verification failed — reference: ${txn.reference}. Contact support.`);
+              setError(`Paid but verification failed — reference: ${txn.reference || reference}. Contact support.`);
               console.error('verify error', d);
               return;
             }
@@ -299,14 +305,13 @@ function BookingPageContent() {
             // Redirect to account bookings after a short delay so user can see the confirmation
             setTimeout(() => router.push('/account/bookings'), 4000);
           } catch {
-            setError(`Paid but verification failed — reference: ${txn.reference}. Contact support.`);
+            setError(`Paid but verification failed — reference: ${txn.reference || reference}. Contact support.`);
           }
         },
-        onClose: () => {
-          setError('Payment was cancelled. Your booking is saved — return to pay later.');
+        onFailed: () => {
+          setError('Payment failed. Please try again.');
         },
       });
-      handler.openIframe();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to initialise payment');
     } finally {
@@ -860,15 +865,15 @@ function BookingPageContent() {
               <Button
                 onClick={handlePayment}
                 loading={paymentLoading}
-                disabled={!paystackReady}
+                disabled={!korapayReady}
                 className="w-full bg-[#C9A84C] hover:bg-[#E8D48A] text-[#0a0a0a] gap-2 py-4 text-base font-bold"
               >
                 <CreditCard className="w-5 h-5" />
-                Pay {formatNGN(service.priceNGN)} via Paystack
+                Pay {formatNGN(service.priceNGN)} via Korapay
               </Button>
 
               <p className="text-xs text-center text-[#9B9B9B] mt-4">
-                Secured by Paystack · Visa, Mastercard &amp; Bank Transfer accepted
+                Secured by Korapay · Visa, Mastercard &amp; Bank Transfer accepted
               </p>
               <div className="mt-4">
                 <Button onClick={prevStep} variant="outline" className="gap-2 w-full">

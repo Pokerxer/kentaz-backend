@@ -9,7 +9,7 @@ export interface Booking {
   timeSlot: string;
   duration: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  paystackRef?: string;
+  korapayRef?: string;
   amount: number;
   notes?: string;
   createdAt: string;

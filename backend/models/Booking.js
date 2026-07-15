@@ -12,7 +12,7 @@ const bookingSchema = new mongoose.Schema({
     enum: ['pending', 'confirmed', 'cancelled', 'completed'],
     default: 'pending'
   },
-  paystackRef: String,
+  korapayRef: String,
   paymentStatus: {
     type: String,
     enum: ['unpaid', 'paid', 'failed', 'refunded'],

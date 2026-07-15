@@ -1041,8 +1041,8 @@ export interface Variant {
 export interface Order {
   _id: string;
   user?: { _id: string; name: string; email: string; phone?: string };
-  paystackRef?: string;
-  paystackStatus?: string;
+  korapayRef?: string;
+  korapayStatus?: string;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   items: OrderItem[];
   shippingAddress?: Address;
@@ -1104,7 +1104,7 @@ export interface Booking {
   timeSlot: string;
   duration: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  paystackRef?: string;
+  korapayRef?: string;
   amount: number;
   notes?: string;
   createdAt: string;

@@ -11,7 +11,7 @@ import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { clearCart } from '@/store/cartSlice';
 import { setUser } from '@/store/userSlice';
 import { formatPrice } from '@/lib/utils';
-import { usePaystack, useShippingInfo, getDeliveryCost, calculateTotals } from '@/lib/paystack';
+import { useKorapay, useShippingInfo, getDeliveryCost, calculateTotals } from '@/lib/korapay';
 
 type CheckoutStep = 'shipping' | 'payment' | 'confirmation';
 
@@ -24,9 +24,9 @@ export default function CheckoutPage() {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('shipping');
   const [loading, setLoading] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
-  const [paystackRef, setPaystackRef] = useState('');
+  const [korapayRef, setKorapayRef] = useState('');
   
-  const { initializePayment, verifyPayment, isLoading: paystackLoading, error: paystackError, isReady: paystackReady } = usePaystack();
+  const { initializePayment, verifyPayment, isLoading: korapayLoading, error: korapayError, isReady: korapayReady } = useKorapay();
   const { shippingInfo, updateShippingInfo, isValid: isShippingValid } = useShippingInfo();
 
   // Restore user session from token on mount
@@ -76,7 +76,7 @@ export default function CheckoutPage() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!paystackReady) return;
+    if (!korapayReady) return;
     setLoading(true);
 
     initializePayment({
@@ -104,12 +104,12 @@ export default function CheckoutPage() {
               })),
               shippingAddress: shippingInfo,
               total: grandTotal,
-              paystackRef: reference.reference
+              korapayRef: reference.reference
             })
           });
           
           if (orderResponse.ok) {
-            setPaystackRef(reference.reference);
+            setKorapayRef(reference.reference);
             const newOrderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
             setOrderNumber(newOrderNumber);
             dispatch(clearCart());
@@ -400,7 +400,7 @@ export default function CheckoutPage() {
                   <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-xl p-6 mb-6">
                     <div className="flex items-center justify-between mb-4">
                       <Lock className="h-6 w-6 opacity-60" />
-                      <span className="text-sm font-medium opacity-80">Powered by Paystack</span>
+                      <span className="text-sm font-medium opacity-80">Powered by Korapay</span>
                     </div>
                     <div className="text-center py-8">
                       <p className="text-lg opacity-80 mb-2">Total Amount</p>
@@ -412,16 +412,16 @@ export default function CheckoutPage() {
                     <Lock className="h-5 w-5 text-amber-600 mt-0.5" />
                     <div>
                       <p className="font-medium text-amber-800">Secure Payment</p>
-                      <p className="text-sm text-amber-700">You'll be redirected to Paystack's secure payment page to complete your order</p>
+                      <p className="text-sm text-amber-700">You'll be redirected to Korapay's secure payment page to complete your order</p>
                     </div>
                   </div>
 
-                  {paystackError && (
+                  {korapayError && (
                     <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
                       <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
                       <div>
                         <p className="font-medium text-red-800">Payment Error</p>
-                        <p className="text-sm text-red-700">{paystackError}</p>
+                        <p className="text-sm text-red-700">{korapayError}</p>
                       </div>
                     </div>
                   )}
@@ -457,8 +457,8 @@ export default function CheckoutPage() {
                     <Button 
                       size="lg" 
                       onClick={handlePlaceOrder} 
-                      loading={loading || paystackLoading} 
-                      disabled={!paystackReady || !isShippingValid}
+                      loading={loading || korapayLoading} 
+                      disabled={!korapayReady || !isShippingValid}
                       className="px-8"
                     >
                       <Lock className="h-4 w-4 mr-2" />
@@ -481,10 +481,10 @@ export default function CheckoutPage() {
                   <div className="bg-gray-50 rounded-xl p-6 mb-8 max-w-md mx-auto">
                     <p className="text-sm text-gray-500 mb-1">Order Number</p>
                     <p className="text-xl font-mono font-bold text-gray-900 mb-4">{orderNumber}</p>
-                    {paystackRef && (
+                    {korapayRef && (
                       <>
                         <p className="text-sm text-gray-500 mb-1">Payment Reference</p>
-                        <p className="text-sm font-mono text-gray-700">{paystackRef}</p>
+                        <p className="text-sm font-mono text-gray-700">{korapayRef}</p>
                       </>
                     )}
                   </div>
@@ -596,7 +596,7 @@ export default function CheckoutPage() {
                   {/* Security Badge */}
                   <div className="flex items-center justify-center gap-2 pt-4 text-xs text-gray-500">
                     <Lock className="h-3 w-3" />
-                    <span>Secure checkout powered by Paystack</span>
+                    <span>Secure checkout powered by Korapay</span>
                   </div>
                 </CardContent>
               </Card>

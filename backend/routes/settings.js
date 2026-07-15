@@ -5,7 +5,7 @@ const { auth, adminOnly } = require('../middleware/auth');
 
 const DEFAULTS = {
   general:      { storeName: 'Kentaz', storeUrl: 'https://kentazemporium.com', currency: 'NGN', timezone: 'Africa/Lagos', email: 'info@kentazemporium.com', phone: '07081856411' },
-  payments:     { paystackEnabled: true, paystackPublicKey: '', codEnabled: true, codFee: 0 },
+  payments:     { korapayEnabled: true, korapayPublicKey: '', codEnabled: true, codFee: 0 },
   shipping:     { enableShipping: true, defaultProcessingDays: 3, freeShippingThreshold: 50000, standardShippingFee: 2500, expressShippingFee: 5000, allowPickup: true, pickupAddress: '' },
   notifications:{ emailOrders: true, emailLowStock: true, emailLowStockThreshold: 10, emailDailyDigest: false, pushNewOrders: true, pushLowStock: true },
   security:     { sessionTimeout: 60, passwordMinLength: 8, requireUppercase: true, requireNumbers: true, ipWhitelist: '' },
@@ -33,9 +33,9 @@ router.put('/:key', auth, adminOnly, async (req, res) => {
     if (!allowed.includes(key)) {
       return res.status(400).json({ error: `Unknown settings key: ${key}` });
     }
-    // Never persist raw secret keys — strip paystackSecretKey
+    // Never persist raw secret keys — strip korapaySecretKey
     const value = { ...req.body };
-    delete value.paystackSecretKey;
+    delete value.korapaySecretKey;
 
     const doc = await Setting.findOneAndUpdate(
       { key },

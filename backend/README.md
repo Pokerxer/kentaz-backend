@@ -66,7 +66,7 @@ npm run develop
 
 ### Payment API
 
-- `POST /store/kentaz/payment/initialize` - Initialize Paystack payment
+- `POST /store/kentaz/payment/initialize` - Initialize Korapay payment
 - `POST /store/kentaz/payment/verify` - Verify payment status
 - `GET /store/kentaz/payment/sessions` - List payment sessions
 
@@ -115,12 +115,12 @@ backend/
 
 ## Payment Integration
 
-The backend includes Paystack integration for Nigerian Naira (NGN) payments.
+The backend includes Korapay integration for Nigerian Naira (NGN) payments.
 
-### Paystack Setup
+### Korapay Setup
 
-1. Create a Paystack account at https://paystack.com
-2. Get your API keys from the Paystack dashboard
+1. Create a Korapay account at https://korapay.com
+2. Get your API keys from the Korapay dashboard
 3. Add keys to `.env`:
    ```
    PAYSTACK_SECRET_KEY=sk_live_...

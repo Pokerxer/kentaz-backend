@@ -352,7 +352,7 @@ function getAdminOrderEmailHtml(order, user) {
       ['Email', user.email],
       ['Phone', addr.phone || '—'],
       ['Delivery Method', addr.deliveryMethod || 'standard'],
-      ['Paystack Ref', order.paystackRef || '—'],
+      ['Korapay Ref', order.korapayRef || '—'],
     ])}
 
     <div style="margin-top:20px;"></div>
@@ -557,7 +557,7 @@ function getAdminBookingEmailHtml(booking, user, eventType = 'new') {
       ['Duration',        booking.duration + ' min'],
       ['Format',          booking.sessionType],
       ['Payment Status',  isPaid ? '✅ Paid' : '⏳ Unpaid'],
-      booking.paystackRef ? ['Paystack Ref', booking.paystackRef] : null,
+      booking.korapayRef ? ['Korapay Ref', booking.korapayRef] : null,
     ].filter(Boolean))}
 
     <div style="margin-top:16px;"></div>

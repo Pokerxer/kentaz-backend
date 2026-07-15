@@ -289,8 +289,8 @@ function OrderDetail({
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5" /> Payment
             </h3>
-            {fullOrder.paystackRef && <p className="text-xs font-mono text-gray-600 break-all">{fullOrder.paystackRef}</p>}
-            <p className="text-xs text-gray-500 capitalize">{fullOrder.paystackStatus || 'N/A'}</p>
+            {fullOrder.korapayRef && <p className="text-xs font-mono text-gray-600 break-all">{fullOrder.korapayRef}</p>}
+            <p className="text-xs text-gray-500 capitalize">{fullOrder.korapayStatus || 'N/A'}</p>
           </div>
         </div>
 

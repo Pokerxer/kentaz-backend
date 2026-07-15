@@ -113,27 +113,28 @@ exports.initializeBookingPayment = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const reference = `KTB-${booking._id}-${Date.now()}`;
-    const amountInKobo = Math.round(booking.amount * 100);
+    const amountInNaira = Math.round(booking.amount); // Korapay uses naira, not kobo
 
     const response = await axios.post(
-      'https://api.paystack.co/transaction/initialize',
+      'https://api.korapay.com/merchant/api/v1/charges/initialize',
       {
-        email: user.email,
-        amount: amountInKobo,
         reference,
+        amount: amountInNaira,
+        currency: 'NGN',
+        customer: { name: user.name, email: user.email },
+        notification_url: process.env.KORAPAY_WEBHOOK_URL,
         metadata: {
           bookingId: booking._id.toString(),
           type: 'booking',
         },
       },
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' } }
+      { headers: { Authorization: `Bearer ${process.env.KORAPAY_SECRET_KEY}`, 'Content-Type': 'application/json' } }
     );
 
-    const { authorization_url, access_code } = response.data.data;
-    booking.paystackRef = reference;
+    booking.korapayRef = reference;
     await booking.save();
 
-    res.json({ authorizationUrl: authorization_url, accessCode: access_code, reference });
+    res.json({ reference });
   } catch (err) {
     console.error('Booking payment init error:', err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || 'Payment initialization failed' });
@@ -231,18 +232,18 @@ exports.verifyBookingPayment = async (req, res) => {
     }
 
     const txn = await axios.get(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
+      `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,
+      { headers: { Authorization: `Bearer ${process.env.KORAPAY_SECRET_KEY}` } }
     );
 
     const { status } = txn.data.data;
     if (status !== 'success') {
-      return res.status(400).json({ error: 'Payment not successful on Paystack' });
+      return res.status(400).json({ error: 'Payment not successful on Korapay' });
     }
 
     booking.paymentStatus = 'paid';
     booking.status = 'confirmed';
-    booking.paystackRef = reference;
+    booking.korapayRef = reference;
     await booking.save();
 
     const populated = await Booking.findById(booking._id)

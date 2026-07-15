@@ -33,8 +33,8 @@ const orderSchema = new mongoose.Schema({
     postalCode: String,
     deliveryMethod: String,
   },
-  paystackRef: String,
-  paystackStatus: String
+  korapayRef: String,
+  korapayStatus: String
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);
