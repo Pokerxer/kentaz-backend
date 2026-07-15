@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { store, hydrateStore } from '@/store';
 import { useState, useEffect } from 'react';
+import { AuthInitializer } from '@/components/AuthInitializer';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -26,6 +27,7 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
+        <AuthInitializer />
         {children}
       </QueryClientProvider>
     </Provider>

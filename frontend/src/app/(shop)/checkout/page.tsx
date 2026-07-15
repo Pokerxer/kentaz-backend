@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { clearCart } from '@/store/cartSlice';
-import { setUser } from '@/store/userSlice';
 import { formatPrice } from '@/lib/utils';
 import { useKorapay, useShippingInfo, getDeliveryCost, calculateTotals } from '@/lib/korapay';
 
@@ -17,7 +16,7 @@ type CheckoutStep = 'shipping' | 'payment' | 'confirmation';
 
 export default function CheckoutPage() {
   const userState = useAppSelector((state) => state.user);
-  const { isAuthenticated, user } = userState;
+  const { isAuthenticated, user, sessionChecked } = userState;
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { items, total } = useAppSelector((state) => state.cart);
@@ -29,27 +28,12 @@ export default function CheckoutPage() {
   const { initializePayment, verifyPayment, isLoading: korapayLoading, error: korapayError, isReady: korapayReady } = useKorapay();
   const { shippingInfo, updateShippingInfo, isValid: isShippingValid } = useShippingInfo();
 
-  // Restore user session from token on mount
+  // Session restoration is handled globally by <AuthInitializer/>. Wait for that
+  // to finish (sessionChecked) before deciding whether to redirect, otherwise a
+  // logged-in user refreshing this page would be bounced to /login before the
+  // stored token is restored.
   useEffect(() => {
-    const token = localStorage.getItem('kentaz_token');
-    if (token && !user) {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/auth/me`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data._id) {
-            dispatch(setUser(data));
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem('kentaz_token');
-        });
-    }
-  }, [dispatch, user]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
+    if (sessionChecked && !isAuthenticated) {
       router.push('/login?callbackUrl=/checkout');
     }
     if (user) {
@@ -57,7 +41,7 @@ export default function CheckoutPage() {
       updateShippingInfo('firstName', user.name?.split(' ')[0] || '');
       updateShippingInfo('lastName', user.name?.split(' ').slice(1).join(' ') || '');
     }
-  }, [isAuthenticated, user, router]);
+  }, [sessionChecked, isAuthenticated, user, router]);
 
   const deliveryCost = getDeliveryCost(shippingInfo.deliveryMethod, total);
   const subtotal = total;
@@ -135,10 +119,10 @@ export default function CheckoutPage() {
     return null;
   }
 
-  // Check if we're still initializing user state
-  const token = localStorage.getItem('kentaz_token');
-  if (token && !user) {
-    // Token exists but user state hasn't loaded yet
+  // Wait for the global session-restore attempt to complete before rendering
+  // the auth-gated content (prevents a flash of "Login Required" for logged-in
+  // users who refresh the page).
+  if (!sessionChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

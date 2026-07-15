@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
@@ -11,9 +11,11 @@ import { apiClient } from '@/lib/api/client';
 import { setUser } from '@/store/userSlice';
 import { useAppDispatch } from '@/store/hooks';
 
-export default function RegisterPage() {
+function RegisterPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
+  const callbackUrl = searchParams.get('callbackUrl') || searchParams.get('redirect') || '/';
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -70,7 +72,7 @@ export default function RegisterPage() {
       dispatch(setUser(response.user));
       setSuccess(true);
       setTimeout(() => {
-        router.push('/');
+        router.push(callbackUrl);
       }, 1500);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
@@ -259,7 +261,10 @@ export default function RegisterPage() {
             {/* Sign In Link */}
             <p className="text-center text-sm text-gray-600">
               Already have an account?{' '}
-              <Link href="/login" className="font-semibold text-gray-900 hover:underline">
+              <Link
+                href={callbackUrl && callbackUrl !== '/' ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : '/login'}
+                className="font-semibold text-gray-900 hover:underline"
+              >
                 Sign in
               </Link>
             </p>
@@ -279,5 +284,17 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    }>
+      <RegisterPageContent />
+    </Suspense>
   );
 }

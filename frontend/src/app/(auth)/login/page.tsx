@@ -138,7 +138,10 @@ function LoginPageContent() {
             {/* Sign Up Link */}
             <p className="text-center text-sm text-gray-600">
               Don't have an account?{' '}
-              <Link href="/register" className="font-semibold text-gray-900 hover:underline">
+              <Link
+                href={callbackUrl && callbackUrl !== '/' ? `/register?callbackUrl=${encodeURIComponent(callbackUrl)}` : '/register'}
+                className="font-semibold text-gray-900 hover:underline"
+              >
                 Create one
               </Link>
             </p>
