@@ -1,0 +1,47 @@
+{
+  "name": "Kentaz Emporium",
+  "short_name": "Kentaz",
+  "description": "Premium fashion, lifestyle & wellness from Abuja, Nigeria. Shop curated clothing, accessories, beauty products, and book therapy or podcast sessions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAFA",
+  "theme_color": "#C9A84C",
+  "orientation": "portrait-primary",
+  "categories": ["shopping", "lifestyle", "health", "business"],
+  "lang": "en-NG",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Shop Products",
+      "short_name": "Shop",
+      "url": "/products",
+      "description": "Browse our full collection of fashion, beauty, and lifestyle products"
+    },
+    {
+      "name": "Book Therapy",
+      "short_name": "Therapy",
+      "url": "/services/booking?type=therapy",
+      "description": "Book a mental health consultation session"
+    },
+    {
+      "name": "Podcast Studio",
+      "short_name": "Studio",
+      "url": "/services/booking?type=podcast",
+      "description": "Book podcast studio rental time"
+    }
+  ]
+}
