@@ -343,7 +343,7 @@ function ProductsPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${apiUrl}/api/store/products?limit=200&page=1`);
+        const res = await fetch(`${apiUrl}/api/store/products?limit=200&offset=0`);
         if (!res.ok) throw new Error('Failed to fetch products');
         const data = await res.json();
 
@@ -375,7 +375,7 @@ function ProductsPage() {
         if (totalPages > 1) {
           const rest = await Promise.all(
             Array.from({ length: totalPages - 1 }, (_, i) =>
-              fetch(`${apiUrl}/api/store/products?limit=200&page=${i + 2}`)
+              fetch(`${apiUrl}/api/store/products?limit=200&offset=${(i + 1) * 200}`)
                 .then(r => r.ok ? r.json() : Promise.reject())
                 .then(d => (d.products || []) as any[])
                 .catch(() => [] as any[])
