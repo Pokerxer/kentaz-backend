@@ -8,13 +8,14 @@ import { QuickViewModal } from '@/components/shop/QuickViewModal';
 import { ScrollReveal } from '@/components/ui/ScrollReveal';
 import {
   FLASH_SALE,
+  getActiveDiscounts,
   getFlashDeals,
   getFlashSaleSession,
   getNextFlashSaleSession,
   sortDealsForDisplay,
   useFlashCountdown,
 } from '@/lib/flashSale';
-import type { FlashDeal, FlashSaleSession } from '@/lib/flashSale';
+import type { FlashDeal, FlashDiscount, FlashSaleSession } from '@/lib/flashSale';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
 
@@ -157,11 +158,12 @@ function EmptyState({ nextSession, countdown }: { nextSession: FlashSaleSession;
 
 export default function FlashSalePage() {
   const [deals, setDeals] = useState<FlashDeal[]>([]);
+  const [discounts, setDiscounts] = useState<FlashDiscount[]>([]);
   const [loading, setLoading] = useState(true);
   const [quickViewDeal, setQuickViewDeal] = useState<FlashDeal | null>(null);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
 
-  const session = useMemo(() => getFlashSaleSession(), []);
+  const session = useMemo(() => getFlashSaleSession(new Date(), discounts), [discounts]);
   const nextSession = useMemo(() => getNextFlashSaleSession(), []);
   const countdown = useFlashCountdown(session.status === 'live' ? session.endTime : null);
   const nextCountdown = useFlashCountdown(nextSession.startTime);
@@ -172,11 +174,15 @@ export default function FlashSalePage() {
       try {
         // Scan the full catalog: promotions can sit on any product, not just
         // the newest page. One request, filtered client-side.
-        const res = await fetch(`${API_URL}/api/store/products?limit=2000`);
-        const data = await res.json();
+        const [productsRes, discounts] = await Promise.all([
+          fetch(`${API_URL}/api/store/products?limit=2000`),
+          getActiveDiscounts(),
+        ]);
+        const data = await productsRes.json();
         if (cancelled) return;
         const all: any[] = Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : [];
-        setDeals(sortDealsForDisplay(getFlashDeals(all)));
+        setDeals(sortDealsForDisplay(getFlashDeals(all, discounts)));
+        setDiscounts(discounts);
       } catch {
         if (!cancelled) setDeals([]);
       } finally {

@@ -67,6 +67,7 @@ app.use('/api', async (req, res, next) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/store/products', storeProductRoutes);
+app.use('/api/store/discounts', require('./routes/storeDiscounts'));
 app.use('/api/admin/products', adminProductRoutes);
 app.use('/api/store/orders', orderRoutes);
 app.use('/api/store/bookings', bookingRoutes);

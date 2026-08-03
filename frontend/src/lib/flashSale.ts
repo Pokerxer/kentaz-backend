@@ -3,16 +3,20 @@ import { useEffect, useState } from 'react';
 /**
  * Flash Sale session engine (frontend).
  *
- * A "flash sale session" is a deterministic, time-boxed promotional window.
- * Sessions run daily from 00:00:00 to 23:59:59.999 (local time), so there is
- * always a live session while the store has qualifying deals on sale.
+ * A product qualifies as a flash deal when EITHER:
+ *   1. An active admin Discount (created on the admin /discounts page) covers
+ *      it — the discount is applied to the product's variant price, or
+ *   2. At least one variant carries a genuine markdown — `compareAtPrice`
+ *      (was) strictly greater than `price` (now).
  *
- * A product qualifies as a flash deal when at least one of its variants has a
- * genuine markdown — `compareAtPrice` (was) strictly greater than `price`
- * (now). Discount math is derived from those two fields only; we never
- * fabricate a "was" price from costPrice or tags. Products tagged
- * sale/flash/promo without a compareAtPrice are deliberately excluded so the
- * section can never show a fake discount.
+ * Discount math is derived from real fields only (discount value vs variant
+ * price, or compareAtPrice vs price); we never fabricate a "was" price from
+ * costPrice or tags, so the section can never show a fake discount.
+ *
+ * A "flash sale session" is the promotional window during which deals are
+ * live. When active discounts carry end dates, the session ends at the
+ * earliest one; otherwise it falls back to a deterministic daily window
+ * (00:00 → 23:59:59.999 local).
  */
 
 export type FlashSaleStatus = 'live' | 'ended';
@@ -52,6 +56,22 @@ export interface CountdownParts {
   seconds: number;
 }
 
+/** A Discount record as returned by the public store endpoint. */
+export interface FlashDiscount {
+  _id: string;
+  code: string;
+  description?: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  minOrderValue?: number;
+  maxDiscount?: number | null;
+  applicableTo: 'all' | 'categories' | 'products';
+  categories?: string[];
+  products?: { _id: string; name?: string; slug?: string; images?: { url?: string }[]; category?: string }[];
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
 export const FLASH_SALE = {
   title: 'Flash Sale',
   tagline: 'Limited-time markdowns on luxury pieces. When the clock hits zero, the deals are gone.',
@@ -74,9 +94,17 @@ export function endOfSession(date: Date): Date {
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-export function getFlashSaleSession(now: Date = new Date()): FlashSaleSession {
+/**
+ * Session window for the flash sale. When active discounts carry end dates
+ * the session ends at the earliest one; otherwise it falls back to a
+ * deterministic daily window (local midnight → 23:59:59.999).
+ */
+export function getFlashSaleSession(now: Date = new Date(), discounts: FlashDiscount[] = []): FlashSaleSession {
   const startTime = startOfSession(now);
-  const endTime = endOfSession(now);
+  const liveEnds = discounts
+    .map((d) => (d.endDate ? new Date(d.endDate).getTime() : null))
+    .filter((t): t is number => t !== null && t > now.getTime());
+  const endTime = liveEnds.length > 0 ? new Date(Math.min(...liveEnds)) : endOfSession(now);
   const weekday = WEEKDAYS[now.getDay()];
   return {
     id: startTime.toISOString().slice(0, 10),
@@ -105,36 +133,57 @@ export function getNextFlashSaleSession(now: Date = new Date()): FlashSaleSessio
   };
 }
 
+/** Whether an active admin discount covers the given product. */
+export function discountAppliesTo(d: FlashDiscount, product: any): boolean {
+  if (!product) return false;
+  if (d.applicableTo === 'all') return true;
+  if (d.applicableTo === 'categories') {
+    const cats = (d.categories || []).map((c) => String(c).toLowerCase());
+    return cats.includes(String(product.category || '').toLowerCase());
+  }
+  if (d.applicableTo === 'products') {
+    const ids = new Set((d.products || []).map((p) => String(p._id)));
+    return ids.has(String(product._id)) || ids.has(String(product.id));
+  }
+  return false;
+}
+
+/** Discounted sale price for a single item price under an admin discount. */
+export function discountPriceFor(d: FlashDiscount, price: number): number {
+  if (d.type === 'percentage') {
+    let off = (price * d.value) / 100;
+    if (d.maxDiscount != null && d.maxDiscount > 0) off = Math.min(off, d.maxDiscount);
+    return Math.max(0, Math.round(price - off));
+  }
+  return Math.max(0, price - d.value);
+}
+
+/** Fetch active discounts from the public store endpoint (best-effort). */
+export async function getActiveDiscounts(): Promise<FlashDiscount[]> {
+  const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+  try {
+    const res = await fetch(`${API}/api/store/discounts`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : Array.isArray(data.discounts) ? data.discounts : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Returns the best flash deal on a product, or null when the product has no
- * genuine markdown (compareAtPrice > price) on any variant.
+ * Returns the best flash deal on a product, or null when no genuine promotion
+ * applies. Two sources, best deal wins:
+ *   1. An active admin discount covering the product (applied to variant price)
+ *   2. A compareAtPrice markdown (compareAtPrice > price) on any variant
  */
-export function getFlashDeal(product: any): FlashDeal | null {
+export function getFlashDeal(product: any, discounts: FlashDiscount[] = []): FlashDeal | null {
   if (!product || !Array.isArray(product.variants) || product.variants.length === 0) return null;
 
+  const applicable = discounts.filter((d) => discountAppliesTo(d, product));
   let best: FlashDeal | null = null;
-  for (const v of product.variants) {
-    const price = Number(v?.price);
-    const compareAt = Number(v?.compareAtPrice);
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(compareAt) || compareAt <= price) continue;
-    const discountPercent = Math.round(((compareAt - price) / compareAt) * 100);
-    if (discountPercent < FLASH_SALE.minDiscountPercent) continue;
-    const stock = Number.isFinite(Number(v?.stock)) ? Math.max(0, Number(v.stock)) : 0;
-    const candidate: FlashDeal = {
-      product,
-      variant: {
-        size: v.size,
-        color: v.color,
-        price,
-        compareAtPrice: compareAt,
-        stock,
-      },
-      price,
-      compareAtPrice: compareAt,
-      discountPercent,
-      savings: compareAt - price,
-      stock,
-    };
+
+  const consider = (candidate: FlashDeal) => {
     if (
       !best ||
       candidate.discountPercent > best.discountPercent ||
@@ -142,19 +191,57 @@ export function getFlashDeal(product: any): FlashDeal | null {
     ) {
       best = candidate;
     }
+  };
+
+  for (const v of product.variants) {
+    const price = Number(v?.price);
+    if (!Number.isFinite(price) || price <= 0) continue;
+
+    // Source 1: applicable admin discounts (sale price = discounted price)
+    for (const d of applicable) {
+      const salePrice = discountPriceFor(d, price);
+      if (salePrice >= price) continue;
+      const discountPercent = Math.round(((price - salePrice) / price) * 100);
+      if (discountPercent < FLASH_SALE.minDiscountPercent) continue;
+      const stock = Number.isFinite(Number(v?.stock)) ? Math.max(0, Number(v.stock)) : 0;
+      consider({
+        product,
+        variant: { size: v.size, color: v.color, price: salePrice, compareAtPrice: price, stock },
+        price: salePrice,
+        compareAtPrice: price,
+        discountPercent,
+        savings: price - salePrice,
+        stock,
+      });
+    }
+
+    // Source 2: compareAtPrice markdown (was > now)
+    const compareAt = Number(v?.compareAtPrice);
+    if (Number.isFinite(compareAt) && compareAt > price) {
+      const discountPercent = Math.round(((compareAt - price) / compareAt) * 100);
+      if (discountPercent >= FLASH_SALE.minDiscountPercent) {
+        const stock = Number.isFinite(Number(v?.stock)) ? Math.max(0, Number(v.stock)) : 0;
+        consider({
+          product,
+          variant: { size: v.size, color: v.color, price, compareAtPrice: compareAt, stock },
+          price,
+          compareAtPrice: compareAt,
+          discountPercent,
+          savings: compareAt - price,
+          stock,
+        });
+      }
+    }
   }
 
-  // Tagged "sale" products without a compareAtPrice never reach here — the
-  // loop above only admits variants with a genuine markdown, so a discount is
-  // never fabricated from tags alone.
   return best;
 }
 
 /** All flash deals across a product list, best discount first. */
-export function getFlashDeals(products: any[]): FlashDeal[] {
+export function getFlashDeals(products: any[], discounts: FlashDiscount[] = []): FlashDeal[] {
   const deals: FlashDeal[] = [];
   for (const product of products) {
-    const deal = getFlashDeal(product);
+    const deal = getFlashDeal(product, discounts);
     if (deal) deals.push(deal);
   }
   return deals.sort((a, b) => b.discountPercent - a.discountPercent || b.savings - a.savings);
