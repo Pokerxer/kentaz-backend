@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { AdminLayout } from '@/components/AdminLayout';
 import { api } from '@/lib/api';
-import type { Discount, Product } from '@/lib/api';
+import type { Discount, Product, Variant } from '@/lib/api';
 import {
   Percent, Plus, Search, Loader2, X, ChevronRight,
   CheckCircle, AlertCircle, Save, Trash2, Copy,
-  RotateCcw, Zap, Package,
+  RotateCcw, Zap, Package, ExternalLink,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -45,6 +46,214 @@ const STATUS_STYLES = {
   expired: 'bg-red-100 text-red-600',
   scheduled: 'bg-blue-100 text-blue-600',
 };
+
+// ── Flash-sale markdown helpers ─────────────────────────────────
+// A product is a "flash deal" when either:
+//   1. An active Discount (created on this page) covers it — the discount is
+//      applied to the product's variant price, or
+//   2. At least one variant carries a genuine compareAtPrice markdown.
+// Mirrors the storefront /flash-sale logic so admin sees what customers see.
+
+export interface FlashMarkdown {
+  price: number;
+  compareAtPrice: number;
+  discountPercent: number;
+  stock: number;
+}
+
+export function getFlashMarkdown(p: Product): FlashMarkdown | null {
+  let best: FlashMarkdown | null = null;
+  for (const v of p.variants || []) {
+    const price = Number(v.price);
+    const compareAt = Number(v.compareAtPrice);
+    if (!price || !compareAt || compareAt <= price) continue;
+    const pct = Math.round(((compareAt - price) / compareAt) * 100);
+    if (pct < 5) continue;
+    if (!best || pct > best.discountPercent) {
+      best = { price, compareAtPrice: compareAt, discountPercent: pct, stock: Number(v.stock) || 0 };
+    }
+  }
+  return best;
+}
+
+/** Discount usable right now (active, in window, usage left). */
+export function isDiscountUsable(d: Discount): boolean {
+  if (!d.isActive) return false;
+  const now = Date.now();
+  if (d.startDate && now < new Date(d.startDate).getTime()) return false;
+  if (d.endDate && now > new Date(d.endDate).getTime()) return false;
+  if (d.usageLimit !== null && d.usageCount >= d.usageLimit) return false;
+  return true;
+}
+
+/** Whether a usable discount covers the product. */
+export function discountAppliesTo(d: Discount, p: Product): boolean {
+  if (d.applicableTo === 'all') return true;
+  if (d.applicableTo === 'categories') {
+    const cats = (d.categories || []).map((c) => String(c).toLowerCase());
+    return cats.includes(String(p.category || '').toLowerCase());
+  }
+  if (d.applicableTo === 'products') {
+    const ids = new Set((d.products as any[] || []).map((x: any) => String(x._id || x)));
+    return ids.has(String(p._id));
+  }
+  return false;
+}
+
+/** Sale price for a single item under a discount. */
+export function discountPriceFor(d: Discount, price: number): number {
+  if (d.type === 'percentage') {
+    let off = (price * d.value) / 100;
+    if (d.maxDiscount != null && d.maxDiscount > 0) off = Math.min(off, d.maxDiscount);
+    return Math.max(0, Math.round(price - off));
+  }
+  return Math.max(0, price - d.value);
+}
+
+/** Best flash markdown across discount coverage and compareAtPrice. */
+export function getFlashMarkdownWithDiscounts(p: Product, discounts: Discount[]): FlashMarkdown | null {
+  const usable = discounts.filter((d) => discountAppliesTo(d, p));
+  let best: FlashMarkdown | null = null;
+  const consider = (m: FlashMarkdown) => {
+    if (!best || m.discountPercent > best.discountPercent || (m.discountPercent === best.discountPercent && m.stock > best.stock)) {
+      best = m;
+    }
+  };
+  for (const v of p.variants || []) {
+    const price = Number(v.price);
+    if (!price) continue;
+    for (const d of usable) {
+      const salePrice = discountPriceFor(d, price);
+      if (salePrice >= price) continue;
+      const pct = Math.round(((price - salePrice) / price) * 100);
+      if (pct < 5) continue;
+      consider({ price: salePrice, compareAtPrice: price, discountPercent: pct, stock: Number(v.stock) || 0 });
+    }
+  }
+  const markdown = getFlashMarkdown(p);
+  if (markdown) consider(markdown);
+  return best;
+}
+
+interface FlashDealRow {
+  product: Product;
+  markdown: FlashMarkdown;
+  source: 'discount' | 'markdown';
+  code?: string;
+  discount?: Discount;
+}
+
+// ── FlashDealPanel ──────────────────────────────────────────────
+// Right-hand detail panel for a selected flash-sale product.
+
+function FlashDealPanel({ row, onBack }: { row: FlashDealRow; onBack: () => void }) {
+  const { product, markdown, source, code, discount } = row;
+  const img = product.images?.[0]?.url;
+
+  const variantRows = (product.variants || [])
+    .map((v) => {
+      const orig = Number(v.price);
+      const cmp = source === 'discount' && discount ? orig : Number(v.compareAtPrice);
+      const sale = source === 'discount' && discount ? discountPriceFor(discount, orig) : orig;
+      const pct = cmp > sale ? Math.round(((cmp - sale) / cmp) * 100) : 0;
+      return { label: [v.size, v.color].filter(Boolean).join(' · ') || 'Default', sale, cmp, pct, stock: Number(v.stock) || 0 };
+    })
+    .filter((r) => r.pct >= 1);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <button onClick={onBack} className="md:hidden text-sm text-amber-600 font-medium mb-3">
+        ← Back to discounts
+      </button>
+
+      <div className="max-w-xl mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* Banner */}
+        <div className="h-2 bg-gradient-to-r from-amber-500 via-amber-400 to-red-500" />
+        <div className="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold">
+              <Zap className="w-3 h-3 fill-current" /> FLASH DEAL
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-red-100 text-red-600 text-xs font-bold">
+              -{markdown.discountPercent}%
+            </span>
+            {source === 'discount' && code && (
+              <span className="px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-mono font-semibold">
+                CODE {code}
+              </span>
+            )}
+          </div>
+          <Link href={`/products/${product._id}/edit`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:border-amber-300 hover:text-amber-600 transition">
+            <ExternalLink className="w-3 h-3" /> Edit product
+          </Link>
+        </div>
+
+        <div className="p-5">
+          <div className="flex gap-4">
+            {img && (
+              <div className="w-20 h-24 rounded-xl overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img} alt={product.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-gray-400">{product.category}</p>
+              <h3 className="font-bold text-gray-900 text-sm leading-snug mt-0.5">{product.name}</h3>
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-xl font-extrabold text-gray-900">{fmt(markdown.price)}</span>
+                <span className="text-sm text-gray-400 line-through">{fmt(markdown.compareAtPrice)}</span>
+                <span className="text-xs font-semibold text-red-500">Save {fmt(markdown.compareAtPrice - markdown.price)}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {markdown.stock <= 0 ? 'Out of stock' : `${markdown.stock} units left on best deal`}
+              </p>
+            </div>
+          </div>
+
+          {/* Affected variants */}
+          <div className="mt-5">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+              {source === 'discount' ? `Discounted variants (${variantRows.length})` : `Marked-down variants (${variantRows.length})`}
+            </p>
+            <div className="rounded-xl border border-gray-100 divide-y divide-gray-50">
+              {variantRows.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-gray-400">No variants currently discounted</div>
+              ) : (
+                variantRows.map((r, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
+                    <span className="text-gray-600 truncate">{r.label}</span>
+                    <span className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-semibold text-gray-800">{fmt(r.sale)}</span>
+                      <span className="text-gray-400 line-through">{fmt(r.cmp)}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-500 font-semibold">-{r.pct}%</span>
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {source === 'discount' && code ? (
+            <p className="mt-5 text-[11px] text-gray-400 leading-relaxed">
+              Discount <span className="font-mono font-semibold text-gray-500">{code}</span>{' '}
+              ({discount?.type === 'percentage' ? `${discount?.value}% off` : `${fmt(Number(discount?.value) || 0)} off`}) covers this
+              product — it shows on the storefront <span className="font-semibold text-gray-500">/flash-sale</span> while the
+              discount is active. Deactivate or delete it here to remove it.
+            </p>
+          ) : (
+            <p className="mt-5 text-[11px] text-gray-400 leading-relaxed">
+              This markdown is what powers the storefront{' '}
+              <span className="font-semibold text-gray-500">/flash-sale</span> page. Raise
+              <span className="font-mono text-gray-500"> compareAtPrice</span> above a variant&apos;s
+              price to list it as a flash deal; lower it back to remove it.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const BLANK: Omit<Discount, '_id' | 'usageCount' | 'createdAt' | 'updatedAt'> = {
   code: '',
@@ -602,8 +811,11 @@ export default function DiscountsPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'flash'>('all');
   const [selectedId, setSelectedId] = useState<string | null | 'new'>('new');
+  const [flashDeals, setFlashDeals] = useState<FlashDealRow[]>([]);
+  const [flashLoading, setFlashLoading] = useState(false);
+  const [selectedFlashId, setSelectedFlashId] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout>>();
 
   async function load() {
@@ -619,7 +831,44 @@ export default function DiscountsPage() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  // Scan the catalog (paged) for products with a live promotion — either an
+  // active discount covering them or a compareAtPrice markdown. Mirrors the
+  // storefront /flash-sale so admin sees exactly what customers see.
+  async function loadFlashDeals() {
+    setFlashLoading(true);
+    try {
+      const [allDiscounts] = await Promise.all([api.discounts.getAll()]);
+      const usable = allDiscounts.filter(isDiscountUsable);
+      const rows: FlashDealRow[] = [];
+      let page = 1;
+      let scanned = 0;
+      let total = Infinity;
+      while (scanned < total && page <= 6) {
+        const res = await api.products.getAll({ page, limit: 500 });
+        total = res.total;
+        for (const p of res.products) {
+          const deal = getFlashMarkdownWithDiscounts(p, usable);
+          if (!deal) continue;
+          const covering = usable.find((d) => discountAppliesTo(d, p));
+          rows.push({
+            product: p,
+            markdown: deal,
+            source: covering ? 'discount' : 'markdown',
+            code: covering?.code,
+            discount: covering || undefined,
+          });
+        }
+        scanned += res.products.length;
+        if (res.products.length === 0) break;
+        page++;
+      }
+      rows.sort((a, b) => b.markdown.discountPercent - a.markdown.discountPercent);
+      setFlashDeals(rows);
+    } catch {}
+    setFlashLoading(false);
+  }
+
+  useEffect(() => { load(); loadFlashDeals(); }, []);
 
   useEffect(() => {
     clearTimeout(searchRef.current);
@@ -632,6 +881,13 @@ export default function DiscountsPage() {
   }, [search, statusFilter, discounts]);
 
   const selected = selectedId === 'new' ? null : discounts.find(d => d._id === selectedId) ?? null;
+
+  // Flash deals view — search filters products by name when the tab is active.
+  const flashFiltered = flashDeals.filter(f =>
+    !search || f.product.name.toLowerCase().includes(search.toLowerCase())
+  );
+  const showFlashPanel = statusFilter === 'flash' && selectedFlashId !== null;
+  const flashSelected = showFlashPanel ? flashDeals.find(f => f.product._id === selectedFlashId) ?? null : null;
 
   // KPIs
   const activeCount = discounts.filter(d => discountStatus(d) === 'active').length;
@@ -670,7 +926,7 @@ export default function DiscountsPage() {
       <div className="h-[calc(100vh-4rem)] overflow-hidden -mx-4 sm:-mx-6 lg:-mx-8 -my-6 flex">
 
         {/* ── Left panel ── */}
-        <div className={`w-full md:w-[380px] lg:w-[400px] flex-shrink-0 flex flex-col border-r border-gray-200 bg-white ${selectedId !== null && selectedId !== '' ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-[380px] lg:w-[400px] flex-shrink-0 flex flex-col border-r border-gray-200 bg-white ${selectedId !== null || selectedFlashId !== null ? 'hidden md:flex' : 'flex'}`}>
 
           {/* Header */}
           <div className="px-4 pt-5 pb-3 border-b border-gray-100">
@@ -679,8 +935,11 @@ export default function DiscountsPage() {
                 <h1 className="text-base font-bold text-gray-900 flex items-center gap-2">
                   <Percent className="w-4 h-4 text-amber-500" /> Discounts
                 </h1>
-                {!loading && (
+                {!loading && statusFilter !== 'flash' && (
                   <p className="text-xs text-gray-400 mt-0.5">{activeCount} active · {totalUses} total uses · {expiredCount} expired</p>
+                )}
+                {!flashLoading && statusFilter === 'flash' && (
+                  <p className="text-xs text-gray-400 mt-0.5">{flashDeals.length} product{flashDeals.length === 1 ? '' : 's'} with live markdowns</p>
                 )}
               </div>
               <button
@@ -694,16 +953,16 @@ export default function DiscountsPage() {
             {/* Search */}
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input type="text" placeholder="Search codes…" value={search} onChange={e => setSearch(e.target.value)}
+              <input type="text" placeholder={statusFilter === 'flash' ? 'Search deals…' : 'Search codes…'} value={search} onChange={e => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-amber-400 bg-gray-50" />
             </div>
 
             {/* Status filter */}
             <div className="flex gap-1">
-              {(['all', 'active', 'inactive'] as const).map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  className={`flex-1 py-1 rounded-lg text-xs font-medium transition capitalize ${statusFilter === s ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  {s}
+              {(['all', 'active', 'inactive', 'flash'] as const).map(s => (
+                <button key={s} onClick={() => { setStatusFilter(s); if (s !== 'flash') setSelectedFlashId(null); }}
+                  className={`flex-1 py-1 rounded-lg text-xs font-medium transition capitalize flex items-center justify-center gap-1 ${statusFilter === s ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  {s === 'flash' ? (<><Zap className="w-3 h-3" /> Flash</>) : s}
                 </button>
               ))}
             </div>
@@ -711,62 +970,110 @@ export default function DiscountsPage() {
 
           {/* List */}
           <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
-            ) : filtered.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Percent className="w-10 h-10 mx-auto opacity-15 mb-2" />
-                <p className="text-sm">{search ? 'No results' : 'No discount codes yet'}</p>
-              </div>
-            ) : (
-              filtered.map(d => {
-                const st = discountStatus(d);
-                return (
-                  <button key={d._id} onClick={() => setSelectedId(d._id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 text-left transition ${selectedId === d._id ? 'bg-amber-50 border-l-2 border-l-amber-400' : 'hover:bg-gray-50'}`}>
-                    {/* Icon */}
-                    <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center flex-shrink-0">
-                      <Percent className="w-4 h-4 text-amber-500" />
+            {statusFilter === 'flash' ? (
+              flashLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+              ) : flashFiltered.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 px-6">
+                  <Zap className="w-10 h-10 mx-auto opacity-15 mb-2" />
+                  <p className="text-sm">{search ? 'No deals found' : 'No flash deals yet'}</p>
+                  <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                    Set a variant&apos;s compareAtPrice above its price and it appears here — and on the storefront flash sale.
+                  </p>
+                </div>
+              ) : (
+                flashFiltered.map(f => (
+                  <button key={f.product._id} onClick={() => setSelectedFlashId(f.product._id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 text-left transition ${selectedFlashId === f.product._id ? 'bg-amber-50 border-l-2 border-l-amber-400' : 'hover:bg-gray-50'}`}>
+                    <div className="w-9 h-9 rounded-xl overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={f.product.images?.[0]?.url || ''} alt="" className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-bold text-gray-800 font-mono truncate">{d.code}</p>
-                        <button onClick={e => copyCode(d.code, e)} className="text-gray-300 hover:text-gray-500 transition flex-shrink-0">
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <p className="text-sm font-bold text-gray-800 truncate">{f.product.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-gray-500">
-                          {d.type === 'percentage' ? `${d.value}% off` : `${fmt(d.value)} off`}
-                        </span>
+                        {f.source === 'discount' && f.code && (
+                          <span className="text-[10px] font-mono font-semibold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded">
+                            {f.code}
+                          </span>
+                        )}
+                        <span className="text-xs font-semibold text-red-500">-{f.markdown.discountPercent}%</span>
                         <span className="text-gray-300">·</span>
-                        <span className="text-xs text-gray-400">{d.usageCount} uses</span>
+                        <span className="text-xs text-gray-500">
+                          {fmt(f.markdown.price)}{' '}
+                          <span className="line-through text-gray-300">{fmt(f.markdown.compareAtPrice)}</span>
+                        </span>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[st]}`}>
-                        {st}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${f.markdown.stock <= 0 ? 'bg-gray-100 text-gray-500' : f.markdown.stock <= 10 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
+                        {f.markdown.stock <= 0 ? 'Out' : `${f.markdown.stock} left`}
                       </span>
                       <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
                     </div>
                   </button>
-                );
-              })
+                ))
+              )
+            ) : (
+              loading ? (
+                <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Percent className="w-10 h-10 mx-auto opacity-15 mb-2" />
+                  <p className="text-sm">{search ? 'No results' : 'No discount codes yet'}</p>
+                </div>
+              ) : (
+                filtered.map(d => {
+                  const st = discountStatus(d);
+                  return (
+                    <button key={d._id} onClick={() => setSelectedId(d._id)}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 text-left transition ${selectedId === d._id ? 'bg-amber-50 border-l-2 border-l-amber-400' : 'hover:bg-gray-50'}`}>
+                      {/* Icon */}
+                      <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center flex-shrink-0">
+                        <Percent className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold text-gray-800 font-mono truncate">{d.code}</p>
+                          <button onClick={e => copyCode(d.code, e)} className="text-gray-300 hover:text-gray-500 transition flex-shrink-0">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-gray-500">
+                            {d.type === 'percentage' ? `${d.value}% off` : `${fmt(d.value)} off`}
+                          </span>
+                          <span className="text-gray-300">·</span>
+                          <span className="text-xs text-gray-400">{d.usageCount} uses</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[st]}`}>
+                          {st}
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+                      </div>
+                    </button>
+                  );
+                })
+              )
             )}
           </div>
         </div>
 
         {/* ── Right panel ── */}
-        <div className={`flex-1 flex flex-col bg-gray-50 ${selectedId !== null ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`flex-1 flex flex-col bg-gray-50 ${selectedId !== null || selectedFlashId !== null ? 'flex' : 'hidden md:flex'}`}>
 
           {/* Mobile back */}
           <div className="md:hidden px-4 pt-4 pb-2">
-            <button onClick={() => setSelectedId(null)} className="text-sm text-amber-600 font-medium">
+            <button onClick={() => { setSelectedId(null); setSelectedFlashId(null); }} className="text-sm text-amber-600 font-medium">
               ← Back to discounts
             </button>
           </div>
 
-          {selectedId === 'new' ? (
+          {flashSelected ? (
+            <FlashDealPanel row={flashSelected} onBack={() => setSelectedFlashId(null)} />
+          ) : selectedId === 'new' ? (
             <DiscountForm
               key="new"
               initial={BLANK}
@@ -789,12 +1096,21 @@ export default function DiscountsPage() {
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
-              <Percent className="w-14 h-14 opacity-10" />
-              <p className="font-medium text-sm">Select a discount to edit</p>
-              <button onClick={() => setSelectedId('new')}
-                className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 transition">
-                <Plus className="w-4 h-4" /> New Discount
-              </button>
+              {statusFilter === 'flash' ? <Zap className="w-14 h-14 opacity-10" /> : <Percent className="w-14 h-14 opacity-10" />}
+              <p className="font-medium text-sm">
+                {statusFilter === 'flash' ? 'Select a flash deal to inspect' : 'Select a discount to edit'}
+              </p>
+              {statusFilter === 'flash' && (
+                <p className="text-xs text-gray-300 max-w-xs text-center leading-relaxed">
+                  Flash deals come from product variants where compareAtPrice is set above price — the same deals shown on the storefront /flash-sale.
+                </p>
+              )}
+              {statusFilter !== 'flash' && (
+                <button onClick={() => setSelectedId('new')}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 transition">
+                  <Plus className="w-4 h-4" /> New Discount
+                </button>
+              )}
             </div>
           )}
         </div>

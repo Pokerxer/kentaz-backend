@@ -1034,6 +1034,7 @@ export interface Variant {
   costPrice?: number;
   markup?: number;
   useMarkup?: boolean;
+  compareAtPrice?: number;
   stock?: number;
   sku?: string;
 }
