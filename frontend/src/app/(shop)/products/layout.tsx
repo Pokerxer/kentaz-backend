@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { pageUrl, SITE_NAME, SITE_DESCRIPTION, DEFAULT_OG_IMAGE } from '@/lib/seo';
+import Script from 'next/script';
+import { pageUrl, SITE_NAME, SITE_DESCRIPTION, DEFAULT_OG_IMAGE, SITE_URL } from '@/lib/seo';
 
 export const metadata: Metadata = {
   title: 'Shop — Fashion, Lifestyle & Beauty',
@@ -13,6 +14,24 @@ export const metadata: Metadata = {
   },
 };
 
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+    { '@type': 'ListItem', position: 2, name: 'Shop', item: pageUrl('/products') },
+  ],
+};
+
 export default function ShopLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <Script
+        id="schema-breadcrumb-shop"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
+      {children}
+    </>
+  );
 }

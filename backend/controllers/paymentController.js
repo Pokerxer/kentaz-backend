@@ -3,6 +3,10 @@ const crypto = require('crypto');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const { sendEmail, getOrderEmailHtml, getAdminOrderEmailHtml } = require('../utils/email');
+const {
+  createGatewayTransaction,
+  verifyGatewayTransaction,
+} = require('../services/payment.service');
 
 async function sendOrderEmails(order) {
   const user = await User.findById(order.user).select('name email');
@@ -48,31 +52,23 @@ exports.initializePayment = async (req, res) => {
       return res.status(400).json({ error: 'email, amount and orderId are required' });
     }
 
+    // Force our own reference so the callback + verify echo the same value.
     const reference = `KTZ-${orderId}-${Date.now()}`;
-    const notificationUrl = callbackUrl || process.env.KORAPAY_WEBHOOK_URL;
 
-    const response = await axios.post(
-      'https://api.korapay.com/merchant/api/v1/charges/initialize',
-      {
-        reference,
-        amount: Math.round(amount), // naira (integer)
-        currency: 'NGN',
-        customer: { email },
-        notification_url: notificationUrl,
-        metadata: { orderId },
-      },
-      { headers: { Authorization: `Bearer ${getSecretKey()}`, 'Content-Type': 'application/json' } }
+    const charge = await createGatewayTransaction(
+      amount,
+      email,
+      { orderId },
+      { reference, callbackUrl }
     );
 
-    const { checkout_url, reference: koraRef } = response.data.data;
-
     // Save reference to order
-    await Order.findByIdAndUpdate(orderId, { korapayRef: reference, korapayStatus: 'pending' });
+    await Order.findByIdAndUpdate(orderId, { korapayRef: charge.reference, korapayStatus: 'pending' });
 
-    res.json({ authorizationUrl: checkout_url, reference: reference || koraRef });
+    res.json({ authorizationUrl: charge.authorizationUrl, reference: charge.reference });
   } catch (err) {
-    console.error('Korapay init error:', err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.message || 'Payment initialization failed' });
+    console.error('Korapay init error:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Payment initialization failed' });
   }
 };
 

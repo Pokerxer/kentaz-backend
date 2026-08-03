@@ -5,7 +5,7 @@ import { CartProvider } from '@/contexts/CartContext';
 import { CartSidebar } from '@/components/cart/CartSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import { Footer } from '@/components/ui/Footer';
-import { SITE_URL, SITE_NAME, SITE_DESCRIPTION, TWITTER_HANDLE, DEFAULT_OG_IMAGE } from '@/lib/seo';
+import { SITE_URL, SITE_NAME, SITE_DESCRIPTION, TWITTER_HANDLE, DEFAULT_OG_IMAGE, BUSINESS } from '@/lib/seo';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -102,16 +102,58 @@ const organizationSchema = {
   },
   address: {
     '@type': 'PostalAddress',
-    addressLocality: 'Abuja',
-    addressRegion: 'FCT',
-    addressCountry: 'NG',
+    streetAddress: BUSINESS.streetAddress,
+    addressLocality: BUSINESS.addressLocality,
+    addressRegion: BUSINESS.addressRegion,
+    addressCountry: BUSINESS.addressCountry,
+    postalCode: BUSINESS.postalCode,
   },
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'customer service',
-    email: 'info@kentazemporium.com',
+    telephone: BUSINESS.phone,
+    email: BUSINESS.email,
     availableLanguage: 'English',
   },
+  sameAs: [BUSINESS.instagram],
+};
+
+// LocalBusiness / Store schema — the biggest local-SEO win for a physical shop.
+// Emitted sitewide so Google can surface it in Maps, the local pack, and the
+// knowledge panel regardless of the entry page.
+const storeSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'Store',
+  '@id': `${SITE_URL}/#store`,
+  name: SITE_NAME,
+  url: SITE_URL,
+  image: `${SITE_URL}/og-image.png`,
+  telephone: BUSINESS.phone,
+  email: BUSINESS.email,
+  priceRange: BUSINESS.priceRange,
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: BUSINESS.streetAddress,
+    addressLocality: BUSINESS.addressLocality,
+    addressRegion: BUSINESS.addressRegion,
+    addressCountry: BUSINESS.addressCountry,
+    postalCode: BUSINESS.postalCode,
+  },
+  geo: {
+    '@type': 'GeoCoordinates',
+    latitude: BUSINESS.geo.latitude,
+    longitude: BUSINESS.geo.longitude,
+  },
+  openingHoursSpecification: BUSINESS.openingHours.map(h => ({
+    '@type': 'OpeningHoursSpecification',
+    dayOfWeek: h.days === 'Mo-Sa'
+      ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      : ['Sunday'],
+    opens: h.opens,
+    closes: h.closes,
+  })),
+  sameAs: [BUSINESS.instagram],
+  parentOrganization: { '@id': `${SITE_URL}/#organization` },
 };
 
 const websiteSchema = {
@@ -137,6 +179,11 @@ const websiteSchema = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Preconnect to image hosts for faster LCP / Core Web Vitals */}
+        <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://images.unsplash.com" />
+      </head>
       <body className="min-h-screen flex flex-col">
         <Providers>
           <CartProvider>
@@ -152,6 +199,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           id="schema-organization"
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        />
+        <Script
+          id="schema-store"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(storeSchema) }}
         />
         <Script
           id="schema-website"

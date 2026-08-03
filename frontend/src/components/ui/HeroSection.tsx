@@ -211,8 +211,8 @@ export function HeroSection() {
       <div className="relative z-20 min-h-screen flex items-center justify-center">
         <div className="container mx-auto px-4 py-20 md:py-24">
           <div className="max-w-5xl mx-auto text-center">
-            {/* Animated Title */}
-            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-[10rem] font-bold leading-[0.9] mb-6 md:mb-8 tracking-tight">
+            {/* Animated Title (h2 — the SEO h1 lives in the page wrapper) */}
+            <h2 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-[10rem] font-bold leading-[0.9] mb-6 md:mb-8 tracking-tight">
               <div className="overflow-hidden">
                 {titleWords.map((word, idx) => (
                   <span
@@ -228,7 +228,7 @@ export function HeroSection() {
                   </span>
                 ))}
               </div>
-            </h1>
+            </h2>
 
             {/* Subtitle */}
             {slide.subtitle && (

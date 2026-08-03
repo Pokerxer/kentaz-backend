@@ -1,0 +1,42 @@
+# Kentaz Emporium
+
+> Kentaz Emporium — Premium fashion, lifestyle & wellness from Abuja, Nigeria.
+> Luxury. Lifestyle. Wellness.
+
+Kentaz Emporium is a premium retail and wellness brand based in Abuja, Nigeria. We sell curated fashion, accessories, beauty products, luxury human hair, bags, shoes, perfumes, and gift items through our online store. We also offer two bookable services: mental health consultation (in-person and online therapy with licensed therapists) and podcast studio rental (hourly, with professional equipment and post-production included).
+
+## Shop
+
+- [All Products](https://kentazemporium.com/products) — Browse the full collection of fashion, beauty, and lifestyle products with fast delivery across Nigeria.
+- [Female Fashion](https://kentazemporium.com/products?collection=Female%20Fashion) — Curated womenswear: gowns, tops, skirts, suits.
+- [Mens Wear](https://kentazemporium.com/products?collection=Mens%20Wear) — Premium menswear: shirts, trousers, suits, accessories.
+- [Shoes](https://kentazemporium.com/products?collection=Shoes) — Heels, flats, sneakers, boots, sandals.
+- [Bags & Purses](https://kentazemporium.com/products?collection=Bags%20%26%20Purses) — Handbags, purses, sling bags, designer bags.
+- [Beauty & Skincare](https://kentazemporium.com/products?collection=Beauty%20%26%20Skincare) — Premium skincare, creams, serums, beauty tools.
+- [Human Hair](https://kentazemporium.com/products?collection=Human%20Hair) — 100% human hair extensions and wigs.
+- [Perfumes](https://kentazemporium.com/products?collection=Perfumes) — Niche, designer, and luxury scents.
+- [Accessories](https://kentazemporium.com/products?collection=Accessories) — Earrings, belts, bangles, brooches, finishing touches.
+
+## Services
+
+- [Mental Health Consultation](https://kentazemporium.com/services#therapy) — Professional, confidential therapy sessions with licensed therapists in Abuja. In-person (₦25,000/60 min) or secure video call (₦20,000/60 min). Book at /services/booking?type=therapy.
+- [Podcast Studio Rental](https://kentazemporium.com/services#studio) — State-of-the-art recording studio in Abuja with professional microphones, acoustically treated soundproof room, multi-track recording, live streaming, and post-production editing. ₦15,000/hour, 2-hour minimum. Book at /services/booking?type=podcast.
+
+## About
+
+- [About Us](https://kentazemporium.com/about) — Our story, mission, and values. A premium fashion and lifestyle brand founded in Abuja, Nigeria.
+- [Contact](https://kentazemporium.com/contact) — Suite 35, 911 Mall, Usuma Street, Abuja. Phone: 07081856411. Email: info@kentazemporium.com. WhatsApp: https://wa.me/2347081856411. Instagram: @KENTAZ EMPORIUM.
+
+## Policies
+
+- [Privacy Policy](https://kentazemporium.com/privacy) — How we collect, use, and protect your personal information.
+- [Terms of Service](https://kentazemporium.com/terms) — Terms governing use of our website and services.
+
+## Key facts
+
+- **Location**: Suite 35, 911 Mall, Usuma Street, Maitama, Abuja, FCT, Nigeria
+- **Hours**: Monday–Saturday 9:00–19:00, Sunday 12:00–18:00
+- **Currency**: Nigerian Naira (NGN)
+- **Payments**: Paystack (cards, bank transfer)
+- **Delivery**: Nationwide across Nigeria
+- **Tagline**: Luxury. Lifestyle. Wellness.
