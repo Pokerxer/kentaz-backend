@@ -14,6 +14,7 @@ import { BrandLogo } from "@/components/ui/BrandLogo";
 
 const navigation = [
   { name: "Products", href: "/products" },
+  { name: "Flash Sale", href: "/flash-sale", badge: "LIVE" },
   { name: "Services", href: "/services" },
   { name: "About", href: "/about" },
 ];
@@ -101,7 +102,15 @@ export function Navbar() {
                   pathname === item.href ? "text-[#C9A84C]" : "text-[#2D2D2D]"
                 )}
               >
-                {item.name}
+                <span className="inline-flex items-center gap-1.5">
+                  {item.name}
+                  {item.badge && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-500 text-[9px] font-bold tracking-wider">
+                      <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+                      {item.badge}
+                    </span>
+                  )}
+                </span>
                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-[#C9A84C] transition-all duration-300 group-hover:w-full" />
               </Link>
             ))}
@@ -206,7 +215,15 @@ export function Navbar() {
                   )}
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {item.name}
+                  <span className="flex items-center gap-2">
+                    {item.name}
+                    {item.badge && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-500 text-[9px] font-bold tracking-wider">
+                        <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+                        {item.badge}
+                      </span>
+                    )}
+                  </span>
                 </Link>
               ))}
             </div>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
 import { HeroSection } from "@/components/ui/HeroSection";
 import { QuickViewModal } from "@/components/shop/QuickViewModal";
+import { FlashSaleSection } from "@/components/shop/FlashSaleSection";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useDispatch } from "react-redux";
 import { addToCart } from "@/store/cartSlice";
@@ -536,8 +537,8 @@ function FeaturedProductsSection() {
 
   const getDiscount = (product: any): number | null => {
     const v = product.variants?.[0];
-    if (!v?.costPrice || !v?.price || v.costPrice >= v.price) return null;
-    return Math.round(((v.price - v.costPrice) / v.price) * 100);
+    if (!v?.price || !v?.compareAtPrice || v.compareAtPrice <= v.price) return null;
+    return Math.round(((v.compareAtPrice - v.price) / v.compareAtPrice) * 100);
   };
 
   return (
@@ -684,9 +685,9 @@ function FeaturedProductsSection() {
                             <span className={`font-bold text-[#C9A84C] ${isHero ? 'text-base' : 'text-sm'}`}>
                               {formatPrice(price)}
                             </span>
-                            {product.variants?.[0]?.costPrice > price && (
+                            {product.variants?.[0]?.compareAtPrice > price && (
                               <span className="text-[10px] text-[#C0C0C0] line-through">
-                                {formatPrice(product.variants[0].costPrice)}
+                                {formatPrice(product.variants[0].compareAtPrice)}
                               </span>
                             )}
                           </div>
@@ -1012,10 +1013,17 @@ function TestimonialsSection() {
 export default function Home() {
   return (
     <div className="flex flex-col bg-[#FAFAFA]">
+      {/* SEO h1 — visually hidden. The hero's rotating headline is an h2 for
+          animation reasons; this single descriptive h1 gives search engines
+          a clear, keyword-rich topic for the homepage. */}
+      <h1 className="sr-only">
+        Kentaz Emporium — Premium Fashion, Lifestyle &amp; Wellness in Abuja, Nigeria
+      </h1>
       <HeroSection />
       <StatsSection />
       <ServicesSection />
       <CategoriesSection />
+      <FlashSaleSection />
       <FeaturedProductsSection />
       <TrendingProductsSection />
       <TestimonialsSection />
