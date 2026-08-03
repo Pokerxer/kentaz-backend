@@ -252,10 +252,20 @@ function DiscountForm({
     e.preventDefault();
     if (!form.code.trim()) return;
     setSaving(true);
-    // Convert populated products to IDs for the API
+    // Convert populated products to IDs for the API.
+    // Date-only picks ("YYYY-MM-DD") mean the whole day: start at local
+    // midnight, end at local 23:59:59.999 — otherwise "today" as an end date
+    // is parsed as UTC midnight and the discount is already expired on save.
+    const normDate = (v: string | null | undefined, endOfDay: boolean) => {
+      if (!v) return v;
+      const s = String(v);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s + (endOfDay ? 'T23:59:59.999' : 'T00:00:00.000') : s;
+    };
     const payload = {
       ...form,
       products: (form.products as any[]).map((p: any) => p._id ?? p),
+      startDate: normDate(form.startDate, false),
+      endDate: normDate(form.endDate, true),
     };
     try {
       await onSave(payload);

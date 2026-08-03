@@ -3,6 +3,19 @@ const router = express.Router();
 const { auth, adminOnly } = require('../middleware/auth');
 const Discount = require('../models/Discount');
 
+// Date-only strings ("YYYY-MM-DD") are ambiguous: JS/Mongoose parse them as
+// UTC midnight, which for a non-UTC timezone lands in the PAST the same day —
+// a discount with endDate "today" would be instantly expired. Normalize
+// date-only input to local start-of-day / end-of-day so a picked date means
+// the whole day.
+function normalizeDate(v, endOfDay) {
+  if (!v) return v;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    return new Date(v + (endOfDay ? 'T23:59:59.999' : 'T00:00:00.000'));
+  }
+  return v;
+}
+
 // ── Admin: List all discounts ───────────────────────────────────
 router.get('/', auth, adminOnly, async (req, res) => {
   try {
@@ -67,8 +80,8 @@ router.post('/', auth, adminOnly, async (req, res) => {
       usageLimit: usageLimit || null,
       perCustomerLimit: perCustomerLimit || null,
       isActive: isActive !== false,
-      startDate: startDate || new Date(),
-      endDate: endDate || null,
+      startDate: normalizeDate(startDate, false) || new Date(),
+      endDate: normalizeDate(endDate, true) || null,
     });
 
     await discount.save();
@@ -91,7 +104,12 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       'isActive', 'startDate', 'endDate',
     ];
     fields.forEach(f => {
-      if (req.body[f] !== undefined) discount[f] = req.body[f];
+      if (req.body[f] === undefined) return;
+      if (f === 'startDate' || f === 'endDate') {
+        discount[f] = normalizeDate(req.body[f], f === 'endDate') ?? discount[f];
+      } else {
+        discount[f] = req.body[f];
+      }
     });
 
     // Allow code update if changed and not duplicate
