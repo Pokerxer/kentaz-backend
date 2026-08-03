@@ -259,11 +259,12 @@ function CategoryDropdown({ options, value, onChange }: {
 
 // ─── Variant Card (mobile) / Row (desktop) ────────────────────────────────────
 
-function VariantRow({ variant, idx, totalVariants, productName, onChange, onDuplicate, onRemove }: {
+function VariantRow({ variant, idx, totalVariants, productName, onChange, onDuplicate, onRemove, mode }: {
   variant: Variant; idx: number; totalVariants: number; productName: string;
   onChange: (field: keyof Variant, value: any) => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  mode: 'table' | 'mobile';
 }) {
   const margin = calcMargin(variant.costPrice, variant.price);
 
@@ -299,9 +300,9 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
     </div>
   );
 
-  return (
-    <>
-      {/* ── Desktop row (md+) ── */}
+  if (mode === 'table') {
+    return (
+      // ── Desktop row (md+) ──
       <tr className="hidden md:table-row hover:bg-gray-50/50 transition-colors group border-b border-gray-100 last:border-0">
         {/* # */}
         <td className="px-3 py-3 text-xs text-gray-400 font-mono w-8">{idx + 1}</td>
@@ -422,9 +423,11 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
           </div>
         </td>
       </tr>
+    );
+  }
 
-      {/* ── Mobile card (< md) ── */}
-      <div className="md:hidden bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
+  return (
+    <div className="md:hidden bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variant {idx + 1}</span>
           <div className="flex gap-1.5">
@@ -528,7 +531,6 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
           </div>
         </div>
       </div>
-    </>
   );
 }
 
@@ -1034,7 +1036,7 @@ export default function NewProductPage() {
                       <tbody>
                         {variants.map((v, i) => (
                           <VariantRow
-                            key={i} variant={v} idx={i} totalVariants={variants.length}
+                            key={i} mode="table" variant={v} idx={i} totalVariants={variants.length}
                             productName={formData.name}
                             onChange={(field, val) => updateVariant(i, field, val)}
                             onDuplicate={() => duplicateVariant(i)}
@@ -1056,7 +1058,7 @@ export default function NewProductPage() {
                   <div className="md:hidden space-y-3">
                     {variants.map((v, i) => (
                       <VariantRow
-                        key={i} variant={v} idx={i} totalVariants={variants.length}
+                        key={i} mode="mobile" variant={v} idx={i} totalVariants={variants.length}
                         productName={formData.name}
                         onChange={(field, val) => updateVariant(i, field, val)}
                         onDuplicate={() => duplicateVariant(i)}
