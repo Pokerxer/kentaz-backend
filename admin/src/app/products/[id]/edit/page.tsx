@@ -434,6 +434,7 @@ export default function EditProductPage() {
   const [fetching, setFetching] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProductIds, setAllProductIds] = useState<{ _id: string; name: string }[]>([]);
@@ -464,45 +465,71 @@ export default function EditProductPage() {
 
   const [variants, setVariants] = useState<Variant[]>([{ ...EMPTY_VARIANT }]);
 
-  // Load product + categories + all product IDs in parallel
+  // Load product + categories + all product IDs in parallel. The three calls
+  // are kept separate so a failure points at the actual problem — a missing
+  // product (404) is a data-mismatch (e.g. the product exists only in the
+  // deployed backend's DB), not a generic load failure.
   useEffect(() => {
-    Promise.all([
-      api.categories.getAll(),
-      api.products.getById(productId),
-      api.products.getAll({ limit: 1000 }),
-    ]).then(([cats, product, allData]) => {
-      setCategories((cats as Category[]).filter((c: any) => c.slug !== 'other'));
-      const p = product as Product;
-      setOriginalProduct(p);
-      setFormData({
-        name: p.name || '',
-        description: p.description || '',
-        category: p.category || '',
-        subcategory: (p as any).subcategory || '',
-        images: p.images?.map((img: any) => img.url) || [],
-        tags: p.tags || [],
-        featured: p.featured || false,
-        status: p.status || 'draft',
-      });
-      setVariants(
-        p.variants?.length > 0
-          ? p.variants.map((v: any) => ({
-              size: v.size || '',
-              color: v.color || '',
-              price: v.price || 0,
-              costPrice: v.costPrice || 0,
-              markup: v.markup || 0,
-              useMarkup: v.useMarkup || false,
-              stock: v.stock || 0,
-              sku: v.sku || '',
-            }))
-          : [{ ...EMPTY_VARIANT }]
-      );
-      const all = (allData as { products: Product[] }).products || [];
-      setAllProductIds(all.map((pr: any) => ({ _id: pr._id, name: pr.name })));
-    }).catch(() => {
-      setError('Failed to load product');
-    }).finally(() => setFetching(false));
+    let cancelled = false;
+    async function load() {
+      setFetching(true);
+      try {
+        const [cats, allData] = await Promise.all([
+          api.categories.getAll(),
+          api.products.getAll({ limit: 1000 }),
+        ]);
+        if (cancelled) return;
+        setCategories((cats as Category[]).filter((c: any) => c.slug !== 'other'));
+        const all = (allData as { products: Product[] }).products || [];
+        setAllProductIds(all.map((pr: any) => ({ _id: pr._id, name: pr.name })));
+      } catch (err: any) {
+        if (cancelled) return;
+        setError(`Failed to load categories or the product list: ${err?.message || 'unknown error'}`);
+        setFetching(false);
+        return;
+      }
+
+      try {
+        const p = await api.products.getById(productId);
+        if (cancelled) return;
+        setOriginalProduct(p);
+        setFormData({
+          name: p.name || '',
+          description: p.description || '',
+          category: p.category || '',
+          subcategory: (p as any).subcategory || '',
+          images: p.images?.map((img: any) => img.url) || [],
+          tags: p.tags || [],
+          featured: p.featured || false,
+          status: p.status || 'draft',
+        });
+        setVariants(
+          p.variants?.length > 0
+            ? p.variants.map((v: any) => ({
+                size: v.size || '',
+                color: v.color || '',
+                price: v.price || 0,
+                costPrice: v.costPrice || 0,
+                markup: v.markup || 0,
+                useMarkup: v.useMarkup || false,
+                stock: v.stock || 0,
+                sku: v.sku || '',
+              }))
+            : [{ ...EMPTY_VARIANT }]
+        );
+      } catch (err: any) {
+        if (cancelled) return;
+        if (err?.status === 404) {
+          setNotFound(true);
+        } else {
+          setError(`Failed to load product: ${err?.message || 'unknown error'}`);
+        }
+      } finally {
+        if (!cancelled) setFetching(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
   }, [productId]);
 
   // Track unsaved changes
@@ -691,6 +718,32 @@ export default function EditProductPage() {
           <div className="text-center space-y-3">
             <Loader2 className="h-8 w-8 animate-spin text-[#C9A84C] mx-auto" />
             <p className="text-sm text-gray-400">Loading product…</p>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <AdminLayout>
+        <div className="max-w-2xl mx-auto py-16 px-4">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-red-50 flex items-center justify-center mb-5">
+              <AlertCircle className="h-7 w-7 text-red-500" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Product not found</h1>
+            <p className="text-sm text-gray-500 mb-2">
+              No product with id <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono text-gray-700">{productId}</code> exists in the database this admin is connected to.
+            </p>
+            <p className="text-xs text-gray-400 leading-relaxed mb-6">
+              This usually means the product lives in a different environment — e.g. it was created in the
+              deployed backend (kentaz-backend.vercel.app) but not in the local database. Open the same URL
+              in the deployed admin, or check the product list here.
+            </p>
+            <Link href="/products" className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#C9A84C] text-white rounded-xl text-sm font-semibold hover:bg-[#B8953F] transition-colors">
+              <ArrowLeft className="h-4 w-4" /> Back to Products
+            </Link>
           </div>
         </div>
       </AdminLayout>

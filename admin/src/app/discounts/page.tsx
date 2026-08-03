@@ -953,8 +953,10 @@ export default function DiscountsPage() {
                 filtered.map(d => {
                   const st = discountStatus(d);
                   return (
-                    <button key={d._id} onClick={() => setSelectedId(d._id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 text-left transition ${selectedId === d._id ? 'bg-amber-50 border-l-2 border-l-amber-400' : 'hover:bg-gray-50'}`}>
+                    <div key={d._id} role="button" tabIndex={0}
+                      onClick={() => setSelectedId(d._id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(d._id); } }}
+                      className={`w-full cursor-pointer flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 text-left transition ${selectedId === d._id ? 'bg-amber-50 border-l-2 border-l-amber-400' : 'hover:bg-gray-50'}`}>
                       {/* Icon */}
                       <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center flex-shrink-0">
                         <Percent className="w-4 h-4 text-amber-500" />
@@ -980,7 +982,7 @@ export default function DiscountsPage() {
                         </span>
                         <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               )
