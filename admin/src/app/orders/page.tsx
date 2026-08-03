@@ -88,7 +88,12 @@ function OrderDetail({
   const nextStatus = NEXT_STATUS[fullOrder.status as StatusKey];
   const addr = fullOrder.shippingAddress;
 
-  const subtotal = fullOrder.items.reduce((s, i) => s + i.price * i.quantity, 0);
+  // Prefer the figures the server stored at checkout. Orders placed before the
+  // pricing engine landed have none, so fall back to summing the lines.
+  const subtotal = fullOrder.subtotal ?? fullOrder.items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const saleSavings = fullOrder.itemDiscountTotal ?? 0;
+  const codeDiscount = fullOrder.discount?.amount ?? 0;
+  const mismatch = fullOrder.paymentMismatch;
 
   return (
     <div className="flex flex-col h-full">
@@ -247,10 +252,44 @@ function OrderDetail({
             <div className="flex justify-between text-sm text-gray-500">
               <span>Subtotal</span><span>{formatPrice(subtotal)}</span>
             </div>
+            {saleSavings > 0 && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span>Sale savings</span><span>-{formatPrice(saleSavings)}</span>
+              </div>
+            )}
+            {codeDiscount > 0 && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span>Code {fullOrder.discount?.code}</span><span>-{formatPrice(codeDiscount)}</span>
+              </div>
+            )}
+            {fullOrder.shippingCost !== undefined && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Shipping{fullOrder.deliveryMethod ? ` (${fullOrder.deliveryMethod})` : ''}</span>
+                <span>{fullOrder.shippingCost === 0 ? 'Free' : formatPrice(fullOrder.shippingCost)}</span>
+              </div>
+            )}
+            {fullOrder.tax !== undefined && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Tax</span><span>{formatPrice(fullOrder.tax)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200">
               <span>Total</span><span>{formatPrice(fullOrder.total)}</span>
             </div>
           </div>
+          {/* The captured payment came in under the recomputed price — this
+              order was held rather than shipped. */}
+          {mismatch && (
+            <div className="px-4 py-3 border-t border-amber-200 bg-amber-50">
+              <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5" /> Underpaid — held for review
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Paid {formatPrice(mismatch.paid)} against {formatPrice(mismatch.expected)} due
+                {' '}(short {formatPrice(mismatch.expected - mismatch.paid)}).
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Customer + Shipping */}

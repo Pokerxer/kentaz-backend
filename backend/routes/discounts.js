@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { auth, adminOnly } = require('../middleware/auth');
 const Discount = require('../models/Discount');
+const { validateCode, discountAmountOn } = require('../utils/pricing');
 
 // Date-only strings ("YYYY-MM-DD") are ambiguous: JS/Mongoose parse them as
 // UTC midnight, which for a non-UTC timezone lands in the PAST the same day —
@@ -141,8 +142,12 @@ router.delete('/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── Public: Validate a discount code ───────────────────────────
-// Used by checkout and POS to apply a code
+// ── Check a discount code against a hypothetical cart ───────────
+// Backs the admin "test a code" panel. Real carts are priced by
+// POST /api/store/discounts/quote, which resolves line prices from the
+// catalogue; this route only knows a cart total, so it answers the narrower
+// question "would this code apply, and for how much off that total?".
+// Both run the same arithmetic from utils/pricing, so their answers agree.
 router.post('/validate', async (req, res) => {
   try {
     const { code, cartTotal = 0, cartCategories = [], cartProductIds = [] } = req.body;
@@ -151,62 +156,22 @@ router.post('/validate', async (req, res) => {
     const discount = await Discount.findOne({ code: code.toUpperCase().trim() });
     if (!discount) return res.status(404).json({ valid: false, error: 'Invalid discount code' });
 
-    if (!discount.isActive) {
-      return res.json({ valid: false, error: 'This discount code is inactive' });
+    // Which part of the supplied total the code's scope covers. Without line
+    // items we can only tell whether the scope overlaps at all, so an
+    // overlapping scoped code is measured against the whole total.
+    let eligibleSubtotal = cartTotal;
+    if (discount.applicableTo === 'categories') {
+      const cats = (discount.categories || []).map((c) => String(c).toLowerCase());
+      const overlap = cartCategories.some((c) => cats.includes(String(c).toLowerCase()));
+      if (!overlap) eligibleSubtotal = 0;
+    } else if (discount.applicableTo === 'products') {
+      const ids = (discount.products || []).map((id) => id.toString());
+      const overlap = cartProductIds.some((id) => ids.includes(id.toString()));
+      if (!overlap) eligibleSubtotal = 0;
     }
 
-    const now = new Date();
-    if (discount.startDate && now < new Date(discount.startDate)) {
-      return res.json({ valid: false, error: 'This discount code is not yet active' });
-    }
-    if (discount.endDate && now > new Date(discount.endDate)) {
-      return res.json({ valid: false, error: 'This discount code has expired' });
-    }
-
-    if (discount.usageLimit !== null && discount.usageCount >= discount.usageLimit) {
-      return res.json({ valid: false, error: 'This discount code has reached its usage limit' });
-    }
-
-    if (cartTotal < discount.minOrderValue) {
-      return res.json({
-        valid: false,
-        error: `Minimum order value of ₦${discount.minOrderValue.toLocaleString()} required`,
-      });
-    }
-
-    // Category check
-    if (discount.applicableTo === 'categories' && discount.categories.length > 0) {
-      const overlap = discount.categories.some(c => cartCategories.includes(c));
-      if (!overlap) {
-        return res.json({
-          valid: false,
-          error: `This code only applies to: ${discount.categories.join(', ')}`,
-        });
-      }
-    }
-
-    // Product check
-    if (discount.applicableTo === 'products' && discount.products.length > 0) {
-      const discountProductIds = discount.products.map(id => id.toString());
-      const overlap = cartProductIds.some(id => discountProductIds.includes(id.toString()));
-      if (!overlap) {
-        return res.json({
-          valid: false,
-          error: 'This code does not apply to any items in your cart',
-        });
-      }
-    }
-
-    // Calculate discount amount
-    let discountAmount = 0;
-    if (discount.type === 'percentage') {
-      discountAmount = (cartTotal * discount.value) / 100;
-      if (discount.maxDiscount !== null) {
-        discountAmount = Math.min(discountAmount, discount.maxDiscount);
-      }
-    } else {
-      discountAmount = Math.min(discount.value, cartTotal);
-    }
+    const error = validateCode(discount, { subtotal: cartTotal, eligibleSubtotal });
+    if (error) return res.json({ valid: false, error });
 
     res.json({
       valid: true,
@@ -217,7 +182,7 @@ router.post('/validate', async (req, res) => {
         value: discount.value,
         description: discount.description,
       },
-      discountAmount: Math.round(discountAmount),
+      discountAmount: discountAmountOn(discount, eligibleSubtotal, discount.maxDiscount),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

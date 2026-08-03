@@ -1,19 +1,83 @@
 const axios = require('axios');
 const Order = require('../models/Order');
 const User = require('../models/User');
+const Product = require('../models/Product');
+const Discount = require('../models/Discount');
+const { quoteCart } = require('../utils/pricing');
 const { sendEmail, getOrderStatusEmailHtml, getOrderEmailHtml, getAdminOrderEmailHtml } = require('../utils/email');
+
+/** Underpayment below this many naira is rounding noise, not tampering. */
+const PAYMENT_TOLERANCE = 1;
+
+/**
+ * Build the priced cart for a request, reading every price from the database.
+ * The client tells us WHAT it wants (product, variant, quantity) and we decide
+ * what it costs — a `price` or `total` in the request body is ignored.
+ */
+async function quoteFromRequest({ items, discountCode, deliveryMethod, userId }) {
+  const ids = [...new Set((items || []).map((i) => i.product).filter(Boolean))];
+  const products = await Product.find({ _id: { $in: ids } });
+  const byId = new Map(products.map((p) => [String(p._id), p]));
+
+  const lines = [];
+  for (const item of items || []) {
+    const product = byId.get(String(item.product));
+    if (!product) continue; // deleted mid-checkout — drop it rather than guess a price
+    lines.push({ product, variant: item.variant, quantity: item.quantity });
+  }
+
+  const discounts = await Discount.find({ isActive: true });
+
+  // How many times this customer has already redeemed the code they entered.
+  let customerUses = 0;
+  if (discountCode && userId) {
+    customerUses = await Order.countDocuments({
+      user: userId,
+      'discount.code': String(discountCode).toUpperCase().trim(),
+      status: { $ne: 'cancelled' },
+    });
+  }
+
+  return quoteCart({ lines, discounts, code: discountCode, deliveryMethod, customerUses });
+}
+
+exports.quoteFromRequest = quoteFromRequest;
 
 exports.createOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, total, korapayRef } = req.body;
+    const { items, shippingAddress, korapayRef, discountCode, deliveryMethod } = req.body;
 
     if (!korapayRef) {
       return res.status(400).json({ error: 'Payment reference is required' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Order must contain at least one item' });
+    }
+
+    // Prevent duplicate orders for the same payment reference. Checked before
+    // the catalogue lookup so a retry is cheap and returns the original order.
+    const existing = await Order.findOne({ korapayRef });
+    if (existing) {
+      return res.status(200).json(existing);
+    }
+
+    // Price the cart from the catalogue. Anything the client said about money
+    // is discarded here — this is the only figure we charge against.
+    const quote = await quoteFromRequest({
+      items,
+      discountCode,
+      deliveryMethod: deliveryMethod || (shippingAddress && shippingAddress.deliveryMethod),
+      userId: req.user.id,
+    });
+
+    if (quote.items.length === 0) {
+      return res.status(400).json({ error: 'None of the items in this order are still available' });
     }
 
     // Verify payment server-side before creating the order
     const secretKey = process.env.KORAPAY_SECRET_KEY;
     let korapayStatus = 'pending';
+    let paidAmount = null;
     try {
       const txnRes = await axios.get(
         `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(korapayRef)}`,
@@ -21,6 +85,7 @@ exports.createOrder = async (req, res) => {
       );
       const txn = txnRes.data.data;
       korapayStatus = txn.status; // 'success' | 'failed' | ...
+      paidAmount = Number(txn.amount);
 
       if (txn.status !== 'success') {
         return res.status(402).json({ error: 'Payment not confirmed. Please complete payment before placing the order.' });
@@ -30,22 +95,64 @@ exports.createOrder = async (req, res) => {
       console.warn('[createOrder] Korapay verify failed — proceeding with pending status:', verifyErr.message);
     }
 
-    // Prevent duplicate orders for the same payment reference
-    const existing = await Order.findOne({ korapayRef });
-    if (existing) {
-      return res.status(200).json(existing);
+    // The customer paid whatever the browser asked Korapay for. If that is less
+    // than the price we just computed, the client-side total was wrong or was
+    // tampered with. Hold the order for review rather than ship underpaid goods
+    // — but never discard a payment that was actually captured.
+    let paymentMismatch = null;
+    if (Number.isFinite(paidAmount) && paidAmount < quote.total - PAYMENT_TOLERANCE) {
+      paymentMismatch = { expected: quote.total, paid: paidAmount, at: new Date() };
+      console.warn(
+        `[createOrder] payment mismatch on ${korapayRef}: paid ₦${paidAmount}, expected ₦${quote.total}`
+      );
     }
 
     const order = new Order({
       user: req.user.id,
-      items,
+      items: quote.items.map((i) => ({
+        product: i.product,
+        name: i.name,
+        price: i.unitPrice,
+        originalUnitPrice: i.originalUnitPrice,
+        lineTotal: i.lineTotal,
+        appliedDiscount: i.appliedDiscount
+          ? {
+              discount: i.appliedDiscount._id || undefined,
+              code: i.appliedDiscount.code || undefined,
+              source: i.appliedDiscount.source,
+            }
+          : undefined,
+        quantity: i.quantity,
+        variant: i.variant || undefined,
+      })),
       shippingAddress,
-      total,
+      subtotal: quote.subtotal,
+      itemDiscountTotal: quote.itemDiscountTotal,
+      discount: quote.discount
+        ? { discount: quote.discount._id, code: quote.discount.code, amount: quote.discount.amount }
+        : undefined,
+      shippingCost: quote.shipping,
+      tax: quote.tax,
+      deliveryMethod: quote.deliveryMethod,
+      total: quote.total,
       korapayRef,
       korapayStatus,
-      status: korapayStatus === 'success' ? 'processing' : 'pending',
+      paymentMismatch: paymentMismatch || undefined,
+      status: korapayStatus === 'success' && !paymentMismatch ? 'processing' : 'pending',
     });
     await order.save();
+
+    // Record the redemption. The filter re-checks the limit so two orders
+    // racing for the last remaining use cannot both take it.
+    if (quote.discount) {
+      await Discount.findOneAndUpdate(
+        {
+          _id: quote.discount._id,
+          $or: [{ usageLimit: null }, { $expr: { $lt: ['$usageCount', '$usageLimit'] } }],
+        },
+        { $inc: { usageCount: 1 } }
+      );
+    }
 
     // Send confirmation emails for verified payments
     if (korapayStatus === 'success') {

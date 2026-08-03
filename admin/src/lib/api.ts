@@ -1047,7 +1047,19 @@ export interface Order {
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   items: OrderItem[];
   shippingAddress?: Address;
+  // Priced server-side at checkout. Optional because orders placed before the
+  // pricing engine landed carry only `total`.
+  subtotal?: number;
+  /** Saved through automatic flash-sale markdowns on the line items. */
+  itemDiscountTotal?: number;
+  /** Order-level promo code redeemed on this order, if any. */
+  discount?: { discount?: string; code?: string; amount?: number };
+  shippingCost?: number;
+  tax?: number;
+  deliveryMethod?: string;
   total: number;
+  /** Set when Korapay captured less than the recomputed total — needs review. */
+  paymentMismatch?: { expected: number; paid: number; at: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -1056,8 +1068,13 @@ export interface OrderItem {
   product?: { _id: string; name: string; images: { url: string }[]; slug?: string; category?: string };
   name?: string;
   quantity: number;
+  /** Unit price charged, after any flash-sale markdown. */
   price: number;
-  variant?: { size: string; color: string };
+  /** List price before the markdown; absent on pre-pricing-engine orders. */
+  originalUnitPrice?: number;
+  lineTotal?: number;
+  appliedDiscount?: { discount?: string; code?: string; source?: 'discount' | 'compareAtPrice' };
+  variant?: { size: string; color: string; sku?: string };
   image?: string;
 }
 

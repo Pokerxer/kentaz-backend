@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { clearCart } from '@/store/cartSlice';
 import { formatPrice } from '@/lib/utils';
-import { useKorapay, useShippingInfo, getDeliveryCost, calculateTotals } from '@/lib/korapay';
+import { useKorapay, useShippingInfo } from '@/lib/korapay';
+import { useCartQuote, toQuoteItems } from '@/lib/cartQuote';
 
 type CheckoutStep = 'shipping' | 'payment' | 'confirmation';
 
@@ -19,7 +20,7 @@ export default function CheckoutPage() {
   const { isAuthenticated, user, sessionChecked } = userState;
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { items, total } = useAppSelector((state) => state.cart);
+  const { items, discountCode } = useAppSelector((state) => state.cart);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('shipping');
   const [loading, setLoading] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
@@ -43,15 +44,16 @@ export default function CheckoutPage() {
     }
   }, [sessionChecked, isAuthenticated, user, router]);
 
-  const deliveryCost = getDeliveryCost(shippingInfo.deliveryMethod, total);
-  const subtotal = total;
-  const { tax, total: grandTotal } = calculateTotals(subtotal, deliveryCost);
+  // The order summary is priced by the server, using the same code that will
+  // recompute the order when it is placed — so the amount shown here, the
+  // amount Korapay charges and the amount stored on the order all agree.
+  const deliveryMethod = shippingInfo.deliveryMethod === 'express' ? 'express' : 'standard';
+  const { quote, loading: quoteLoading } = useCartQuote(items, discountCode ?? null, deliveryMethod);
 
-  const getPrice = (product: any) => {
-    if (!product?.price) return 0;
-    if (typeof product.price === 'object') return product.price.amount;
-    return product.price;
-  };
+  const subtotal = quote?.subtotal ?? 0;
+  const deliveryCost = quote?.shipping ?? 0;
+  const tax = quote?.tax ?? 0;
+  const grandTotal = quote?.total ?? 0;
 
   const handleContinueToPayment = () => {
     if (isShippingValid) {
@@ -60,7 +62,7 @@ export default function CheckoutPage() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!korapayReady) return;
+    if (!korapayReady || !quote) return;
     setLoading(true);
 
     initializePayment({
@@ -78,16 +80,13 @@ export default function CheckoutPage() {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
+            // Only what we want to buy — the server prices it. Sending a
+            // `price` or `total` from here would be ignored anyway.
             body: JSON.stringify({
-              items: items.map(item => ({
-                product: item.product._id,
-                name: item.product.name,
-                price: item.variant?.price || item.product.price,
-                quantity: item.quantity,
-                variant: item.variant
-              })),
+              items: toQuoteItems(items),
               shippingAddress: shippingInfo,
-              total: grandTotal,
+              discountCode: discountCode || null,
+              deliveryMethod,
               korapayRef: reference.reference
             })
           });
@@ -330,7 +329,7 @@ export default function CheckoutPage() {
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-gray-900">Standard Delivery</span>
                             <span className="font-semibold text-gray-900">
-                              {total >= 50000 ? 'Free' : '₦2,500'}
+                              {subtotal - (quote?.discountAmount ?? 0) >= 50000 ? 'Free' : '₦2,500'}
                             </span>
                           </div>
                           <p className="text-sm text-gray-500 mt-1">3-5 business days</p>
@@ -441,8 +440,8 @@ export default function CheckoutPage() {
                     <Button 
                       size="lg" 
                       onClick={handlePlaceOrder} 
-                      loading={loading || korapayLoading} 
-                      disabled={!korapayReady || !isShippingValid}
+                      loading={loading || korapayLoading}
+                      disabled={!korapayReady || !isShippingValid || !quote || quoteLoading}
                       className="px-8"
                     >
                       <Lock className="h-4 w-4 mr-2" />
@@ -524,43 +523,67 @@ export default function CheckoutPage() {
                 <CardContent className="space-y-4">
                   {/* Items */}
                   <div className="space-y-4 max-h-64 overflow-y-auto">
-                    {items.map(({ product, quantity, variant }) => (
-                      <div key={product._id} className="flex gap-4">
-                        <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                          {product.images?.[0]?.url && (
-                            <SafeImage
-                              src={product.images[0].url}
-                              alt={product.name}
-                              width={64}
-                              height={64}
-                              className="w-full h-full object-cover"
-                            />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
-                          {variant && (variant.size || variant.color) && (
-                            <p className="text-xs text-gray-500">
-                              {[variant.size, variant.color].filter(Boolean).join(' / ')}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs text-gray-500">Qty: {quantity}</span>
-                            <span className="text-sm font-medium text-gray-900">
-                              {formatPrice(getPrice(product) * quantity)}
-                            </span>
+                    {items.map(({ product, quantity, variant }, index) => {
+                      const line = quote?.items[index];
+                      const unitPrice = line?.unitPrice ?? variant?.price ?? 0;
+                      const wasPrice = line?.originalUnitPrice ?? unitPrice;
+                      const variantKey = [variant?.size, variant?.color].filter(Boolean).join(' / ');
+                      return (
+                        <div key={`${product._id}-${variantKey}`} className="flex gap-4">
+                          <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                            {product.images?.[0]?.url && (
+                              <SafeImage
+                                src={product.images[0].url}
+                                alt={product.name}
+                                width={64}
+                                height={64}
+                                className="w-full h-full object-cover"
+                              />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
+                            {variantKey && <p className="text-xs text-gray-500">{variantKey}</p>}
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs text-gray-500">Qty: {quantity}</span>
+                              <span className="text-sm font-medium text-gray-900">
+                                {wasPrice > unitPrice && (
+                                  <span className="text-xs text-gray-400 line-through mr-1.5">
+                                    {formatPrice(wasPrice * quantity)}
+                                  </span>
+                                )}
+                                {formatPrice(unitPrice * quantity)}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
-                  {/* Totals */}
+                  {/* Totals — every figure comes from the server quote */}
                   <div className="border-t border-gray-200 pt-4 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Subtotal</span>
                       <span className="font-medium text-gray-900">{formatPrice(subtotal)}</span>
                     </div>
+                    {quote && quote.itemDiscountTotal > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Sale savings</span>
+                        <span className="font-medium">-{formatPrice(quote.itemDiscountTotal)}</span>
+                      </div>
+                    )}
+                    {quote && quote.discountAmount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Discount ({quote.discount?.code})</span>
+                        <span className="font-medium">-{formatPrice(quote.discountAmount)}</span>
+                      </div>
+                    )}
+                    {quote?.codeError && discountCode && (
+                      <p className="text-xs text-amber-600">
+                        Code {discountCode} could not be applied: {quote.codeError}
+                      </p>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Delivery</span>
                       <span className="font-medium text-gray-900">
@@ -573,7 +596,9 @@ export default function CheckoutPage() {
                     </div>
                     <div className="flex justify-between pt-3 border-t border-gray-200">
                       <span className="font-semibold text-gray-900">Total</span>
-                      <span className="font-bold text-xl text-gray-900">{formatPrice(grandTotal)}</span>
+                      <span className={`font-bold text-xl text-gray-900 ${quoteLoading ? 'opacity-50' : ''}`}>
+                        {formatPrice(grandTotal)}
+                      </span>
                     </div>
                   </div>
 
