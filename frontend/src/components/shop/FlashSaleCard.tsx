@@ -95,16 +95,16 @@ export function FlashSaleCard({ deal, variant = 'light', onQuickView }: FlashSal
             } opacity-60 group-hover:opacity-80 transition-opacity duration-500`}
           />
 
-          {/* Discount badge */}
-          <span className="absolute top-2.5 left-2.5 px-2 py-1 rounded-lg bg-gradient-to-r from-red-600 to-red-500 text-white text-[11px] font-extrabold tracking-wide shadow-lg">
-            -{deal.discountPercent}%
-          </span>
-
-          {/* Flash badge */}
-          <span className="absolute top-2.5 left-[74px] px-2 py-1 rounded-lg bg-[#C9A84C] text-[#1A1A1A] text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg">
-            <Zap className="h-3 w-3 fill-current" />
-            Flash
-          </span>
+          {/* Discount + Flash badges */}
+          <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+            <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-red-600 to-red-500 text-white text-[11px] font-extrabold tracking-wide shadow-lg whitespace-nowrap">
+              -{deal.discountPercent}%
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-[#C9A84C] text-[#1A1A1A] text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg">
+              <Zap className="h-3 w-3 fill-current" />
+              Flash
+            </span>
+          </div>
 
           {/* Wishlist */}
           <button

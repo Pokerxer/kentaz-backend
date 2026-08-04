@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SafeImage from '@/components/ui/SafeImage';
 import { X, Plus, Minus, Check, ShoppingBag, Heart } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { addToCart } from '@/store/cartSlice';
 import { addToWishlist, removeFromWishlist } from '@/store/wishlistSlice';
 import { formatPrice } from '@/lib/utils';
+import { getActiveDiscounts, getVariantDeal } from '@/lib/flashSale';
+import type { FlashDiscount } from '@/lib/flashSale';
 import { Button } from '@/components/ui/Button';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -34,6 +36,18 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const [quantity, setQuantity] = useState(1);
   const [addedToCart, setAddedToCart] = useState(false);
   const [selectedImage, setSelectedImage] = useState(0);
+  /** Active promotions from the public discounts endpoint (best-effort). */
+  const [discounts, setDiscounts] = useState<FlashDiscount[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getActiveDiscounts().then((ds) => {
+      if (!cancelled) setDiscounts(ds);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isInWishlist = product ? wishlistItems.some(item => item._id === product._id) : false;
 
@@ -43,6 +57,13 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const variants = product.variants || [];
   const currentVariant = variants[selectedVariant];
   const price = currentVariant?.price || 0;
+  // Effective pricing mirrors the backend quote: the deepest genuine markdown
+  // (admin discount or compareAtPrice) wins, so the modal shows — and adds to
+  // the cart — exactly the sale price the product card advertised.
+  const deal = product && currentVariant ? getVariantDeal(product, currentVariant, discounts) : null;
+  const displayPrice = deal?.price ?? price;
+  const wasPrice = deal?.compareAtPrice ?? null;
+  const discountPct = deal?.discountPercent ?? 0;
   const isOutOfStock = !currentVariant?.stock || currentVariant.stock <= 0;
 
   const handleAddToCart = () => {
@@ -53,13 +74,13 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
         slug: product.slug,
         thumbnail: product.thumbnail,
         images: product.images,
-        price: price,
+        price: displayPrice,
       },
       quantity,
       variant: currentVariant ? {
         size: currentVariant.size,
         color: currentVariant.color,
-        price: currentVariant.price,
+        price: displayPrice,
       } : undefined,
     }));
     setAddedToCart(true);
@@ -78,7 +99,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
         name: product.name, 
         slug: product.slug, 
         thumbnail: product.thumbnail,
-        price: price,
+        price: displayPrice,
       }));
     }
   };
@@ -135,7 +156,17 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
 
                 <span className="text-sm text-[#C9A84C] font-medium mb-2">{product.category}</span>
                 <h2 className="text-2xl font-bold mb-2">{product.name}</h2>
-                <p className="text-3xl font-bold text-[#C9A84C] mb-4">{formatPrice(price)}</p>
+                <div className="flex items-center gap-3 mb-4">
+                  <p className="text-3xl font-bold text-[#C9A84C]">{formatPrice(displayPrice)}</p>
+                  {wasPrice != null && wasPrice > displayPrice && (
+                    <>
+                      <p className="text-xl text-gray-400 line-through">{formatPrice(wasPrice)}</p>
+                      <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 px-2.5 py-1.5 rounded-lg">
+                        -{discountPct}%
+                      </span>
+                    </>
+                  )}
+                </div>
                 
                 {product.description && (
                   <p className="text-gray-600 text-sm mb-6 line-clamp-3">{product.description}</p>

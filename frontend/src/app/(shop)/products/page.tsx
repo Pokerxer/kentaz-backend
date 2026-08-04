@@ -234,13 +234,14 @@ function ProductsPage() {
   const router = useRouter();
   const collectionParam = searchParams.get('collection');
   const categoryParam = searchParams.get('category');
+  const searchParam = searchParams.get('search');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParam || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParam || '');
   const [activeCategory, setActiveCategory] = useState(collectionParam || categoryParam || 'all');
   const [sortBy, setSortBy] = useState('featured');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -408,13 +409,36 @@ function ProductsPage() {
     }
   }, [products, priceStats]);
 
+  // Keep the category in sync with the URL in BOTH directions: clicking a
+  // category pushes a new URL, and back/forward navigation or a direct link
+  // must restore the category (or reset to 'all' when the param is absent).
   useEffect(() => {
-    if (collectionParam) setActiveCategory(collectionParam);
-  }, [collectionParam]);
+    setActiveCategory(collectionParam || categoryParam || 'all');
+  }, [collectionParam, categoryParam]);
 
+  // A search arriving in the URL (navbar search box, shared link, back/forward)
+  // must populate the page's own search box and filter immediately.
   useEffect(() => {
-    if (categoryParam && categoryParam !== 'all') setActiveCategory(categoryParam);
-  }, [categoryParam]);
+    const fromUrl = searchParam || '';
+    if (fromUrl !== searchQuery) {
+      setSearchQuery(fromUrl);
+      setDebouncedSearch(fromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParam]);
+
+  // Mirror the applied search back into the URL (replace, so typing doesn't
+  // spam history) — keeps the search shareable and back-button aware. The
+  // category is preserved so the two filters stay in one URL.
+  useEffect(() => {
+    if (debouncedSearch === (searchParam || '')) return;
+    const params = new URLSearchParams();
+    if (activeCategory !== 'all') params.set('category', activeCategory);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    const qs = params.toString();
+    router.replace(qs ? `/products?${qs}` : '/products');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -551,11 +575,12 @@ function ProductsPage() {
 
   const handleCategoryClick = (handle: string) => {
     setActiveCategory(handle);
-    if (handle === 'all') {
-      router.push('/products');
-    } else {
-      router.push(`/products?category=${encodeURIComponent(handle)}`);
-    }
+    // Preserve the active search so switching category doesn't silently drop it.
+    const params = new URLSearchParams();
+    if (handle !== 'all') params.set('category', handle);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    const qs = params.toString();
+    router.push(qs ? `/products?${qs}` : '/products');
   };
 
   const handleCompareToggle = useCallback((product: Product) => {

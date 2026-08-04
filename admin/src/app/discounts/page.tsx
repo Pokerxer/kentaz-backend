@@ -738,7 +738,7 @@ export default function DiscountsPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'flash'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expired' | 'flash'>('all');
   const [selectedId, setSelectedId] = useState<string | null | 'new'>('new');
   const [flashDeals, setFlashDeals] = useState<FlashDealRow[]>([]);
   const [flashLoading, setFlashLoading] = useState(false);
@@ -802,17 +802,41 @@ export default function DiscountsPage() {
     searchRef.current = setTimeout(() => {
       let list = discounts;
       if (search) list = list.filter(d => d.code.includes(search.toUpperCase()) || d.description.toLowerCase().includes(search.toLowerCase()));
-      if (statusFilter !== 'all') list = list.filter(d => statusFilter === 'active' ? d.isActive : !d.isActive);
+      // Status tabs match the row labels: 'active' is date/usage-aware
+      // (a discount with isActive=true but a past endDate is 'expired', not
+      // active), 'inactive' means switched off, 'expired' covers past dates
+      // and exhausted usage limits. 'flash' renders its own list below.
+      if (statusFilter !== 'all' && statusFilter !== 'flash') {
+        list = list.filter(d =>
+          statusFilter === 'active' ? discountStatus(d) === 'active'
+          : statusFilter === 'expired' ? discountStatus(d) === 'expired'
+          : !d.isActive
+        );
+      }
       setFiltered(list);
     }, 200);
   }, [search, statusFilter, discounts]);
 
   const selected = selectedId === 'new' ? null : discounts.find(d => d._id === selectedId) ?? null;
 
-  // Flash deals view — search filters products by name when the tab is active.
-  const flashFiltered = flashDeals.filter(f =>
-    !search || f.product.name.toLowerCase().includes(search.toLowerCase())
-  );
+  // Flash deals view — search matches the product name, its category, the
+  // covering discount's code/description, or the markdown percent. Searching
+  // "FLASH25" or "Female Fashion" must find the deals they power.
+  const flashFiltered = flashDeals.filter(f => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const hay = [
+      f.product.name,
+      f.product.category,
+      f.code || '',
+      f.discount?.description || '',
+      `-${f.markdown.discountPercent}%`,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return hay.includes(q);
+  });
   const showFlashPanel = statusFilter === 'flash' && selectedFlashId !== null;
   const flashSelected = showFlashPanel ? flashDeals.find(f => f.product._id === selectedFlashId) ?? null : null;
 
@@ -886,7 +910,7 @@ export default function DiscountsPage() {
 
             {/* Status filter */}
             <div className="flex gap-1">
-              {(['all', 'active', 'inactive', 'flash'] as const).map(s => (
+              {(['all', 'active', 'inactive', 'expired', 'flash'] as const).map(s => (
                 <button key={s} onClick={() => { setStatusFilter(s); if (s !== 'flash') setSelectedFlashId(null); }}
                   className={`flex-1 py-1 rounded-lg text-xs font-medium transition capitalize flex items-center justify-center gap-1 ${statusFilter === s ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
                   {s === 'flash' ? (<><Zap className="w-3 h-3" /> Flash</>) : s}

@@ -237,6 +237,61 @@ export function getFlashDeal(product: any, discounts: FlashDiscount[] = []): Fla
   return best;
 }
 
+/**
+ * Best deal for ONE specific variant (product detail / quick view pricing).
+ * Mirrors the backend's resolveUnitPrice: applicable admin discounts compete
+ * with the variant's own compareAtPrice markdown and the deepest genuine
+ * markdown (>= FLASH_SALE.minDiscountPercent) wins. Returns null when the
+ * variant is not genuinely discounted.
+ */
+export function getVariantDeal(product: any, variant: any, discounts: FlashDiscount[] = []): FlashDeal | null {
+  const price = Number(variant?.price);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const stock = Number.isFinite(Number(variant?.stock)) ? Math.max(0, Number(variant.stock)) : 0;
+
+  let best: FlashDeal | null = null;
+  const consider = (candidate: FlashDeal) => {
+    if (!best || candidate.discountPercent > best.discountPercent) best = candidate;
+  };
+
+  // Source 1: applicable admin discounts (sale price = discounted price)
+  for (const d of discounts) {
+    if (!discountAppliesTo(d, product)) continue;
+    const salePrice = discountPriceFor(d, price);
+    if (salePrice >= price) continue;
+    const discountPercent = Math.round(((price - salePrice) / price) * 100);
+    if (discountPercent < FLASH_SALE.minDiscountPercent) continue;
+    consider({
+      product,
+      variant: { size: variant.size, color: variant.color, price: salePrice, compareAtPrice: price, stock },
+      price: salePrice,
+      compareAtPrice: price,
+      discountPercent,
+      savings: price - salePrice,
+      stock,
+    });
+  }
+
+  // Source 2: a compareAtPrice markdown already baked into the variant
+  const compareAt = Number(variant?.compareAtPrice);
+  if (Number.isFinite(compareAt) && compareAt > price) {
+    const discountPercent = Math.round(((compareAt - price) / compareAt) * 100);
+    if (discountPercent >= FLASH_SALE.minDiscountPercent) {
+      consider({
+        product,
+        variant: { size: variant.size, color: variant.color, price, compareAtPrice: compareAt, stock },
+        price,
+        compareAtPrice: compareAt,
+        discountPercent,
+        savings: compareAt - price,
+        stock,
+      });
+    }
+  }
+
+  return best;
+}
+
 /** All flash deals across a product list, best discount first. */
 export function getFlashDeals(products: any[], discounts: FlashDiscount[] = []): FlashDeal[] {
   const deals: FlashDeal[] = [];

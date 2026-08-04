@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import SafeImage from '@/components/ui/SafeImage';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Minus, Plus, Heart, ShoppingCart, Truck, Shield, RotateCcw, Check, Star, Share2, ChevronRight, ZoomIn, Eye } from 'lucide-react';
-import { useAppDispatch } from '@/store/hooks';
+import { Minus, Plus, Heart, ShoppingCart, Truck, Shield, RotateCcw, Check, Star, Share2, ChevronRight, ZoomIn, Eye, Loader2 } from 'lucide-react';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { addToWishlist } from '@/store/wishlistSlice';
 import { addToCart } from '@/store/cartSlice';
 import { formatPrice } from '@/lib/utils';
+import { getActiveDiscounts, getVariantDeal } from '@/lib/flashSale';
+import type { FlashDiscount } from '@/lib/flashSale';
 import { useRouter } from 'next/navigation';
 
 interface ProductVariant {
@@ -69,6 +71,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { isAuthenticated } = useAppSelector((s) => s.user);
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -84,6 +87,25 @@ export default function ProductDetailPage() {
   // Temu-style variant selection
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  /** Active promotions from the public discounts endpoint (best-effort). */
+  const [discounts, setDiscounts] = useState<FlashDiscount[]>([]);
+
+  // Write-a-review form
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getActiveDiscounts().then((ds) => {
+      if (!cancelled) setDiscounts(ds);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const sizes: string[] = product?.variants
     ? [...new Set(product.variants.map(v => v.size).filter(Boolean))] as string[]
@@ -162,40 +184,43 @@ export default function ProductDetailPage() {
     }
   };
 
-useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/products/${params.slug}`)
-      .then(res => res.json())
-      .then(data => {
-        const p = data.product;
-        setProduct(p);
-        setReviews(data.reviews || []);
-        
-        // Fetch related products by category
-        if (p?.category) {
-          fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/products?category=${encodeURIComponent(p.category)}&limit=10`)
-            .then(res => res.json())
-            .then(data => {
-              // Filter out current product, products without images, and out-of-stock products
-              const related = (data.products || [])
-                .filter((rp: Product) =>
-                  rp._id !== p._id &&
-                  (rp.images?.length ?? 0) > 0 &&
-                  rp.images?.[0]?.url &&
-                  (rp.variants || []).some((v: any) => (v.stock ?? 0) >= 1)
-                )
-                .slice(0, 6);
-              setRelatedProducts(related);
-            })
-            .catch(err => console.error('Failed to fetch related products:', err));
+  const loadProduct = useCallback(async (slug: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/products/${slug}`);
+      const data = await res.json();
+      const p = data.product;
+      setProduct(p);
+      setReviews(data.reviews || []);
+
+      // Fetch related products by category
+      if (p?.category) {
+        try {
+          const relRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/products?category=${encodeURIComponent(p.category)}&limit=10`);
+          const relData = await relRes.json();
+          // Filter out current product, products without images, and out-of-stock products
+          const related = (relData.products || [])
+            .filter((rp: Product) =>
+              rp._id !== p._id &&
+              (rp.images?.length ?? 0) > 0 &&
+              rp.images?.[0]?.url &&
+              (rp.variants || []).some((v: any) => (v.stock ?? 0) >= 1)
+            )
+            .slice(0, 6);
+          setRelatedProducts(related);
+        } catch (err) {
+          console.error('Failed to fetch related products:', err);
         }
-        
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to fetch product:', err);
-        setLoading(false);
-      });
-  }, [params.slug]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch product:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProduct(String(params.slug));
+  }, [params.slug, loadProduct]);
 
   if (loading) {
     return (
@@ -248,6 +273,13 @@ useEffect(() => {
   const price = selectedVariant?.price || 0;
   const inventory = selectedVariant?.stock || 0;
   const isOutOfStock = inventory === 0;
+  // Effective pricing: the deepest genuine markdown wins (admin discount or
+  // compareAtPrice), mirroring the backend quote — so the page shows exactly
+  // what the cart will charge.
+  const deal = product && selectedVariant ? getVariantDeal(product, selectedVariant, discounts) : null;
+  const displayPrice = deal?.price ?? price;
+  const wasPrice = deal?.compareAtPrice ?? null;
+  const discountPct = deal?.discountPercent ?? 0;
   const rating = product.ratings?.avg || 4.5;
   const reviewCount = product.ratings?.count || 0;
   const isFeatured = product.tags?.includes('featured');
@@ -263,13 +295,13 @@ useEffect(() => {
         slug: product.slug,
         thumbnail: product.thumbnail,
         images: product.images,
-        price: selectedVariant?.price,
+        price: displayPrice,
       },
       quantity,
       variant: selectedVariant ? {
         size: selectedVariant.size,
         color: selectedVariant.color,
-        price: selectedVariant.price,
+        price: displayPrice,
       } : undefined,
     }));
     
@@ -286,6 +318,43 @@ useEffect(() => {
       thumbnail: product.thumbnail,
     }));
     setIsWishlisted(!isWishlisted);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!product || submittingReview) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('kentaz_token') : null;
+    setSubmittingReview(true);
+    setReviewMsg(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'}/api/store/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          product: product._id,
+          rating: reviewRating,
+          comment: reviewComment,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setReviewMsg({ ok: true, text: 'Review submitted! Thank you for your feedback.' });
+        setReviewComment('');
+        setReviewRating(5);
+        // Refresh the page data so the new review and updated average appear.
+        await loadProduct(String(params.slug));
+      } else if (res.status === 401) {
+        setReviewMsg({ ok: false, text: 'Please log in to submit a review.' });
+      } else {
+        setReviewMsg({ ok: false, text: data.error || 'Could not submit your review.' });
+      }
+    } catch {
+      setReviewMsg({ ok: false, text: 'Network error. Please try again.' });
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   const getColorHex = (colorName: string): string => {
@@ -509,11 +578,21 @@ useEffect(() => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.35 }}
-                  className="flex items-baseline gap-4 pt-2"
+                  className="flex items-center gap-3 pt-2"
                 >
                   <span className="text-4xl font-bold text-gray-900">
-                    {formatPrice(price)}
+                    {formatPrice(displayPrice)}
                   </span>
+                  {wasPrice != null && wasPrice > displayPrice && (
+                    <>
+                      <span className="text-xl text-gray-400 line-through">
+                        {formatPrice(wasPrice)}
+                      </span>
+                      <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 px-2.5 py-1.5 rounded-lg">
+                        -{discountPct}%
+                      </span>
+                    </>
+                  )}
                 </motion.div>
 
                 <motion.div className="prose prose-sm text-gray-600 leading-relaxed py-4 border-y border-gray-100">
@@ -853,22 +932,111 @@ useEffect(() => {
           transition={{ delay: 1.2 }}
           className="mt-16 lg:mt-24"
         >
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
             <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">
               Customer Reviews
             </h2>
-            {reviews.length > 0 && (
-              <span className="text-sm text-gray-500">
-                {reviews.length} review{reviews.length !== 1 ? 's' : ''}
-              </span>
-            )}
+            <div className="flex items-center gap-4">
+              {reviews.length > 0 && (
+                <span className="text-sm text-gray-500">
+                  {reviews.length} review{reviews.length !== 1 ? 's' : ''}
+                </span>
+              )}
+              {isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReviewForm((v) => !v);
+                    setReviewMsg(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+                >
+                  {showReviewForm ? 'Cancel' : 'Write a Review'}
+                </button>
+              ) : (
+                <Link
+                  href={`/login?callbackUrl=/products/${product.slug}`}
+                  className="px-4 py-2 rounded-xl border border-gray-900 text-gray-900 text-sm font-semibold hover:bg-gray-900 hover:text-white transition-colors"
+                >
+                  Login to Review
+                </Link>
+              )}
+            </div>
           </div>
+
+          {showReviewForm && isAuthenticated && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white border border-gray-100 rounded-2xl p-6 mb-8"
+            >
+              <h3 className="font-bold text-gray-900 mb-4">Write your review</h3>
+              <div className="flex items-center gap-1 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setReviewRating(star)}
+                    aria-label={`${star} star${star !== 1 ? 's' : ''}`}
+                    className="p-1 transition-transform hover:scale-110"
+                  >
+                    <Star
+                      className={`h-8 w-8 transition-colors ${
+                        star <= reviewRating
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-gray-300 hover:text-yellow-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+                <span className="ml-2 text-sm text-gray-500">{reviewRating}/5</span>
+              </div>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                placeholder="Share your experience with this product (optional)"
+                rows={4}
+                className="w-full border border-gray-200 rounded-xl p-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
+              />
+              {reviewMsg && (
+                <p className={`mt-3 text-sm font-medium ${reviewMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
+                  {reviewMsg.text}
+                </p>
+              )}
+              <div className="flex gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={handleSubmitReview}
+                  disabled={submittingReview}
+                  className="px-6 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {submittingReview ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit Review'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          )}
 
           {reviews.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-2xl">
               <Star className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">No reviews yet</p>
               <p className="text-sm text-gray-400">Be the first to review this product</p>
+              {isAuthenticated && !showReviewForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowReviewForm(true)}
+                  className="mt-4 px-6 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+                >
+                  Write the first review
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-8">

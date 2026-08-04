@@ -10,6 +10,7 @@ import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { removeFromCart, updateQuantity } from '@/store/cartSlice';
 import { setUser } from '@/store/userSlice';
 import { formatPrice } from '@/lib/utils';
+import { useCartQuote } from '@/lib/cartQuote';
 
 const COLOR_MAP: Record<string, string> = {
   black: '#000000',
@@ -39,7 +40,7 @@ const COLOR_MAP: Record<string, string> = {
 export function CartSidebar() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { items, total } = useAppSelector((state) => state.cart);
+  const { items, total, discountCode } = useAppSelector((state) => state.cart);
   const { isAuthenticated } = useAppSelector((state) => state.user);
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -91,6 +92,16 @@ export function CartSidebar() {
     };
   }, [isMounted, isOpen]);
 
+  // The server quote is authoritative: line prices carry the flash-sale
+  // markdowns the pages advertised, and the promo code amount comes from the
+  // same pricing code checkout will charge. The optimistic `total` only covers
+  // the moment before the quote lands.
+  const { quote } = useCartQuote(items, discountCode ?? null, 'standard');
+  const subtotal = quote?.subtotal ?? total;
+  const shipping = quote ? quote.shipping : subtotal >= 50000 ? 0 : 2500;
+  const promoAmount = quote?.discountAmount ?? 0;
+  const finalTotal = Math.max(0, subtotal + shipping - promoAmount);
+
   if (!isMounted) return null;
 
   const getPriceAmount = (price: number | { amount: number } | undefined): number => {
@@ -112,10 +123,6 @@ export function CartSidebar() {
       setRemovingId(null);
     }, 300);
   };
-
-  const subtotal = total;
-  const shipping = subtotal >= 50000 ? 0 : 2500;
-  const finalTotal = subtotal + shipping;
 
   const handleCheckout = () => {
     if (isAuthenticated) {
@@ -233,8 +240,15 @@ export function CartSidebar() {
                 >
                   <AnimatePresence>
                     {items.map((item, index) => {
-                      const itemPrice = item.variant?.price || item.product.price || 0;
-                      const itemTotal = itemPrice * item.quantity;
+                      // Line up each cart row with its priced counterpart from
+                      // the quote, so a line shows the same sale price the
+                      // subtotal was built from (raw stored price only while
+                      // the quote is loading).
+                      const line = quote?.items[index];
+                      const itemPrice = line?.unitPrice ?? (item.variant?.price || item.product.price || 0);
+                      const originalItemPrice = line?.originalUnitPrice ?? itemPrice;
+                      const onSale = originalItemPrice > itemPrice;
+                      const itemTotal = line?.lineTotal ?? itemPrice * item.quantity;
                       const id = `${item.product._id}-${item.variant?.size || ''}-${item.variant?.color || ''}-${index}`;
                       const isRemoving = removingId === id;
                       
@@ -341,8 +355,17 @@ export function CartSidebar() {
                                 className="text-right"
                               >
                                 <p className="text-sm font-bold text-gray-900">{formatPrice(itemTotal)}</p>
-                                {item.quantity > 1 && (
-                                  <p className="text-xs text-gray-500">{formatPrice(itemPrice)} each</p>
+                                {onSale ? (
+                                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                                    <p className="text-xs text-gray-400 line-through">{formatPrice(originalItemPrice)}</p>
+                                    <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded px-1 py-0.5">
+                                      -{line?.discountPercent}%
+                                    </span>
+                                  </div>
+                                ) : (
+                                  item.quantity > 1 && (
+                                    <p className="text-xs text-gray-500">{formatPrice(itemPrice)} each</p>
+                                  )
                                 )}
                               </motion.div>
                             </div>
@@ -400,6 +423,12 @@ export function CartSidebar() {
                     </div>
                     {shipping > 0 && (
                       <p className="text-xs text-gray-500">Free shipping on orders over ₦50,000</p>
+                    )}
+                    {promoAmount > 0 && quote?.discount && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Promo ({quote.discount.code})</span>
+                        <span className="font-semibold text-green-600">-{formatPrice(promoAmount)}</span>
+                      </div>
                     )}
                     <div className="h-px bg-gray-200 my-2" />
                     <div className="flex items-center justify-between">
