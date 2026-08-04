@@ -2,14 +2,45 @@
 
 import Link from "next/link";
 import SafeImage from '@/components/ui/SafeImage';
-import { ArrowRight, Star, Award, Users, Heart, Sparkles } from "lucide-react";
+import {
+  ArrowRight, Star, Award, Users, Heart, Sparkles,
+  MapPin, Phone, MessageCircle, Instagram, Clock, Mail,
+} from "lucide-react";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
+import { BUSINESS } from "@/lib/seo";
+
+// Real store photography — uploaded to Cloudinary (folder: kentaz/about)
+const STORE_IMAGES = {
+  brandedStaircase:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870188/kentaz/about/sepxbqynvare4drlzvua.jpg",
+  boutiqueFashionBeauty:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870110/kentaz/about/t30dpknhzfllz3osxb7d.jpg",
+  menswearShoes:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870129/kentaz/about/nkdyukui5uhuszznitrl.jpg",
+  dressesSkincare:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870138/kentaz/about/i5z9sa6xbnisvaxpspqd.jpg",
+  casualWear:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870156/kentaz/about/c6tomsebw15p3krdlbwi.jpg",
+  wigsAccessories:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870168/kentaz/about/a0hnablreg4b20iugq5q.jpg",
+  walkway:
+    "https://res.cloudinary.com/dpydlvp2h/image/upload/v1785870181/kentaz/about/ud7syip9k9pcyl1azqyn.jpg",
+};
+
+const gallery = [
+  { src: STORE_IMAGES.boutiqueFashionBeauty, alt: "Kentaz Emporium lifestyle boutique — fashion, beauty and shoes" },
+  { src: STORE_IMAGES.menswearShoes, alt: "Menswear and dress shoes display at Kentaz Emporium" },
+  { src: STORE_IMAGES.dressesSkincare, alt: "Occasion dresses and skincare shelves at Kentaz Emporium" },
+  { src: STORE_IMAGES.casualWear, alt: "Casual fashion collections at Kentaz Emporium" },
+  { src: STORE_IMAGES.wigsAccessories, alt: "Luxury human hair wigs and accessories at Kentaz Emporium" },
+  { src: STORE_IMAGES.walkway, alt: "Kentaz Emporium upper-level walkway" },
+];
 
 const stats = [
-  { value: "500+", label: "Happy Customers" },
-  { value: "100+", label: "Curated Products" },
-  { value: "Abuja", label: "Location" },
-  { value: "4.9", label: "Average Rating" },
+  { value: "1.5K+", label: "Instagram Followers" },
+  { value: "8", label: "Product Categories" },
+  { value: "2", label: "Signature Services" },
+  { value: "Same-Day", label: "Delivery in Abuja" },
 ];
 
 const values = [
@@ -26,7 +57,7 @@ const values = [
   {
     icon: Award,
     title: "Authentic Luxury",
-    description: "We source only genuine, premium products from trusted brands and suppliers.",
+    description: "Elegant, luxury, classy and refined — we source only genuine, premium products from trusted brands and suppliers.",
   },
   {
     icon: Users,
@@ -37,25 +68,48 @@ const values = [
 
 const timeline = [
   {
-    year: "2020",
-    title: "The Beginning",
-    description: "Kentaz Emporium was founded in Abuja with a vision to bring global luxury to Nigeria.",
+    year: "The Vision",
+    title: "A Dream of Luxury & Wellness",
+    description:
+      "Kentaz Emporium began with a founder's vision: to bring world-class luxury and wellness to Abuja — a place where elegance meets care under one roof.",
   },
   {
-    year: "2022",
-    title: "Expanding Horizons",
-    description: "Expanded our collection to include skincare, beauty, and lifestyle products.",
+    year: "The Launch",
+    title: "Doors Open at 911 Mall, Maitama",
+    description:
+      "Kentaz Emporium officially launched at 911 Mall, 70 Usuma Street, Maitama — unveiling a curated world of premium fashion, luxury human hair, and skincare.",
   },
   {
-    year: "2024",
-    title: "Services Launch",
-    description: "Added Mental Health Consultation and Podcast Studio services to our portfolio.",
+    year: "Wellness",
+    title: "Beyond Retail",
+    description:
+      "We expanded beyond products with in-person and virtual mental health consultation and therapy, plus a professional podcast studio available for hourly rental.",
   },
   {
-    year: "2025",
-    title: "Today",
-    description: "Serving hundreds of satisfied customers across Nigeria with premium products and services.",
+    year: "Today",
+    title: "The Modern Individual's Destination",
+    description:
+      "From same-day delivery across Abuja to #AffluentLifestyleNG experiences, we serve customers who expect elegance, luxury, class, and refinement in everything they do.",
   },
+];
+
+const productOffers = [
+  "Male, Female & Kiddies Fashion",
+  "Luxury Skincare & Beauty",
+  "Human Hair & Wigs",
+  "Bags & Purses",
+  "Shoes",
+  "Accessories",
+  "Fine Perfumes",
+  "Gift Items",
+];
+
+const serviceOffers = [
+  "Mental Health Consultation & Therapy",
+  "Professional Podcast Studio Rental",
+  "Personal Shopping",
+  "Gift Wrapping",
+  "Same-Day Delivery in Abuja",
 ];
 
 export default function AboutPage() {
@@ -68,8 +122,8 @@ export default function AboutPage() {
             <h1 className="text-4xl md:text-6xl font-bold text-[#2D2D2D] mb-6" style={{ fontFamily: 'Playfair Display, serif' }}>
               About <span className="text-[#C9A84C]">Kentaz</span> Emporium
             </h1>
-            <p className="text-lg md:text-xl text-[#6B6B6B] max-w-2xl mx-auto">
-              Luxury. Lifestyle. Wellness. — Elevating every aspect of your life with premium products and exceptional services.
+            <p className="text-lg md:text-xl text-[#6B6B6B] max-w-3xl mx-auto">
+              Elegant. Luxury. Classy. Refined. — Discover premium fashion, luxury hair, skincare, and wellness services curated for the modern individual in Abuja, Nigeria.
             </p>
           </div>
         </div>
@@ -82,15 +136,15 @@ export default function AboutPage() {
               <div className="relative">
                 <div className="aspect-[4/5] relative rounded-2xl overflow-hidden">
                   <SafeImage
-                    src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800"
-                    alt="Kentaz Emporium Store"
+                    src={STORE_IMAGES.brandedStaircase}
+                    alt="Kentaz Emporium branded staircase at 911 Mall, Maitama"
                     fill
                     className="object-cover"
                   />
                 </div>
                 <div className="absolute -bottom-6 -right-6 bg-[#C9A84C] text-white p-6 rounded-xl">
-                  <p className="text-3xl font-bold">5+</p>
-                  <p className="text-sm">Years of Excellence</p>
+                  <p className="text-3xl font-bold">911</p>
+                  <p className="text-sm">Mall, Maitama, Abuja</p>
                 </div>
               </div>
             </ScrollReveal>
@@ -100,12 +154,15 @@ export default function AboutPage() {
                   Our Story
                 </h2>
                 <p className="text-[#6B6B6B] mb-6 leading-relaxed">
-                  Founded in Abuja, Kentaz Emporium began as a small boutique with a big dream — to make luxury accessible to discerning customers across Nigeria. What started as a passion for fashion has evolved into a comprehensive lifestyle destination.
+                  Kentaz Emporium was born in Abuja with one standard: elegant, luxury, classy, refined. What began as a founder&apos;s passion for premium fashion and beauty has grown into a complete lifestyle destination — a place where luxury retail meets wellness.
                 </p>
                 <p className="text-[#6B6B6B] mb-8 leading-relaxed">
-                  Today, we curate the finest selection of fashion, beauty, and lifestyle products from around the world, while also offering unique services like mental health consultation and professional podcast studio rental.
+                  Today, we curate the finest fashion, luxury human hair, skincare, and lifestyle essentials for the modern individual — and we go further. Under one roof at 911 Mall, Maitama, we also offer mental health consultation and therapy, and a professional podcast studio, because we believe true luxury includes how you feel and what you create.
                 </p>
-                <div className="flex gap-4">
+                <blockquote className="border-l-4 border-[#C9A84C] pl-4 text-[#2D2D2D] italic mb-8">
+                  &ldquo;Discover premium fashion, luxury hair, skincare, and wellness services curated for the modern individual in Abuja, Nigeria.&rdquo;
+                </blockquote>
+                <div className="flex flex-wrap gap-6">
                   {stats.map((stat, index) => (
                     <div key={index} className="text-center">
                       <p className="text-2xl font-bold text-[#C9A84C]">{stat.value}</p>
@@ -115,6 +172,33 @@ export default function AboutPage() {
                 </div>
               </div>
             </ScrollReveal>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 md:py-24 bg-[#F5F5F0]">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#2D2D2D] mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>
+              Inside Kentaz Emporium
+            </h2>
+            <p className="text-[#6B6B6B] max-w-2xl mx-auto">
+              Step inside 911 Mall, Maitama — curated fashion, luxury hair, skincare, and more under one roof
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {gallery.map((img, index) => (
+              <ScrollReveal key={index} delay={index * 0.08}>
+                <div className="group relative aspect-[4/5] rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-shadow duration-300">
+                  <SafeImage
+                    src={img.src}
+                    alt={img.alt}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+              </ScrollReveal>
+            ))}
           </div>
         </div>
       </section>
@@ -152,7 +236,7 @@ export default function AboutPage() {
               Our Journey
             </h2>
             <p className="text-[#6B6B6B] max-w-2xl mx-auto">
-              Key milestones that have shaped who we are today
+              From vision to reality — the milestones that define us
             </p>
           </div>
           <div className="max-w-3xl mx-auto space-y-8">
@@ -194,26 +278,12 @@ export default function AboutPage() {
                   Products
                 </h3>
                 <ul className="space-y-3 text-[#6B6B6B]">
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Premium Fashion & Accessories
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Luxury Skincare & Beauty
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Human Hair & Wigs
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Designer Bags & Shoes
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Fine Perfumes
-                  </li>
+                  {productOffers.map((item, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
+                      {item}
+                    </li>
+                  ))}
                 </ul>
               </div>
             </ScrollReveal>
@@ -223,26 +293,12 @@ export default function AboutPage() {
                   Services
                 </h3>
                 <ul className="space-y-3 text-[#6B6B6B]">
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Mental Health Consultation
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Professional Podcast Studio
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Personal Shopping
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Gift Wrapping
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
-                    Nationwide Delivery
-                  </li>
+                  {serviceOffers.map((item, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-[#C9A84C] rounded-full" />
+                      {item}
+                    </li>
+                  ))}
                 </ul>
               </div>
             </ScrollReveal>
@@ -256,17 +312,17 @@ export default function AboutPage() {
             Ready to Experience Luxury?
           </h2>
           <p className="text-white/70 mb-8 max-w-2xl mx-auto">
-            Whether you're looking for premium products or our professional services, we'd love to hear from you.
+            Whether you&apos;re looking for premium products or our professional services, we&apos;d love to hear from you.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link 
-              href="/products" 
+            <Link
+              href="/products"
               className="inline-flex items-center justify-center gap-2 bg-[#C9A84C] text-white px-8 py-4 rounded-full hover:bg-[#E8D48A] transition-colors font-medium"
             >
               Browse Products <ArrowRight className="w-5 h-5" />
             </Link>
-            <Link 
-              href="/services" 
+            <Link
+              href="/services"
               className="inline-flex items-center justify-center gap-2 border-2 border-white text-white px-8 py-4 rounded-full hover:bg-white hover:text-[#2D2D2D] transition-colors font-medium"
             >
               Our Services
@@ -275,23 +331,85 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="py-12 bg-white">
+      <section className="py-16 bg-white">
         <div className="container mx-auto px-4">
-          <div className="bg-[#FAFAFA] rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div>
-              <h3 className="text-2xl font-bold text-[#2D2D2D] mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>
-                Get in Touch
-              </h3>
-              <p className="text-[#6B6B6B]">
-                Have questions? We'd love to hear from you.
-              </p>
-            </div>
-            <Link 
-              href="/contact" 
-              className="inline-flex items-center justify-center gap-2 bg-[#2D2D2D] text-white px-8 py-3 rounded-full hover:bg-[#C9A84C] transition-colors"
-            >
-              Contact Us
-            </Link>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#2D2D2D] mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>
+              Visit Us
+            </h2>
+            <p className="text-[#6B6B6B] max-w-2xl mx-auto">
+              Experience Kentaz Emporium at 911 Mall, Maitama — or reach us wherever you are.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+            <ScrollReveal>
+              <div className="bg-[#FAFAFA] rounded-2xl p-6 text-center h-full">
+                <div className="w-12 h-12 bg-[#C9A84C]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MapPin className="w-6 h-6 text-[#C9A84C]" />
+                </div>
+                <h3 className="font-semibold text-[#2D2D2D] mb-2">Address</h3>
+                <p className="text-[#6B6B6B] text-sm">
+                  Suite 35, 911 Mall, 70 Usuma Street, Off Gana Street, Maitama, Abuja
+                </p>
+              </div>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <div className="bg-[#FAFAFA] rounded-2xl p-6 text-center h-full">
+                <div className="w-12 h-12 bg-[#C9A84C]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Phone className="w-6 h-6 text-[#C9A84C]" />
+                </div>
+                <h3 className="font-semibold text-[#2D2D2D] mb-2">Call Us</h3>
+                <p className="text-[#6B6B6B] text-sm">
+                  {BUSINESS.phoneDisplay}
+                  <br />
+                  09135001200
+                </p>
+              </div>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <div className="bg-[#FAFAFA] rounded-2xl p-6 text-center h-full">
+                <div className="w-12 h-12 bg-[#C9A84C]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MessageCircle className="w-6 h-6 text-[#C9A84C]" />
+                </div>
+                <h3 className="font-semibold text-[#2D2D2D] mb-2">WhatsApp</h3>
+                <a
+                  href={`https://wa.me/${BUSINESS.whatsapp}`}
+                  className="text-[#6B6B6B] text-sm hover:text-[#C9A84C] transition-colors"
+                >
+                  Chat with us on WhatsApp
+                </a>
+              </div>
+            </ScrollReveal>
+            <ScrollReveal delay={0.3}>
+              <div className="bg-[#FAFAFA] rounded-2xl p-6 text-center h-full">
+                <div className="w-12 h-12 bg-[#C9A84C]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Instagram className="w-6 h-6 text-[#C9A84C]" />
+                </div>
+                <h3 className="font-semibold text-[#2D2D2D] mb-2">Follow Us</h3>
+                <a
+                  href="https://instagram.com/kentaz.emporium"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#6B6B6B] text-sm hover:text-[#C9A84C] transition-colors"
+                >
+                  @kentaz.emporium
+                </a>
+              </div>
+            </ScrollReveal>
+          </div>
+          <div className="mt-8 bg-[#FAFAFA] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-center gap-x-10 gap-y-3 text-[#6B6B6B] text-sm max-w-3xl mx-auto">
+            <span className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#C9A84C]" />
+              Open daily · Closes 8 PM
+            </span>
+            <span className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-[#C9A84C]" />
+              Rated by our customers on Google
+            </span>
+            <span className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-[#C9A84C]" />
+              {BUSINESS.email}
+            </span>
           </div>
         </div>
       </section>
