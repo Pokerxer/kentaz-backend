@@ -743,18 +743,30 @@ export default function DiscountsPage() {
   const [flashDeals, setFlashDeals] = useState<FlashDealRow[]>([]);
   const [flashLoading, setFlashLoading] = useState(false);
   const [selectedFlashId, setSelectedFlashId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout>>();
+
+  function apiErrorMessage(err: any): string {
+    return err?.status === 401
+      ? 'Session expired — please log in again.'
+      : err?.message || 'Failed to load discounts.';
+  }
 
   async function load() {
     setLoading(true);
+    setLoadError(null);
     try {
+      // Categories are optional — a failure there must NOT drop the
+      // discounts list (Promise.all would reject and discard both).
       const [disc, cats] = await Promise.all([
         api.discounts.getAll(),
-        api.categories.getAll(),
+        api.categories.getAll().catch(() => []),
       ]);
       setDiscounts(disc);
       setCategories((cats as any[]).map((c: any) => c.name).filter(Boolean));
-    } catch {}
+    } catch (err: any) {
+      setLoadError(apiErrorMessage(err));
+    }
     setLoading(false);
   }
 
@@ -791,7 +803,9 @@ export default function DiscountsPage() {
       }
       rows.sort((a, b) => b.markdown.discountPercent - a.markdown.discountPercent);
       setFlashDeals(rows);
-    } catch {}
+    } catch (err: any) {
+      setLoadError(apiErrorMessage(err));
+    }
     setFlashLoading(false);
   }
 
@@ -924,6 +938,15 @@ export default function DiscountsPage() {
             {statusFilter === 'flash' ? (
               flashLoading ? (
                 <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+              ) : loadError && flashFiltered.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 px-6">
+                  <AlertCircle className="w-10 h-10 mx-auto opacity-20 mb-2 text-red-400" />
+                  <p className="text-sm text-red-500 font-medium">{loadError}</p>
+                  <button onClick={() => loadFlashDeals()}
+                    className="mt-3 text-xs text-amber-600 hover:text-amber-700 font-medium underline">
+                    Retry
+                  </button>
+                </div>
               ) : flashFiltered.length === 0 ? (
                 <div className="text-center py-12 text-gray-400 px-6">
                   <Zap className="w-10 h-10 mx-auto opacity-15 mb-2" />
@@ -968,6 +991,15 @@ export default function DiscountsPage() {
             ) : (
               loading ? (
                 <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+              ) : loadError ? (
+                <div className="text-center py-12 text-gray-400 px-6">
+                  <AlertCircle className="w-10 h-10 mx-auto opacity-20 mb-2 text-red-400" />
+                  <p className="text-sm text-red-500 font-medium">{loadError}</p>
+                  <button onClick={() => load()}
+                    className="mt-3 text-xs text-amber-600 hover:text-amber-700 font-medium underline">
+                    Retry
+                  </button>
+                </div>
               ) : filtered.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <Percent className="w-10 h-10 mx-auto opacity-15 mb-2" />
