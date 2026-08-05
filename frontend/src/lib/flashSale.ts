@@ -330,17 +330,23 @@ export function formatCountdown(parts: CountdownParts | null): string {
   return `${pad(h)}:${pad(parts.minutes)}:${pad(parts.seconds)}`;
 }
 
-/** Ticking countdown hook — returns zeroed parts once the target passes. */
+/** Ticking countdown hook — returns zeroed parts once the target passes.
+ *
+ *  Starts with `null` to avoid a hydration mismatch: `Date.now()` differs
+ *  between server and client, so the first render only happens after the
+ *  client-side effect fires.  Callers already show a `"--"` fallback when
+ *  the return value is `null`. */
 export function useFlashCountdown(target: Date | null): CountdownParts | null {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    setNow(Date.now());
     if (!target) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [target]);
 
-  if (!target) return null;
+  if (!target || now === null) return null;
   const remaining = target.getTime() - now;
   return getCountdownParts(remaining);
 }

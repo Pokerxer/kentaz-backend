@@ -22,11 +22,21 @@ function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
+/** Ticking clock so the session stays accurate without a reload. */
+function useNow(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
 function CountdownBox({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex flex-col items-center">
-      <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm flex items-center justify-center">
-        <span className="text-2xl md:text-3xl font-bold text-[#C9A84C] tabular-nums animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
+    <div className="flex flex-col items-center min-w-0">
+      <div className="w-full aspect-square sm:aspect-auto sm:w-16 sm:h-16 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm flex items-center justify-center">
+        <span className="text-xl sm:text-2xl md:text-3xl font-bold text-[#C9A84C] tabular-nums animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
           {value}
         </span>
       </div>
@@ -42,15 +52,15 @@ export function FlashSaleSection() {
   const [quickViewDeal, setQuickViewDeal] = useState<FlashDeal | null>(null);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
 
-  const session = useMemo(() => getFlashSaleSession(new Date(), discounts), [discounts]);
-  const countdown = useFlashCountdown(session.status === 'live' ? session.endTime : null);
+  const now = useNow(1000);
+  const session = useMemo(() => getFlashSaleSession(new Date(now), discounts), [now, discounts]);
+  const live = session.status === 'live';
+  const countdown = useFlashCountdown(live ? session.endTime : null);
 
   useEffect(() => {
     let cancelled = false;
     async function fetchDeals() {
       try {
-        // Scan the full catalog: promotions can sit on any product, not just
-        // the newest page. One request, filtered client-side.
         const [productsRes, discounts] = await Promise.all([
           fetch(`${API_URL}/api/store/products?limit=2000`),
           getActiveDiscounts(),
@@ -86,32 +96,65 @@ export function FlashSaleSection() {
         <ScrollReveal>
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 mb-10 md:mb-14">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold tracking-widest uppercase mb-4">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                </span>
-                Live Now
-              </div>
+              {live ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold tracking-widest uppercase mb-4">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                  </span>
+                  Live Now
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/40 text-xs font-semibold tracking-widest uppercase mb-4">
+                  <Clock className="h-3 w-3" />
+                  Session Ended
+                </div>
+              )}
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-2">
                 <span className="animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
                   {session.title}
                 </span>
               </h2>
-              <p className="text-white/40 text-sm md:text-base max-w-xl">{session.tagline}</p>
+              <p className="text-white/40 text-sm md:text-base max-w-xl">
+                {live
+                  ? session.tagline
+                  : 'This session has ended — the markdowns below may still be live while stock lasts.'}
+              </p>
             </div>
 
             {/* Countdown */}
-            <div className="flex items-center gap-3 md:gap-4">
-              <div className="flex flex-col items-center mr-1">
-                <Clock className="h-5 w-5 text-[#C9A84C] mb-2" />
+            {live && (
+              <div
+                role="timer"
+                aria-label={`Flash sale ends in ${countdown ? `${countdown.days} days ${countdown.hours} hours ${countdown.minutes} minutes` : 'under a minute'}`}
+                className="grid grid-cols-4 gap-2 sm:gap-3"
+              >
+                {countdown && countdown.days > 0 && (
+                  <>
+                    <CountdownBox value={pad(countdown.days)} label="Days" />
+                    <CountdownBox value={pad(countdown.hours)} label="Hours" />
+                    <CountdownBox value={pad(countdown.minutes)} label="Mins" />
+                    <CountdownBox value={pad(countdown.seconds)} label="Secs" />
+                  </>
+                )}
+                {countdown && countdown.days === 0 && (
+                  <>
+                    <CountdownBox value="00" label="Days" />
+                    <CountdownBox value={pad(countdown.hours)} label="Hours" />
+                    <CountdownBox value={pad(countdown.minutes)} label="Mins" />
+                    <CountdownBox value={pad(countdown.seconds)} label="Secs" />
+                  </>
+                )}
+                {!countdown && (
+                  <>
+                    <CountdownBox value="--" label="Days" />
+                    <CountdownBox value="--" label="Hours" />
+                    <CountdownBox value="--" label="Mins" />
+                    <CountdownBox value="--" label="Secs" />
+                  </>
+                )}
               </div>
-              <CountdownBox value={countdown ? pad(countdown.hours) : '--'} label="Hours" />
-              <span className="text-2xl font-bold text-white/20">:</span>
-              <CountdownBox value={countdown ? pad(countdown.minutes) : '--'} label="Mins" />
-              <span className="text-2xl font-bold text-white/20">:</span>
-              <CountdownBox value={countdown ? pad(countdown.seconds) : '--'} label="Secs" />
-            </div>
+            )}
           </div>
         </ScrollReveal>
 

@@ -463,7 +463,13 @@ function ProductsPage() {
     let result = [...products];
 
     if (activeCategory !== 'all') {
-      result = result.filter(p => (p.category || '').toLowerCase() === activeCategory.toLowerCase());
+      // Homepage category cards send comma-joined raw category names so every
+      // variant in a display bucket matches; OR them case-insensitively.
+      const wanted = activeCategory
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean);
+      result = result.filter(p => wanted.includes((p.category || '').trim().toLowerCase()));
     }
 
     // Use min price across all variants (not just first)
