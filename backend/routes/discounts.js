@@ -3,6 +3,7 @@ const router = express.Router();
 const { auth, adminOnly } = require('../middleware/auth');
 const Discount = require('../models/Discount');
 const { validateCode, discountAmountOn } = require('../utils/pricing');
+const { sanitizeProductPrices } = require('../utils/discountInput');
 
 // Date-only strings ("YYYY-MM-DD") are ambiguous: JS/Mongoose parse them as
 // UTC midnight, which for a non-UTC timezone lands in the PAST the same day —
@@ -30,7 +31,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
     if (status === 'inactive') filter.isActive = false;
 
     const discounts = await Discount.find(filter)
-      .populate('products', 'name images category')
+      .populate('products', 'name images category variants')
       .sort({ createdAt: -1 });
     res.json(discounts);
   } catch (err) {
@@ -42,7 +43,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
 router.get('/:id', auth, adminOnly, async (req, res) => {
   try {
     const discount = await Discount.findById(req.params.id)
-      .populate('products', 'name images category');
+      .populate('products', 'name images category variants');
     if (!discount) return res.status(404).json({ error: 'Discount not found' });
     res.json(discount);
   } catch (err) {
@@ -56,7 +57,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
     const {
       code, description, type, value,
       minOrderValue, maxDiscount,
-      applicableTo, categories, products,
+      applicableTo, categories, products, productPrices,
       usageLimit, perCustomerLimit,
       isActive, startDate, endDate,
     } = req.body;
@@ -78,6 +79,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
       applicableTo: applicableTo || 'all',
       categories: categories || [],
       products: products || [],
+      productPrices: sanitizeProductPrices(productPrices, products),
       usageLimit: usageLimit || null,
       perCustomerLimit: perCustomerLimit || null,
       isActive: isActive !== false,
@@ -86,7 +88,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
     });
 
     await discount.save();
-    await discount.populate('products', 'name images category');
+    await discount.populate('products', 'name images category variants');
     res.status(201).json(discount);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -101,7 +103,8 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 
     const fields = [
       'description', 'type', 'value', 'minOrderValue', 'maxDiscount',
-      'applicableTo', 'categories', 'products', 'usageLimit', 'perCustomerLimit',
+      'applicableTo', 'categories', 'products', 'productPrices',
+      'usageLimit', 'perCustomerLimit',
       'isActive', 'startDate', 'endDate',
     ];
     fields.forEach(f => {
@@ -112,6 +115,10 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
         discount[f] = req.body[f];
       }
     });
+
+    // Re-check after every field is in place: editing the selection alone
+    // (without resending prices) can orphan an existing hand-priced entry.
+    discount.productPrices = sanitizeProductPrices(discount.productPrices, discount.products);
 
     // Allow code update if changed and not duplicate
     if (req.body.code) {
@@ -124,7 +131,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
     }
 
     await discount.save();
-    await discount.populate('products', 'name images category');
+    await discount.populate('products', 'name images category variants');
     res.json(discount);
   } catch (err) {
     res.status(500).json({ error: err.message });

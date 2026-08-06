@@ -84,9 +84,39 @@ function discountAmountOn(discount, base, cap) {
   return money(Math.max(0, Math.min(off, base)));
 }
 
-/** Unit price after a single discount (tier 1: `maxDiscount` caps per unit). */
-function discountedUnitPrice(discount, unitPrice) {
+/**
+ * A hand-priced sale price for this product, or null when the discount does
+ * not name one. Set per selected product on the admin discounts page; it wins
+ * over the discount's own type/value so a merchant can price a hero item
+ * exactly instead of describing it as a percentage.
+ */
+function productOverridePrice(discount, product) {
+  if (!discount || !product) return null;
+  const entries = discount.productPrices || [];
+  if (!entries.length) return null;
+  const wanted = String(product._id);
+  for (const entry of entries) {
+    // Strictly a number: `money()` turns null, '' and [] into 0, so a
+    // malformed entry would otherwise price the product at zero.
+    if (!entry || typeof entry.price !== 'number' || !Number.isFinite(entry.price)) continue;
+    if (idOf(entry.product) === wanted) return money(entry.price);
+  }
+  return null;
+}
+
+/**
+ * Unit price after a single discount (tier 1: `maxDiscount` caps per unit).
+ *
+ * `product` is optional and only used to find a hand-priced override. An
+ * override names the exact price to charge, so `maxDiscount` does not apply to
+ * it — a cap would silently contradict the figure the merchant typed. It is
+ * clamped to the list price so an override sitting above today's price can
+ * only ever mean "no markdown", never a price increase.
+ */
+function discountedUnitPrice(discount, unitPrice, product = null) {
   const price = money(unitPrice);
+  const override = productOverridePrice(discount, product);
+  if (override !== null) return Math.max(0, Math.min(override, price));
   return Math.max(0, price - discountAmountOn(discount, price, discount.maxDiscount));
 }
 
@@ -131,7 +161,7 @@ function resolveUnitPrice(product, variant, discounts = [], now = new Date()) {
   // Source 1: usable discounts covering this product.
   for (const d of discounts) {
     if (!isDiscountUsable(d, now) || !discountAppliesToProduct(d, product)) continue;
-    const sale = discountedUnitPrice(d, listPrice);
+    const sale = discountedUnitPrice(d, listPrice, product);
     if (sale >= listPrice) continue;
     const percent = pctOff(listPrice, sale);
     if (percent < MIN_MARKDOWN_PERCENT) continue;
@@ -272,6 +302,11 @@ function quoteCart({
     const eligibleSubtotal = discount
       ? lines.reduce((sum, line, i) => {
           if (!discountAppliesToProduct(discount, line.product)) return sum;
+          // A hand-priced product is already sitting at the exact price the
+          // merchant set for this discount. Letting the same code then take
+          // its percentage off that price again would charge less than the
+          // figure typed on the discounts page.
+          if (productOverridePrice(discount, line.product) !== null) return sum;
           return sum + items[i].lineTotal;
         }, 0)
       : 0;
@@ -326,6 +361,7 @@ module.exports = {
   isDiscountUsable,
   discountAppliesToProduct,
   discountAmountOn,
+  productOverridePrice,
   discountedUnitPrice,
   findVariant,
   resolveUnitPrice,

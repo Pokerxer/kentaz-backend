@@ -25,6 +25,15 @@ const discountSchema = new mongoose.Schema({
   },
   categories: [{ type: String }],
   products: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+  // Hand-priced products: a flat sale price that replaces `type`/`value` for
+  // that one product while the discount is live. Sparse by design — a product
+  // listed in `products` with no entry here falls back to the discount's own
+  // value. Only meaningful when applicableTo === 'products'.
+  productPrices: [{
+    _id: false,
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    price: { type: Number, required: true, min: 0 },
+  }],
   // Total usage limit (null = unlimited)
   usageLimit: { type: Number, default: null },
   usageCount: { type: Number, default: 0 },

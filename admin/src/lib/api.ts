@@ -919,6 +919,8 @@ export interface Discount {
   applicableTo: 'all' | 'categories' | 'products';
   categories: string[];
   products: { _id: string; name: string; images: { url: string }[]; category: string }[];
+  /** Hand-priced products: a flat sale price replacing type/value for that product. */
+  productPrices: { product: string; price: number }[];
   usageLimit: number | null;
   usageCount: number;
   perCustomerLimit: number | null;

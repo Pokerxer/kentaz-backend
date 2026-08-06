@@ -68,6 +68,8 @@ export interface FlashDiscount {
   applicableTo: 'all' | 'categories' | 'products';
   categories?: string[];
   products?: { _id: string; name?: string; slug?: string; images?: { url?: string }[]; category?: string }[];
+  /** Hand-priced products: a flat sale price replacing type/value for that product. */
+  productPrices?: { product: string; price: number }[];
   startDate?: string | null;
   endDate?: string | null;
 }
@@ -148,8 +150,35 @@ export function discountAppliesTo(d: FlashDiscount, product: any): boolean {
   return false;
 }
 
-/** Discounted sale price for a single item price under an admin discount. */
-export function discountPriceFor(d: FlashDiscount, price: number): number {
+/**
+ * A price the merchant typed for this exact product on the admin discounts
+ * page, or null when the discount names none. Mirrors the backend's
+ * `productOverridePrice` in utils/pricing.js.
+ */
+export function productOverridePrice(d: FlashDiscount, product: any): number | null {
+  if (!product) return null;
+  const entries = d.productPrices || [];
+  if (!entries.length) return null;
+  const id = String(product._id ?? product.id ?? '');
+  for (const entry of entries) {
+    if (!entry || entry.price == null) continue;
+    const entryId = String((entry.product as any)?._id ?? entry.product);
+    if (entryId === id) return Math.round(Number(entry.price));
+  }
+  return null;
+}
+
+/**
+ * Discounted sale price for a single item price under an admin discount.
+ *
+ * A hand-priced product wins over the discount's own type/value, ignores
+ * `maxDiscount` (the merchant named the exact price a cap would contradict),
+ * and is clamped to the list price so a stale override can only mean "no
+ * markdown", never a price rise. Same rules as the backend charges.
+ */
+export function discountPriceFor(d: FlashDiscount, price: number, product: any = null): number {
+  const override = productOverridePrice(d, product);
+  if (override !== null) return Math.max(0, Math.min(override, Math.round(price)));
   if (d.type === 'percentage') {
     let off = (price * d.value) / 100;
     if (d.maxDiscount != null && d.maxDiscount > 0) off = Math.min(off, d.maxDiscount);
@@ -199,7 +228,7 @@ export function getFlashDeal(product: any, discounts: FlashDiscount[] = []): Fla
 
     // Source 1: applicable admin discounts (sale price = discounted price)
     for (const d of applicable) {
-      const salePrice = discountPriceFor(d, price);
+      const salePrice = discountPriceFor(d, price, product);
       if (salePrice >= price) continue;
       const discountPercent = Math.round(((price - salePrice) / price) * 100);
       if (discountPercent < FLASH_SALE.minDiscountPercent) continue;
@@ -257,7 +286,7 @@ export function getVariantDeal(product: any, variant: any, discounts: FlashDisco
   // Source 1: applicable admin discounts (sale price = discounted price)
   for (const d of discounts) {
     if (!discountAppliesTo(d, product)) continue;
-    const salePrice = discountPriceFor(d, price);
+    const salePrice = discountPriceFor(d, price, product);
     if (salePrice >= price) continue;
     const discountPercent = Math.round(((price - salePrice) / price) * 100);
     if (discountPercent < FLASH_SALE.minDiscountPercent) continue;

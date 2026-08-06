@@ -42,6 +42,27 @@ function discountStatus(d: Discount): 'active' | 'inactive' | 'expired' | 'sched
   return 'active';
 }
 
+/**
+ * What a product currently sells for, across its variants.
+ *
+ * A hand-set sale price is flat for the whole product, so a product whose
+ * variants are priced differently gets marked down by different amounts. The
+ * form shows the range rather than one number, so nobody types ₦12,500
+ * believing it is 31% off when it is 31% off the Large and 5% off the Small.
+ */
+function listPriceRange(p: any): { min: number; max: number } | null {
+  const prices = (p?.variants || [])
+    .map((v: any) => Number(v?.price))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  if (!prices.length) return null;
+  return { min: Math.min(...prices), max: Math.max(...prices) };
+}
+
+const pctOff = (was: number, now: number) => (was > 0 ? Math.round(((was - now) / was) * 100) : 0);
+
+/** Markdowns shallower than this never surface as a deal — matches the backend. */
+const MIN_MARKDOWN_PERCENT = 5;
+
 const STATUS_STYLES = {
   active: 'bg-green-100 text-green-700',
   inactive: 'bg-gray-100 text-gray-500',
@@ -71,7 +92,7 @@ function FlashDealPanel({ row, onBack }: { row: FlashDealRow; onBack: () => void
     .map((v) => {
       const orig = Number(v.price);
       const cmp = source === 'discount' && discount ? orig : Number(v.compareAtPrice);
-      const sale = source === 'discount' && discount ? discountPriceFor(discount, orig) : orig;
+      const sale = source === 'discount' && discount ? discountPriceFor(discount, orig, product) : orig;
       const pct = cmp > sale ? Math.round(((cmp - sale) / cmp) * 100) : 0;
       return { label: [v.size, v.color].filter(Boolean).join(' · ') || 'Default', sale, cmp, pct, stock: Number(v.stock) || 0 };
     })
@@ -182,6 +203,7 @@ const BLANK: Omit<Discount, '_id' | 'usageCount' | 'createdAt' | 'updatedAt'> = 
   applicableTo: 'all',
   categories: [],
   products: [],
+  productPrices: [],
   usageLimit: null,
   perCustomerLimit: null,
   isActive: true,
@@ -213,7 +235,9 @@ function DiscountForm({
   const [resetLoading, setResetLoading] = useState(false);
   const [catInput, setCatInput] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [productResults, setProductResults] = useState<Pick<Product, '_id' | 'name' | 'images' | 'category'>[]>([]);
+  // `variants` is carried through so a freshly added product can show its list
+  // price straight away, without waiting for a save-and-reload round trip.
+  const [productResults, setProductResults] = useState<Pick<Product, '_id' | 'name' | 'images' | 'category' | 'variants'>[]>([]);
   const [productSearching, setProductSearching] = useState(false);
   const productSearchRef = useRef<ReturnType<typeof setTimeout>>();
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
@@ -264,6 +288,9 @@ function DiscountForm({
     const payload = {
       ...form,
       products: (form.products as any[]).map((p: any) => p._id ?? p),
+      productPrices: ((form.productPrices as any[]) || [])
+        .filter((e: any) => e && Number.isFinite(Number(e.price)))
+        .map((e: any) => ({ product: String(e.product?._id ?? e.product), price: Math.round(Number(e.price)) })),
       startDate: normDate(form.startDate, false),
       endDate: normDate(form.endDate, true),
     };
@@ -312,6 +339,48 @@ function DiscountForm({
 
   function removeCategory(cat: string) {
     setForm(f => ({ ...f, categories: f.categories.filter(c => c !== cat) }));
+  }
+
+  // ── Per-product sale prices ──────────────────────────────────
+  // A price typed here replaces the discount's own %/₦ for that one product.
+  // Leaving it blank is meaningful, not incomplete: the product falls back to
+  // the discount's value, so one code can mix hand-priced hero items with a
+  // blanket rate.
+
+  // Entries store a bare id, but tolerate a populated document so a future
+  // `.populate('productPrices.product')` can't silently blank every price.
+  const entryId = (e: any) => String(e?.product?._id ?? e?.product);
+
+  const priceEntries = (form.productPrices as any[]) || [];
+  const priceOf = (id: string) => priceEntries.find((e: any) => entryId(e) === String(id));
+
+  function setProductPrice(id: string, raw: string) {
+    setForm(f => {
+      const rest = ((f.productPrices as any[]) || []).filter((e: any) => entryId(e) !== String(id));
+      const price = Number(raw);
+      // Clearing the field removes the entry rather than storing 0 — otherwise
+      // emptying an input would silently make the product free.
+      if (raw.trim() === '' || !Number.isFinite(price) || price < 0) return { ...f, productPrices: rest };
+      return { ...f, productPrices: [...rest, { product: String(id), price: Math.round(price) }] };
+    });
+  }
+
+  function removeProduct(id: string) {
+    setForm(f => ({
+      ...f,
+      products: (f.products as any[]).filter((x: any) => String(x._id) !== String(id)),
+      productPrices: ((f.productPrices as any[]) || []).filter((e: any) => entryId(e) !== String(id)),
+    }));
+  }
+
+  /** What this discount's own %/₦ would charge for a price — the blank fallback. */
+  function fallbackPrice(price: number) {
+    if (form.type === 'percentage') {
+      let off = (price * (Number(form.value) || 0)) / 100;
+      if (form.maxDiscount != null && form.maxDiscount > 0) off = Math.min(off, form.maxDiscount);
+      return Math.max(0, Math.round(price - off));
+    }
+    return Math.max(0, Math.round(price - (Number(form.value) || 0)));
   }
 
   const usageDiscount = initial as Discount;
@@ -526,29 +595,104 @@ function DiscountForm({
             {/* Products picker */}
             {form.applicableTo === 'products' && (
               <div className="mt-2 space-y-2">
-                {/* Selected products */}
+                {/* Selected products, each with its own sale price */}
                 {(form.products as any[]).length > 0 && (
                   <div className="space-y-1.5">
-                    {(form.products as any[]).map((p: any) => (
-                      <div key={p._id} className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-100 rounded-xl">
-                        {p.images?.[0]?.url ? (
-                          <img src={p.images[0].url} alt={p.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                            <Package className="w-3.5 h-3.5 text-amber-400" />
+                    <div className="flex items-center justify-between px-1">
+                      <p className="text-xs font-semibold text-gray-500">
+                        {(form.products as any[]).length} product{(form.products as any[]).length === 1 ? '' : 's'}
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        Blank = {form.type === 'percentage' ? `${form.value || 0}% off` : `${fmt(Number(form.value) || 0)} off`}
+                      </p>
+                    </div>
+
+                    {(form.products as any[]).map((p: any) => {
+                      const range = listPriceRange(p);
+                      const entry = priceOf(p._id);
+                      const sale = entry ? Number(entry.price) : null;
+                      // Deepest markdown lands on the priciest variant, shallowest
+                      // on the cheapest — show both when they differ.
+                      const lowPct = range && sale !== null ? pctOff(range.min, Math.min(sale, range.min)) : 0;
+                      const highPct = range && sale !== null ? pctOff(range.max, Math.min(sale, range.max)) : 0;
+
+                      let warning: string | null = null;
+                      if (sale !== null && range) {
+                        if (sale >= range.max) {
+                          warning = `Not below any variant's price (${fmt(range.min)}–${fmt(range.max)}) — nothing gets marked down.`;
+                        } else if (sale >= range.min) {
+                          warning = `Only marks down variants priced above ${fmt(sale)}. Cheaper ones stay at list price.`;
+                        } else if (lowPct < MIN_MARKDOWN_PERCENT) {
+                          warning = `Only ${lowPct}% off the cheapest variant — under ${MIN_MARKDOWN_PERCENT}% it won't show as a deal.`;
+                        }
+                      }
+
+                      return (
+                        <div key={p._id} className="p-2 bg-amber-50 border border-amber-100 rounded-xl">
+                          <div className="flex items-center gap-2">
+                            {p.images?.[0]?.url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.images[0].url} alt={p.name} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                                <Package className="w-3.5 h-3.5 text-amber-400" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-800 truncate">{p.name}</p>
+                              <p className="text-[11px] text-gray-400 truncate">
+                                {p.category}
+                                {range && (
+                                  <>
+                                    {' · '}
+                                    <span className="text-gray-500">
+                                      {range.min === range.max ? fmt(range.min) : `${fmt(range.min)}–${fmt(range.max)}`}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                            </div>
+
+                            {/* Sale price */}
+                            <div className="relative flex-shrink-0">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₦</span>
+                              <input
+                                type="number" min={0} step={1}
+                                value={sale ?? ''}
+                                onChange={e => setProductPrice(p._id, e.target.value)}
+                                placeholder={range ? String(fallbackPrice(range.min)) : 'Sale price'}
+                                aria-label={`Sale price for ${p.name}`}
+                                className="w-24 border border-amber-200 bg-white rounded-lg pl-5 pr-2 py-1.5 text-xs text-right font-semibold focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+
+                            {/* Markdown depth */}
+                            <span className="w-14 text-right flex-shrink-0">
+                              {sale !== null && highPct > 0 ? (
+                                <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-500 text-[11px] font-semibold">
+                                  {lowPct === highPct ? `-${highPct}%` : `-${lowPct}…${highPct}%`}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-gray-300">{sale !== null ? '—' : 'auto'}</span>
+                              )}
+                            </span>
+
+                            <button type="button" onClick={() => removeProduct(p._id)}
+                              aria-label={`Remove ${p.name}`}
+                              className="text-amber-300 hover:text-red-500 flex-shrink-0">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-800 truncate">{p.name}</p>
-                          <p className="text-xs text-gray-400">{p.category}</p>
+
+                          {warning && (
+                            <p className="mt-1.5 pl-11 text-[11px] text-amber-700 flex items-start gap-1">
+                              <AlertCircle className="w-3 h-3 mt-px flex-shrink-0" />
+                              <span>{warning}</span>
+                            </p>
+                          )}
                         </div>
-                        <button type="button"
-                          onClick={() => setForm(f => ({ ...f, products: (f.products as any[]).filter((x: any) => x._id !== p._id) }))}
-                          className="text-amber-300 hover:text-red-500 flex-shrink-0">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -594,7 +738,9 @@ function DiscountForm({
                 )}
 
                 {(form.products as any[]).length === 0 && !productSearch && (
-                  <p className="text-xs text-gray-400 text-center py-2">Search for products above to add them</p>
+                  <p className="text-xs text-gray-400 text-center py-2 leading-relaxed">
+                    Search for products above to add them,<br />then set a sale price for each — or leave it blank to use this discount&apos;s value.
+                  </p>
                 )}
               </div>
             )}

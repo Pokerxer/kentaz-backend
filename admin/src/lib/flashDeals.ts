@@ -53,8 +53,32 @@ export function discountAppliesTo(d: Discount, p: Product): boolean {
   return false;
 }
 
-/** Sale price for a single item under a discount. */
-export function discountPriceFor(d: Discount, price: number): number {
+/**
+ * A price typed for this exact product on the discount form, or null when the
+ * discount names none. Mirrors the backend's `productOverridePrice`.
+ */
+export function productOverridePrice(d: Discount, p: { _id: string } | null | undefined): number | null {
+  if (!p) return null;
+  const entries = d.productPrices || [];
+  if (!entries.length) return null;
+  const id = String(p._id);
+  for (const entry of entries) {
+    if (!entry || entry.price == null) continue;
+    if (String((entry.product as any)?._id ?? entry.product) === id) return Math.round(Number(entry.price));
+  }
+  return null;
+}
+
+/**
+ * Sale price for a single item under a discount.
+ *
+ * A hand-priced product wins over the discount's type/value, ignores
+ * `maxDiscount`, and is clamped to the list price — the same rules the backend
+ * charges, so this preview cannot promise a price the cart won't honour.
+ */
+export function discountPriceFor(d: Discount, price: number, p?: { _id: string } | null): number {
+  const override = productOverridePrice(d, p);
+  if (override !== null) return Math.max(0, Math.min(override, Math.round(price)));
   if (d.type === 'percentage') {
     let off = (price * d.value) / 100;
     if (d.maxDiscount != null && d.maxDiscount > 0) off = Math.min(off, d.maxDiscount);
@@ -76,7 +100,7 @@ export function getFlashMarkdownWithDiscounts(p: Product, discounts: Discount[])
     const price = Number(v.price);
     if (!price) continue;
     for (const d of usable) {
-      const salePrice = discountPriceFor(d, price);
+      const salePrice = discountPriceFor(d, price, p);
       if (salePrice >= price) continue;
       const pct = Math.round(((price - salePrice) / price) * 100);
       if (pct < 5) continue;

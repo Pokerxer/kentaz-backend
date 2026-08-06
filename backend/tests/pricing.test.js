@@ -354,3 +354,90 @@ test('a discount can never drive the order total negative', () => {
   assert.ok(q.total >= 0);
   assert.ok(q.discountAmount <= q.subtotal);
 });
+
+// ── Hand-priced products ────────────────────────────────────────
+// A products-scoped discount can name an exact sale price per product, set on
+// the admin discounts page. That price replaces the discount's own type/value
+// for that product; products left blank fall back to the value.
+
+/** A products-scoped discount that hand-prices p1 at `price`. */
+function pricedDiscount(price, overrides = {}) {
+  return discount({
+    applicableTo: 'products',
+    products: ['p1'],
+    productPrices: [{ product: 'p1', price }],
+    ...overrides,
+  });
+}
+
+test('a hand-set product price wins over the discount value', () => {
+  // 20% off ₦20,000 would be ₦16,000 — the typed ₦12,500 must win.
+  assert.equal(discountedUnitPrice(pricedDiscount(12500), 20000, product()), 12500);
+});
+
+test('a product left blank falls back to the discount value', () => {
+  const d = pricedDiscount(12500, { products: ['p1', 'p2'] });
+  assert.equal(discountedUnitPrice(d, 20000, product({ _id: 'p2' })), 16000);
+});
+
+test('a hand-set price ignores maxDiscount', () => {
+  // A ₦1,000 cap would hold a percentage discount to ₦19,000; naming ₦12,500
+  // is explicit and must not be quietly capped back up.
+  assert.equal(discountedUnitPrice(pricedDiscount(12500, { maxDiscount: 1000 }), 20000, product()), 12500);
+});
+
+test('a hand-set price above the list price marks nothing down', () => {
+  // A stale override left behind by a price change must never raise a price.
+  assert.equal(discountedUnitPrice(pricedDiscount(25000), 20000, product()), 20000);
+});
+
+test('a hand-set price applies to every variant of the product', () => {
+  const d = pricedDiscount(12500);
+  const p = product({ variants: [{ size: 'S', price: 18000, stock: 2 }, { size: 'L', price: 24000, stock: 2 }] });
+  assert.equal(resolveUnitPrice(p, { size: 'S' }, [d], NOW).unitPrice, 12500);
+  assert.equal(resolveUnitPrice(p, { size: 'L' }, [d], NOW).unitPrice, 12500);
+});
+
+test('resolveUnitPrice reports the hand-set price with its true markdown', () => {
+  const r = resolveUnitPrice(product(), null, [pricedDiscount(12500)], NOW);
+  assert.equal(r.unitPrice, 12500);
+  assert.equal(r.compareAtPrice, 20000);
+  assert.equal(r.discountPercent, 38);
+  assert.equal(r.discount.code, 'SAVE20');
+});
+
+test('a hand-set price is charged per unit', () => {
+  const q = quoteCart({ lines: [{ product: product(), quantity: 3 }], discounts: [pricedDiscount(12500)], now: NOW });
+  assert.equal(q.items[0].unitPrice, 12500);
+  assert.equal(q.subtotal, 37500);
+});
+
+test('a hand-priced item is not discounted twice by its own code', () => {
+  // Tier 1 already put the item at the merchant's price, so redeeming the same
+  // code must not take another 20% off it.
+  const q = quoteCart({
+    lines: [{ product: product(), quantity: 1 }],
+    discounts: [pricedDiscount(12500)],
+    code: 'SAVE20',
+    now: NOW,
+  });
+  assert.equal(q.subtotal, 12500);
+  assert.equal(q.discountAmount, 0);
+  assert.ok(q.codeError);
+});
+
+test('a too-shallow hand-set price is not advertised as a deal', () => {
+  // ₦19,500 off ₦20,000 is 3% — below MIN_MARKDOWN_PERCENT.
+  const r = resolveUnitPrice(product(), null, [pricedDiscount(19500)], NOW);
+  assert.equal(r.unitPrice, 20000);
+  assert.equal(r.discount, null);
+});
+
+test('an override for another product does not leak onto this one', () => {
+  const d = discount({
+    applicableTo: 'products',
+    products: ['p1', 'p2'],
+    productPrices: [{ product: 'p2', price: 500 }],
+  });
+  assert.equal(discountedUnitPrice(d, 20000, product()), 16000);
+});

@@ -53,7 +53,7 @@ router.get('/', async (req, res) => {
       ],
     })
       .select(
-        'description type value minOrderValue maxDiscount applicableTo categories products startDate endDate'
+        'description type value minOrderValue maxDiscount applicableTo categories products productPrices startDate endDate'
       )
       .populate('products', 'name slug images category')
       .lean();
