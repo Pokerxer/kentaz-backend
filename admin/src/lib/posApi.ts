@@ -204,10 +204,31 @@ export interface PosVariant {
   size: string;
   color: string;
   colorHex?: string;
+  /** List price as recorded on the product. */
   price: number;
   costPrice?: number;
   stock?: number;
   sku?: string;
+
+  // ── Resolved by the server, never computed here ──────────────
+  // The backend prices every variant with the same function the storefront
+  // quotes from, so the till charges what the shop advertises. Optional
+  // because a product cached before this change won't carry them.
+  /** What to charge — equals `price` when nothing is marked down. */
+  salePrice?: number;
+  listPrice?: number;
+  discountPercent?: number;
+  discountCode?: string | null;
+}
+
+/** What to charge for a variant, falling back to list price on older cached data. */
+export function variantSellingPrice(variant: PosVariant): number {
+  return variant.salePrice ?? variant.price;
+}
+
+/** True when a variant carries a genuine markdown worth showing the cashier. */
+export function variantIsMarkedDown(variant: PosVariant): boolean {
+  return variantSellingPrice(variant) < (variant.listPrice ?? variant.price);
 }
 
 export interface PosProduct {
@@ -229,8 +250,15 @@ export interface CartItem {
   product: PosProduct;
   variantIndex: number;
   quantity: number;
+  /** What this line charges per unit: the markdown, or a cashier's override. */
   price: number;
   variantLabel: string;
+  /** Before any markdown — the "was" the cashier and the receipt show. */
+  listPrice?: number;
+  discountPercent?: number;
+  discountCode?: string | null;
+  /** True once a cashier has typed a price over the automatic one. */
+  priceOverridden?: boolean;
 }
 
 export interface CreateSaleInput {
@@ -255,6 +283,11 @@ export interface SaleItem {
   costPrice: number;
   total: number;
   refundedQty: number;
+  // What the price was made of, recorded by the server at the time of sale.
+  listPrice?: number;
+  discountPercent?: number;
+  appliedDiscountCode?: string;
+  priceOverridden?: boolean;
 }
 
 export interface Sale {

@@ -133,7 +133,8 @@ function findVariant(product, variant) {
 }
 
 /**
- * Best automatic markdown for one unit of a product.
+ * Best automatic markdown for one unit of a product, for a variant the caller
+ * already holds.
  *
  * Two sources compete and the deeper one wins:
  *   1. a usable Discount whose scope covers the product, and
@@ -142,9 +143,12 @@ function findVariant(product, variant) {
  * Returns the unit price to charge plus the "was" price to strike through.
  * Never invents a "was" price — an item with no real promotion comes back at
  * its list price with `discount: null`.
+ *
+ * Prefer this over `resolveUnitPrice` when the exact variant is already known:
+ * the POS addresses variants by index, and two variants may share a size/color
+ * pair, so looking one up by those fields could price the wrong row.
  */
-function resolveUnitPrice(product, variant, discounts = [], now = new Date()) {
-  const v = findVariant(product, variant);
+function priceVariant(product, v, discounts = [], now = new Date()) {
   const listPrice = money(v && v.price);
   const result = {
     unitPrice: listPrice,
@@ -186,6 +190,15 @@ function resolveUnitPrice(product, variant, discounts = [], now = new Date()) {
   }
 
   return result;
+}
+
+/**
+ * Best automatic markdown for one unit, addressing the variant by its
+ * size/color (the storefront's shape — a cart line names what the shopper
+ * picked). Falls back to the first variant, same as `findVariant`.
+ */
+function resolveUnitPrice(product, variant, discounts = [], now = new Date()) {
+  return priceVariant(product, findVariant(product, variant), discounts, now);
 }
 
 /** Shipping for a post-discount subtotal. */
@@ -364,6 +377,7 @@ module.exports = {
   productOverridePrice,
   discountedUnitPrice,
   findVariant,
+  priceVariant,
   resolveUnitPrice,
   getShippingCost,
   validateCode,

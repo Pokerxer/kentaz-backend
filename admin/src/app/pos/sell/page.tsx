@@ -11,7 +11,7 @@ import {
   Menu, ArrowDownCircle, ArrowUpCircle, Monitor, Lock,
   DollarSign, TrendingUp, ChevronRight, ScanBarcode, Wifi, WifiOff,
 } from 'lucide-react';
-import { posApi, getPosUser, clearPosSession, hasPosPermission, POS_PERMS, validatePosToken } from '@/lib/posApi';
+import { posApi, getPosUser, clearPosSession, hasPosPermission, POS_PERMS, validatePosToken, variantSellingPrice, variantIsMarkedDown } from '@/lib/posApi';
 import type { PosProduct, PosUser, CartItem, Sale, Register, RegisterReport, CreateSaleInput } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -114,7 +114,18 @@ function VariantModal({ product, onSelect, onClose, preselectedVariantIndex }: {
           {matched && (
             <div className={`flex items-center justify-between px-4 py-3 rounded-xl border ${canAdd ? 'border-[#C9A84C]/40 bg-amber-50/60' : 'border-red-100 bg-red-50/60'}`}>
               <div><p className="text-sm font-semibold text-gray-900">{[matched.size, matched.color].filter(Boolean).join(' · ') || 'Default'}</p>{matched.sku && <p className="text-xs text-gray-400 font-mono">{matched.sku}</p>}</div>
-              <div className="text-right"><p className="text-sm font-bold text-gray-900">{formatPrice(matched.price)}</p>{canAdd ? <p className="text-xs text-green-600 font-medium">{matched.stock} in stock</p> : <p className="text-xs text-red-500 font-medium">Out of stock</p>}</div>
+              <div className="text-right">
+                {variantIsMarkedDown(matched) ? (
+                  <p className="text-sm font-bold text-gray-900">
+                    <span className="text-xs text-gray-400 line-through mr-1.5">{formatPrice(matched.listPrice ?? matched.price)}</span>
+                    {formatPrice(variantSellingPrice(matched))}
+                    {matched.discountPercent ? <span className="ml-1.5 text-[10px] font-bold text-red-600">-{matched.discountPercent}%</span> : null}
+                  </p>
+                ) : (
+                  <p className="text-sm font-bold text-gray-900">{formatPrice(matched.price)}</p>
+                )}
+                {canAdd ? <p className="text-xs text-green-600 font-medium">{matched.stock} in stock</p> : <p className="text-xs text-red-500 font-medium">Out of stock</p>}
+              </div>
             </div>
           )}
           <button onClick={() => canAdd && onSelect(matchedIdx)} disabled={!canAdd} className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${canAdd ? 'bg-gray-900 text-white hover:bg-[#C9A84C] hover:shadow-lg hover:shadow-[#C9A84C]/20' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{canAdd ? 'Add to Cart' : 'Out of Stock'}</button>
@@ -154,6 +165,8 @@ function PaymentModal({
   onClose: () => void;
 }) {
   const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  // What the sale prices and any overrides already took off list price.
+  const itemSavings = cart.reduce((s, i) => s + Math.max(0, (i.listPrice ?? i.price) - i.price) * i.quantity, 0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
   const [discount, setDiscount] = useState(preDiscount > 0 ? String(preDiscount) : '');
   const [discountType, setDiscountType] = useState<'fixed' | 'percent'>(preDiscount > 0 ? 'percent' : 'fixed');
@@ -235,6 +248,15 @@ function PaymentModal({
             <div className="flex justify-between text-gray-600">
               <span>Subtotal</span><span>{formatPrice(subtotal)}</span>
             </div>
+            {/* Automatic markdowns are already inside the subtotal, so name them
+                — otherwise the shop appears to have given nothing away and the
+                cashier can't tell a customer what they saved. */}
+            {itemSavings > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Sale prices applied</span>
+                <span>-{formatPrice(itemSavings)}</span>
+              </div>
+            )}
             {discountAmount > 0 && (
               <div className="flex justify-between text-red-600">
                 <span>Discount {discountType === 'percent' ? `(${discount}%)` : ''}</span>
@@ -521,7 +543,16 @@ function ReceiptModal({ sale, onClose, onNewSale }: { sale: Sale; onClose: () =>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 leading-tight">{item.productName}</p>
                     {item.variantLabel && <p className="text-[10px] text-gray-400 mt-0.5">{item.variantLabel}</p>}
-                    <p className="text-[11px] text-gray-500 mt-0.5">{item.quantity} × {formatPrice(item.price)}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {item.quantity} × {formatPrice(item.price)}
+                      {/* A customer should be able to see the saving on the slip. */}
+                      {item.listPrice != null && item.listPrice > item.price && (
+                        <span className="ml-1.5 text-gray-400">
+                          <span className="line-through">{formatPrice(item.listPrice)}</span>
+                          {item.discountPercent ? ` −${item.discountPercent}%` : ''}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <span className="text-sm font-bold text-gray-900 flex-shrink-0">{formatPrice(item.total)}</span>
                 </div>
@@ -1000,7 +1031,19 @@ export default function PosPage() {
       updated[existing] = { ...updated[existing], quantity: Math.min(updated[existing].quantity + 1, maxQty) };
     } else {
       const label = [variant.size, variant.color].filter(Boolean).join(' / ');
-      updated = [...currentItems, { product, variantIndex, quantity: 1, price: variant.price, variantLabel: label }];
+      // The server resolved this variant's selling price against every live
+      // discount, so an item marked down online rings up marked down here. The
+      // till does no pricing maths of its own.
+      updated = [...currentItems, {
+        product,
+        variantIndex,
+        quantity: 1,
+        price: variantSellingPrice(variant),
+        variantLabel: label,
+        listPrice: variant.listPrice ?? variant.price,
+        discountPercent: variant.discountPercent ?? 0,
+        discountCode: variant.discountCode ?? null,
+      }];
     }
 
     setActiveCartItems(updated);
@@ -1078,7 +1121,10 @@ export default function PosPage() {
       const maxQty = item.product.variants[item.variantIndex]?.stock ?? 999;
       updated[selectedCartItemIdx] = { ...item, quantity: Math.min(qty, maxQty) };
     } else if (numpadMode === 'price' && hasPosPermission(user, POS_PERMS.PRICE_OVERRIDE)) {
-      updated[selectedCartItemIdx] = { ...item, price: Math.max(0, val) };
+      // Marked as an override so the cart stops showing this as a promotion —
+      // the price is now the cashier's, not the shop's. The server re-checks
+      // the permission and refuses anything above the selling price.
+      updated[selectedCartItemIdx] = { ...item, price: Math.max(0, val), priceOverridden: true };
     }
     setActiveCartItems(updated);
   }, [numpadInput, numpadMode, selectedCartItemIdx]);
@@ -1123,6 +1169,11 @@ export default function PosPage() {
         costPrice:    0,
         total:        i.price * i.quantity,
         refundedQty:  0,
+        // Carried through so an offline slip shows the same markdown the
+        // online one does.
+        listPrice:       i.listPrice,
+        discountPercent: i.discountPercent,
+        priceOverridden: i.priceOverridden,
       })),
       subtotal:       rawSubtotal,
       discount:       saleData.discount ?? 0,
@@ -1170,13 +1221,16 @@ export default function PosPage() {
 
     const saleData: CreateSaleInput = {
       items: cart.map(i => {
-        const variantPrice = i.product.variants[i.variantIndex]?.price;
+        const variant = i.product.variants[i.variantIndex];
+        const autoPrice = variant ? variantSellingPrice(variant) : undefined;
         return {
           productId: i.product._id,
           variantIndex: i.variantIndex,
           quantity: i.quantity,
-          // Only send customPrice if cashier actually changed it
-          ...(i.price !== variantPrice ? { customPrice: i.price } : {}),
+          // Only when the cashier genuinely typed a price. Comparing against the
+          // list price would send every marked-down line as an override, making
+          // a routine flash-sale item need the override permission.
+          ...(i.priceOverridden && i.price !== autoPrice ? { customPrice: i.price } : {}),
         };
       }),
       ...payData,
@@ -1467,6 +1521,30 @@ export default function PosPage() {
                           x {formatPrice(isSelected && numpadMode === 'price' && numpadInput ? parseFloat(numpadInput) || item.price : item.price)} / Units
                         </span>
                       </div>
+                      {/* Row 3: why this price is not the list price.
+                          Staff have to be able to explain a price to the
+                          customer standing in front of them, so a markdown is
+                          shown rather than silently applied. */}
+                      {item.priceOverridden ? (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <Tag className="w-3 h-3 text-blue-500" />
+                          <span className="text-xs font-semibold text-blue-600">Price overridden</span>
+                          {item.listPrice != null && item.listPrice > item.price && (
+                            <span className="text-xs text-gray-400 line-through">{formatPrice(item.listPrice)}</span>
+                          )}
+                        </div>
+                      ) : item.listPrice != null && item.listPrice > item.price ? (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <span className="text-xs text-gray-400 line-through">{formatPrice(item.listPrice)}</span>
+                          <span className="text-xs text-gray-400">→</span>
+                          <span className="text-xs font-bold text-gray-900">{formatPrice(item.price)}</span>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] font-bold uppercase tracking-wide">
+                            <Tag className="w-2.5 h-2.5" />
+                            {item.discountCode || 'On sale'}
+                            {item.discountPercent ? ` -${item.discountPercent}%` : ''}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

@@ -5,12 +5,57 @@ const Register = require('../models/Register');
 const CashMovement = require('../models/CashMovement');
 const Customer = require('../models/Customer');
 const OfflineSale = require('../models/OfflineSale');
+const Discount = require('../models/Discount');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { trackSale } = require('./customerController');
+const { priceVariant } = require('../utils/pricing');
+const { quoteSale } = require('../utils/posPricing');
 
 const JWT_SECRET = require('../utils/jwt');
+
+/** Cashier permission required to type a price by hand. Mirrors POS_PERMS in admin/src/lib/posApi.ts. */
+const PRICE_OVERRIDE_PERM = 'pos:price_override';
+
+/**
+ * Whether this user may override a price.
+ *
+ * The POS token deliberately carries no permissions — `posLogin` signs only
+ * `{ id, role, name }` — so the staff record is the only place to ask. Checked
+ * server-side because the UI gate in pos/sell/page.tsx is a convenience, not a
+ * control: without this, any POS token could POST a ₦1 price.
+ */
+async function canOverridePrice(userId) {
+  const staff = await User.findById(userId).select('role permissions');
+  if (!staff) return false;
+  return staff.role === 'admin' || (staff.permissions || []).includes(PRICE_OVERRIDE_PERM);
+}
+
+/** Discounts that could mark something down right now. */
+function activeDiscounts() {
+  return Discount.find({ isActive: true });
+}
+
+/** Priced lines from utils/posPricing, in the shape Sale.items stores. */
+function toSaleItems(items, overrideBy) {
+  return items.map((i) => ({
+    product: i.product,
+    productName: i.productName,
+    variantIndex: i.variantIndex,
+    variantLabel: i.variantLabel,
+    quantity: i.quantity,
+    price: i.price,
+    costPrice: i.costPrice,
+    total: i.total,
+    listPrice: i.listPrice,
+    discountPercent: i.discountPercent,
+    appliedDiscount: i.appliedDiscount,
+    appliedDiscountCode: i.appliedDiscountCode || '',
+    priceOverridden: i.priceOverridden,
+    overrideBy: i.priceOverridden ? overrideBy : null,
+  }));
+}
 
 // GET /api/pos/staff-list — public, returns selectable staff for the login screen
 exports.getPosStaffList = async (req, res) => {
@@ -113,10 +158,33 @@ exports.getPosProducts = async (req, res) => {
       filter.isFavorite = true;
     }
 
-    const products = await Product.find(filter)
-      .select('name slug category images variants tags featured barcode isFavorite ageRestricted minStock')
-      .sort({ isFavorite: -1, name: 1 })
-      .lean();
+    const [products, discounts] = await Promise.all([
+      Product.find(filter)
+        .select('name slug category images variants tags featured barcode isFavorite ageRestricted minStock')
+        .sort({ isFavorite: -1, name: 1 })
+        .lean(),
+      activeDiscounts(),
+    ]);
+
+    // Resolve each variant's selling price here rather than in the till.
+    //
+    // The POS used to receive list prices only, so an item marked down online
+    // rang up at full price in store. Pricing on the server means (a) the till
+    // and the shop can't disagree, and (b) the POS product cache carries sale
+    // prices offline for free — the cashier's tablet does no pricing maths of
+    // its own, it displays what this said.
+    const now = new Date();
+    for (const product of products) {
+      for (const variant of product.variants || []) {
+        const priced = priceVariant(product, variant, discounts, now);
+        // The pre-markdown price: `compareAtPrice` when the markdown is baked
+        // into the variant, otherwise the list price.
+        variant.listPrice = priced.compareAtPrice || priced.listPrice;
+        variant.salePrice = priced.unitPrice;
+        variant.discountPercent = priced.discountPercent;
+        variant.discountCode = (priced.discount && priced.discount.code) || null;
+      }
+    }
 
     res.json(products);
   } catch (err) {
@@ -163,8 +231,13 @@ exports.createSale = async (req, res) => {
       return res.status(400).json({ error: 'At least one item is required' });
     }
 
-    // ── Phase 1: Build & validate sale items ──────────────────
-    const saleItems = [];
+    // ── Phase 1: Price the sale from the database ─────────────
+    //
+    // Every price comes from utils/posPricing, which prices each line with the
+    // same function the storefront quotes from. Nothing about what a customer
+    // pays is taken from the request body except the quantity and — with the
+    // right permission — a hand-typed override.
+    const lines = [];
     for (const item of items) {
       if (!item.productId) return res.status(400).json({ error: 'productId is required for each item' });
       if (!item.quantity || item.quantity < 1) return res.status(400).json({ error: 'quantity must be at least 1' });
@@ -172,33 +245,35 @@ exports.createSale = async (req, res) => {
       const product = await Product.findById(item.productId);
       if (!product) return res.status(404).json({ error: `Product not found: ${item.productId}` });
 
-      const vi = item.variantIndex ?? 0;
-      const variant = product.variants[vi];
-      if (!variant) return res.status(400).json({ error: `Invalid variant index ${vi} for "${product.name}"` });
-
-      const currentStock = variant.stock ?? 0;
-      if (currentStock < item.quantity) {
-        const varLabel = [variant.size, variant.color].filter(Boolean).join(' ');
-        return res.status(400).json({
-          error: `Insufficient stock for "${product.name}"${varLabel ? ` (${varLabel})` : ''}. Available: ${currentStock}, requested: ${item.quantity}`,
-        });
-      }
-
-      const label = [variant.size, variant.color].filter(Boolean).join(' / ');
-      // Accept custom price from POS (e.g. cashier override); fall back to variant price
-      const unitPrice = (item.customPrice != null && item.customPrice > 0) ? item.customPrice : variant.price;
-
-      saleItems.push({
-        product: product._id,
-        productName: product.name,
-        variantIndex: vi,
-        variantLabel: label,
+      lines.push({
+        product,
+        variantIndex: item.variantIndex ?? 0,
         quantity: item.quantity,
-        price: unitPrice,
-        costPrice: variant.costPrice || 0,
-        total: unitPrice * item.quantity,
+        customPrice: item.customPrice ?? null,
       });
     }
+
+    const wantsOverride = lines.some((l) => l.customPrice !== null && l.customPrice !== '');
+    const allowOverride = wantsOverride ? await canOverridePrice(req.user.id) : false;
+    if (wantsOverride && !allowOverride) {
+      return res.status(403).json({ error: 'You do not have permission to override prices' });
+    }
+
+    const discounts = await activeDiscounts();
+    const quoteArgs = { lines, discounts, discount, discountType, allowOverride };
+
+    // Price before touching stock, so a rejected sale leaves nothing to undo.
+    const dryRun = quoteSale(quoteArgs);
+    if (dryRun.error) return res.status(400).json({ error: dryRun.error });
+
+    for (const item of dryRun.items) {
+      if (item.stock < item.quantity) {
+        return res.status(400).json({
+          error: `Insufficient stock for "${item.productName}"${item.variantLabel ? ` (${item.variantLabel})` : ''}. Available: ${item.stock}, requested: ${item.quantity}`,
+        });
+      }
+    }
+    const saleItems = dryRun.items;
 
     // ── Phase 2: Atomically deduct stock for each item ────────
     // Uses $inc with a guard so we can't go negative even under concurrent load
@@ -247,13 +322,6 @@ exports.createSale = async (req, res) => {
     }
 
     // ── Phase 3: Create sale record ───────────────────────────
-    const subtotal = saleItems.reduce((s, i) => s + i.total, 0);
-    let discountAmount = 0;
-    if (discount > 0) {
-      discountAmount = discountType === 'percent'
-        ? Math.round((subtotal * discount) / 100 * 100) / 100
-        : discount;
-    }
 
     // Handle loyalty points redemption (100 points = ₦1)
     let loyaltyDiscount = 0;
@@ -267,10 +335,11 @@ exports.createSale = async (req, res) => {
       }
     }
 
-    const preTaxTotal = Math.max(0, subtotal - discountAmount - loyaltyDiscount);
-    const TAX_RATE = 0.075;
-    const taxAmount = Math.round(preTaxTotal * TAX_RATE * 100) / 100;
-    const total = parseFloat((preTaxTotal + taxAmount).toFixed(2));
+    // Re-quote with the points actually redeemed. Same pure function, so the
+    // prices are identical to the dry run — only the loyalty line moves.
+    const quote = quoteSale({ ...quoteArgs, loyaltyDiscount });
+    if (quote.error) throw new Error(quote.error);
+    const { subtotal, discountAmount, taxRate, taxAmount, total } = quote;
 
     // Handle split payments
     let finalAmountPaid = total;
@@ -287,12 +356,13 @@ exports.createSale = async (req, res) => {
     }
 
     const sale = new Sale({
-      items: saleItems,
+      items: toSaleItems(quote.items, req.user.id),
       subtotal,
+      itemDiscountTotal: quote.itemDiscountTotal,
       discount,
       discountType,
       discountAmount,
-      taxRate: TAX_RATE,
+      taxRate,
       taxAmount,
       total,
       paymentMethod: finalPaymentMethod,
@@ -932,12 +1002,16 @@ exports.queueOfflineSale = async (req, res) => {
     }
 
     const offlineSale = await OfflineSale.create({
+      // The money here is what the till printed on the customer's slip. It is
+      // kept for reconciliation, not to charge from — syncOfflineSales prices
+      // the sale again from the database before it is banked.
       items,
       subtotal,
       discount,
       discountType,
       discountAmount,
       total,
+      clientTotal: total ?? null,
       paymentMethod,
       amountPaid,
       change,
@@ -984,67 +1058,107 @@ exports.syncOfflineSales = async (req, res) => {
 
     const synced = [];
     const failed = [];
+    const discounts = await activeDiscounts();
 
     for (const offlineSale of pendingSales) {
+      // Stock deducted for THIS queued sale, so a mid-sale failure can be undone.
+      const deducted = [];
       try {
-        // Process each queued sale like a normal sale
-        const saleItems = [];
-        let hasError = false;
+        // Re-price from the database rather than banking the tablet's figures.
+        // A price that arrives from a client is a request, not a fact: the queue
+        // is written by a device that has been offline, possibly for hours, and
+        // possibly by someone who edited it.
+        const lines = [];
+        let loadError = null;
 
         for (const item of offlineSale.items) {
           const product = await Product.findById(item.productId);
           if (!product) {
-            hasError = true;
-            offlineSale.error = `Product not found: ${item.productId}`;
-            continue;
+            loadError = `Product not found: ${item.productId}`;
+            break;
           }
-
-          const vi = item.variantIndex ?? 0;
-          const variant = product.variants[vi];
-          if (!variant) {
-            hasError = true;
-            offlineSale.error = `Invalid variant: ${vi}`;
-            continue;
-          }
-
-          const currentStock = variant.stock ?? 0;
-          if (currentStock < item.quantity) {
-            hasError = true;
-            offlineSale.error = `Insufficient stock`;
-            continue;
-          }
-
-          // Deduct stock
-          product.variants[vi].stock = currentStock - item.quantity;
-          await product.save();
-
-          saleItems.push({
-            product: product._id,
-            productName: product.name,
-            variantIndex: vi,
-            variantLabel: [variant.size, variant.color].filter(Boolean).join(' / '),
+          lines.push({
+            product,
+            variantIndex: item.variantIndex ?? 0,
             quantity: item.quantity,
-            price: item.price,
-            costPrice: variant.costPrice || 0,
-            total: item.total,
+            customPrice: item.customPrice ?? null,
           });
         }
 
-        if (hasError) {
+        if (loadError) {
+          offlineSale.error = loadError;
           offlineSale.status = 'failed';
           await offlineSale.save();
           failed.push(offlineSale._id);
           continue;
         }
 
-        // Create actual sale
-        const sale = new Sale({
-          items: saleItems,
-          subtotal: offlineSale.subtotal,
+        // An override typed offline is re-authorised here against the cashier's
+        // current permissions — the queue is not a way around the check.
+        const wantsOverride = lines.some((l) => l.customPrice !== null && l.customPrice !== '');
+        const allowOverride = wantsOverride ? await canOverridePrice(offlineSale.cashierId) : false;
+
+        const quote = quoteSale({
+          lines,
+          discounts,
           discount: offlineSale.discount,
           discountType: offlineSale.discountType,
-          discountAmount: offlineSale.discountAmount,
-          total: offlineSale.total,
+          allowOverride,
+        });
+
+        if (quote.error) {
+          offlineSale.error = quote.error;
+          offlineSale.status = 'failed';
+          await offlineSale.save();
+          failed.push(offlineSale._id);
+          continue;
+        }
+
+        // Deduct stock with the same guarded $inc the live till uses, so two
+        // devices syncing at once cannot both take the last unit.
+        let stockError = null;
+        for (const item of quote.items) {
+          const updated = await Product.findOneAndUpdate(
+            {
+              _id: item.product,
+              [`variants.${item.variantIndex}.stock`]: { $gte: item.quantity },
+            },
+            { $inc: { [`variants.${item.variantIndex}.stock`]: -item.quantity } },
+            { new: true }
+          );
+          if (!updated) {
+            stockError = `Insufficient stock for "${item.productName}"${item.variantLabel ? ` (${item.variantLabel})` : ''}`;
+            break;
+          }
+          deducted.push(item);
+        }
+
+        if (stockError) {
+          for (const done of deducted) {
+            await Product.findOneAndUpdate(
+              { _id: done.product },
+              { $inc: { [`variants.${done.variantIndex}.stock`]: done.quantity } }
+            ).catch(() => {});
+          }
+          offlineSale.error = stockError;
+          offlineSale.status = 'failed';
+          await offlineSale.save();
+          failed.push(offlineSale._id);
+          continue;
+        }
+
+        // Create actual sale — server figures, including the tax the old path
+        // never recorded at all.
+        const sale = new Sale({
+          items: toSaleItems(quote.items, offlineSale.cashierId),
+          subtotal: quote.subtotal,
+          itemDiscountTotal: quote.itemDiscountTotal,
+          discount: offlineSale.discount,
+          discountType: offlineSale.discountType,
+          discountAmount: quote.discountAmount,
+          taxRate: quote.taxRate,
+          taxAmount: quote.taxAmount,
+          total: quote.total,
           paymentMethod: offlineSale.paymentMethod,
           amountPaid: offlineSale.amountPaid,
           change: offlineSale.change,
@@ -1058,6 +1172,16 @@ exports.syncOfflineSales = async (req, res) => {
 
         await sale.save();
 
+        // The till already printed a slip. If the re-priced total differs, bank
+        // the server's figure but flag it, so the drawer can be reconciled
+        // against the receipt rather than quietly disagreeing with it.
+        const printed = offlineSale.clientTotal != null ? offlineSale.clientTotal : offlineSale.total;
+        if (printed != null && Math.abs(printed - quote.total) >= 0.01) {
+          offlineSale.priceMismatch = true;
+          offlineSale.clientTotal = printed;
+          offlineSale.error = `Re-priced on sync: till printed ₦${printed}, charged ₦${quote.total}`;
+        }
+
         // Track loyalty
         if (offlineSale.customerPhone) {
           await trackSale(sale);
@@ -1069,6 +1193,14 @@ exports.syncOfflineSales = async (req, res) => {
 
         synced.push({ offlineId: offlineSale._id, saleId: sale._id });
       } catch (err) {
+        // Put back whatever this sale took: a queued sale that failed to bank
+        // must not silently consume stock.
+        for (const done of deducted) {
+          await Product.findOneAndUpdate(
+            { _id: done.product },
+            { $inc: { [`variants.${done.variantIndex}.stock`]: done.quantity } }
+          ).catch(() => {});
+        }
         offlineSale.error = err.message;
         offlineSale.status = 'failed';
         await offlineSale.save();

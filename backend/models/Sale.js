@@ -8,10 +8,20 @@ const saleItemSchema = new Schema({
   variantLabel: { type: String, default: '' },
   // positive for sales, positive for refunds too (price/total carry the sign)
   quantity: { type: Number, required: true, min: 1 },
-  price: { type: Number, required: true },      // negative for refund records
+  price: { type: Number, required: true },      // charged per unit; negative for refund records
   costPrice: { type: Number, default: 0 },
   total: { type: Number, required: true },       // negative for refund records
   refundedQty: { type: Number, default: 0 },    // only used on original sale items
+
+  // ── What the price was made of ──────────────────────────────
+  // `price` alone can't tell a promotion from a cashier's goodwill, and a
+  // receipt can't show "was ₦18,000" without somewhere to keep the was.
+  listPrice: { type: Number, default: 0 },              // before any markdown or override
+  discountPercent: { type: Number, default: 0 },        // the automatic markdown that applied
+  appliedDiscount: { type: Schema.Types.ObjectId, ref: 'Discount', default: null },
+  appliedDiscountCode: { type: String, default: '' },
+  priceOverridden: { type: Boolean, default: false },   // a cashier typed this price
+  overrideBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 });
 
 const saleSchema = new Schema({
@@ -27,7 +37,11 @@ const saleSchema = new Schema({
       message: 'At least one item required',
     },
   },
-  subtotal: { type: Number, required: true },     // negative for refunds
+  subtotal: { type: Number, required: true },     // AFTER automatic markdowns; negative for refunds
+  // Everything automatic markdowns and price overrides took off list price.
+  // Reports need this separate from `discountAmount`, which is the goodwill
+  // discount a cashier typed at the counter.
+  itemDiscountTotal: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
   discountType: { type: String, enum: ['fixed', 'percent'], default: 'fixed' },
   discountAmount: { type: Number, default: 0 },
