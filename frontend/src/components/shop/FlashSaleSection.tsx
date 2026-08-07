@@ -8,6 +8,7 @@ import { FlashSaleCard } from '@/components/shop/FlashSaleCard';
 import { QuickViewModal } from '@/components/shop/QuickViewModal';
 import {
   FLASH_SALE,
+  dealsWithImages,
   getActiveDiscounts,
   getFlashDeals,
   getFlashSaleSession,
@@ -68,7 +69,13 @@ export function FlashSaleSection() {
         const data = await productsRes.json();
         if (cancelled) return;
         const all: any[] = Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : [];
-        setDeals(sortDealsForDisplay(getFlashDeals(all, discounts)).slice(0, FLASH_SALE.maxHomepageItems));
+        // dealsWithImages before the slice: FlashSaleCard substitutes a stock
+        // photo for a product with no artwork of its own, so an imageless
+        // product would advertise a completely unrelated picture. Filtering
+        // first also means the slice spends all 8 slots on showable products.
+        setDeals(
+          sortDealsForDisplay(dealsWithImages(getFlashDeals(all, discounts))).slice(0, FLASH_SALE.maxHomepageItems)
+        );
         setDiscounts(discounts);
       } catch {
         if (!cancelled) setDeals([]);
