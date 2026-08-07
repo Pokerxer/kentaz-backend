@@ -336,11 +336,40 @@ export function getFlashDeals(products: any[], discounts: FlashDiscount[] = []):
  * never leads with placeholder thumbnails), then by discount depth.
  */
 export function sortDealsForDisplay(deals: FlashDeal[]): FlashDeal[] {
-  const hasImage = (d: FlashDeal) =>
-    Boolean(d.product.thumbnail || (Array.isArray(d.product.images) && d.product.images.length > 0));
+  const hasImage = (d: FlashDeal) => productImageUrl(d.product) !== null;
   return [...deals].sort(
     (a, b) => Number(hasImage(b)) - Number(hasImage(a)) || b.discountPercent - a.discountPercent || b.savings - a.savings
   );
+}
+
+/**
+ * A usable image URL for a product, or null when it has none of its own.
+ *
+ * Checks that a url actually resolves to a non-empty string rather than
+ * trusting `images.length` — an images array holding entries with a blank url
+ * is the usual shape of a product that was never given artwork.
+ */
+export function productImageUrl(product: any): string | null {
+  const candidates = [
+    product?.thumbnail,
+    ...(Array.isArray(product?.images) ? product.images.map((img: any) => img?.url) : []),
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate.trim();
+  }
+  return null;
+}
+
+/**
+ * Drop deals whose product has no image of its own.
+ *
+ * FlashSaleCard substitutes a stock photo when a product has no artwork, so an
+ * imageless product doesn't render blank — it renders a completely unrelated
+ * picture presented as the item for sale. Leaving it out of the sale is the
+ * honest option.
+ */
+export function dealsWithImages(deals: FlashDeal[]): FlashDeal[] {
+  return deals.filter((deal) => productImageUrl(deal.product) !== null);
 }
 
 export function getCountdownParts(ms: number): CountdownParts {

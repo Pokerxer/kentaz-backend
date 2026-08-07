@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Zap, ArrowRight, Clock, CalendarClock, ShoppingBag, Sparkles, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Zap, ArrowRight, Clock, CalendarClock, ShoppingBag, Sparkles, ChevronDown, SlidersHorizontal, AlertCircle, RefreshCw } from 'lucide-react';
 import { FlashSaleCard } from '@/components/shop/FlashSaleCard';
 import { QuickViewModal } from '@/components/shop/QuickViewModal';
 import { ScrollReveal } from '@/components/ui/ScrollReveal';
 import {
   FLASH_SALE,
+  dealsWithImages,
   getActiveDiscounts,
   getFlashDeals,
   getFlashSaleSession,
@@ -164,6 +165,51 @@ function Hero({ session, deals, countdown }: { session: FlashSaleSession; deals:
   );
 }
 
+/**
+ * Shown when the catalogue could not be loaded.
+ *
+ * Deliberately distinct from EmptyState: a failed request is not the same as
+ * "no deals today", and telling a shopper the sale is empty when the server is
+ * down loses a sale and hides an outage.
+ */
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <section className="py-16 md:py-24 bg-[#FAFAFA]">
+      <div className="container mx-auto px-4">
+        <div className="max-w-xl mx-auto text-center rounded-3xl bg-white border border-[#E5E5E5] p-10 md:p-14 shadow-lg">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-red-50 flex items-center justify-center mb-6">
+            <AlertCircle className="h-8 w-8 text-red-500" />
+          </div>
+          <p className="text-[#C9A84C] font-medium mb-2 tracking-widest uppercase text-sm">Flash Sale</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-[#1A1A1A] mb-3">We couldn&apos;t load the deals</h2>
+          <p className="text-[#6B6B6B] text-sm md:text-base mb-2">
+            Something went wrong reaching our store — this isn&apos;t a sign the sale is over.
+          </p>
+          <p className="text-xs text-[#9B9B9B] mb-8">{message}</p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-[#1A1A1A] text-white font-medium hover:bg-[#C9A84C] hover:text-black transition-all duration-300"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </button>
+            <Link
+              href="/products"
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-full border border-[#E5E5E5] text-[#1A1A1A] font-medium hover:border-[#C9A84C] hover:text-[#C9A84C] transition-all duration-300"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Shop All Products
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function EmptyState({ nextSession, countdown }: { nextSession: FlashSaleSession; countdown: ReturnType<typeof useFlashCountdown> }) {
   return (
     <section className="py-16 md:py-24 bg-[#FAFAFA]">
@@ -231,6 +277,9 @@ export default function FlashSalePage() {
   const [deals, setDeals] = useState<FlashDeal[]>([]);
   const [discounts, setDiscounts] = useState<FlashDiscount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  /** Bumped by the retry button to re-run the fetch effect. */
+  const [reloadKey, setReloadKey] = useState(0);
   const [quickViewDeal, setQuickViewDeal] = useState<FlashDeal | null>(null);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -243,26 +292,44 @@ export default function FlashSalePage() {
   const now = useNow(1000);
   const session = useMemo(() => getFlashSaleSession(new Date(now), discounts), [now, discounts]);
   const nextSession = useMemo(() => getNextFlashSaleSession(), []);
-  const countdown = useFlashCountdown(session.status === 'live' ? session.endTime : null);
+  // `session` is rebuilt every second, so its endTime is a fresh Date object
+  // each tick. Keyed on the timestamp, the countdown's effect only re-subscribes
+  // when the end time genuinely moves, instead of tearing down its interval once
+  // a second.
+  const endTimeMs = session.status === 'live' ? session.endTime.getTime() : null;
+  const countdownTarget = useMemo(() => (endTimeMs === null ? null : new Date(endTimeMs)), [endTimeMs]);
+  const countdown = useFlashCountdown(countdownTarget);
   const nextCountdown = useFlashCountdown(nextSession.startTime);
 
   useEffect(() => {
     let cancelled = false;
     async function fetchDeals() {
+      setLoading(true);
+      setError(null);
       try {
         // Scan the full catalog: promotions can sit on any product, not just
         // the newest page. One request, filtered client-side.
-        const [productsRes, discounts] = await Promise.all([
+        const [productsRes, activeDiscounts] = await Promise.all([
           fetch(`${API_URL}/api/store/products?limit=2000`),
           getActiveDiscounts(),
         ]);
+        // fetch only rejects on network failure — a 500 still resolves, and
+        // parsing it as JSON would quietly yield zero deals.
+        if (!productsRes.ok) throw new Error(`Store responded with ${productsRes.status}`);
         const data = await productsRes.json();
         if (cancelled) return;
         const all: any[] = Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : [];
-        setDeals(sortDealsForDisplay(getFlashDeals(all, discounts)));
-        setDiscounts(discounts);
-      } catch {
-        if (!cancelled) setDeals([]);
+        // Filter before anything else reads `deals`, so the hero counts, the
+        // category chips and their tallies all agree with the grid.
+        setDeals(sortDealsForDisplay(dealsWithImages(getFlashDeals(all, activeDiscounts))));
+        setDiscounts(activeDiscounts);
+      } catch (err) {
+        // Never fall through to the empty state: "no deals today" and "we
+        // couldn't reach the store" look identical to a shopper otherwise.
+        if (!cancelled) {
+          setDeals([]);
+          setError(err instanceof Error ? err.message : 'Could not reach the store');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -271,7 +338,7 @@ export default function FlashSalePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(deals.map((d) => d.product.category).filter(Boolean)))],
@@ -297,12 +364,16 @@ export default function FlashSalePage() {
     <div className="bg-[#FAFAFA]">
       {hasDeals ? (
         <Hero session={session} deals={deals} countdown={countdown} />
+      ) : loading ? null : error ? (
+        <ErrorState message={error} onRetry={() => setReloadKey((k) => k + 1)} />
       ) : (
-        !loading && <EmptyState nextSession={nextSession} countdown={nextCountdown} />
+        <EmptyState nextSession={nextSession} countdown={nextCountdown} />
       )}
 
-      {/* Deals grid */}
-      <section id="deals" className={hasDeals ? 'py-14 md:py-20' : 'hidden'}>
+      {/* Deals grid — visible while loading too, otherwise the skeletons below
+          are hidden by this very class and the page paints blank until a scan
+          of the whole catalogue returns. */}
+      <section id="deals" className={hasDeals || loading ? 'py-14 md:py-20' : 'hidden'}>
         <div className="container mx-auto px-4">
           <ScrollReveal>
             <div className="text-center mb-8 md:mb-10">
