@@ -1,8 +1,8 @@
-const axios = require('axios');
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const User = require('../models/User');
 const { sendBookingEmails } = require('../utils/email');
+const { fetchCharge, classifyChargeFailure, isChargePaid, amountLimitError } = require('../utils/korapay');
 
 exports.createBooking = async (req, res) => {
   try {
@@ -112,24 +112,19 @@ exports.initializeBookingPayment = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const reference = `KTB-${booking._id}-${Date.now()}`;
     const amountInNaira = Math.round(booking.amount); // Korapay uses naira, not kobo
 
-    const response = await axios.post(
-      'https://api.korapay.com/merchant/api/v1/charges/initialize',
-      {
-        reference,
-        amount: amountInNaira,
-        currency: 'NGN',
-        customer: { name: user.name, email: user.email },
-        notification_url: process.env.KORAPAY_WEBHOOK_URL,
-        metadata: {
-          bookingId: booking._id.toString(),
-          type: 'booking',
-        },
-      },
-      { headers: { Authorization: `Bearer ${process.env.KORAPAY_SECRET_KEY}`, 'Content-Type': 'application/json' } }
-    );
+    // Reject amounts Korapay would refuse anyway, so the customer gets a
+    // sentence they can act on instead of a modal that dies on open.
+    const limitError = amountLimitError(amountInNaira);
+    if (limitError) return res.status(400).json({ error: limitError });
+
+    // Only mint and store the reference — do NOT create the charge here.
+    // The browser opens the Korapay modal with this reference, and the modal
+    // is what creates the charge. Initialising it server-side as well meant
+    // the modal re-used a reference Korapay had already seen, which it rejects
+    // (AA029), so booking payments died at the moment the modal opened.
+    const reference = `KTB-${booking._id}-${Date.now()}`;
 
     booking.korapayRef = reference;
     await booking.save();
@@ -231,13 +226,29 @@ exports.verifyBookingPayment = async (req, res) => {
       return res.json({ success: true, booking });
     }
 
-    const txn = await axios.get(
-      `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${process.env.KORAPAY_SECRET_KEY}` } }
-    );
+    let txn;
+    try {
+      txn = await fetchCharge(reference);
+    } catch (err) {
+      const failure = classifyChargeFailure(err);
+      // Korapay answered "no such charge" — nothing was paid against this
+      // reference, so the booking stays unpaid.
+      if (failure.definitive) {
+        return res.status(400).json({ error: failure.message || 'Payment could not be verified' });
+      }
+      // Korapay is unreachable. The customer may well have paid, so say so
+      // plainly rather than implying the payment failed. The webhook still
+      // confirms the booking on its own once Korapay reaches us.
+      console.error('Booking verify — Korapay unreachable:', failure.message);
+      return res.status(503).json({
+        error:
+          'We could not reach the payment provider to confirm this booking. ' +
+          'If you were debited, your booking will be confirmed automatically within a few minutes.',
+        reference,
+      });
+    }
 
-    const { status } = txn.data.data;
-    if (status !== 'success') {
+    if (!isChargePaid(txn)) {
       return res.status(400).json({ error: 'Payment not successful on Korapay' });
     }
 

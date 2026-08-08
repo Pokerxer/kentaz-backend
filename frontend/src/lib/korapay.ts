@@ -30,6 +30,35 @@ declare global {
   }
 }
 
+// Korapay caps every channel enabled on this merchant account at ₦200,000 per
+// transaction — card, bank transfer and pay-with-bank alike. Above it the
+// gateway rejects the charge (AA021) and the modal simply dies, so we check
+// before opening it and say something the shopper can act on. Raising the
+// ceiling is a Korapay support request; this env var tracks it when it moves.
+export const MAX_ONLINE_PAYMENT_NGN = Number(
+  process.env.NEXT_PUBLIC_MAX_ONLINE_PAYMENT_NGN || 200000
+);
+
+const formatNaira = (value: number) => `₦${Math.round(value).toLocaleString()}`;
+
+/**
+ * Why this amount can't be charged online, or null if it can.
+ * Exported so checkout and booking give the identical explanation.
+ */
+export function paymentAmountError(amount: number): string | null {
+  if (!Number.isFinite(amount) || amount < 100) {
+    return 'The minimum online payment is ₦100.';
+  }
+  if (amount > MAX_ONLINE_PAYMENT_NGN) {
+    return (
+      `Online payments are limited to ${formatNaira(MAX_ONLINE_PAYMENT_NGN)} per transaction, ` +
+      `and this total is ${formatNaira(amount)}. Please place the order in smaller parts, ` +
+      `or contact us and we'll complete it for you.`
+    );
+  }
+  return null;
+}
+
 export function useKorapay() {
   const dispatch = useAppDispatch();
   const [isLoading, setIsLoading] = useState(false);
@@ -59,21 +88,35 @@ export function useKorapay() {
     };
   }, []);
 
-  const initializePayment = useCallback((config: Omit<KorapayConfig, 'reference'>) => {
+  // Returns true when the Korapay modal was actually opened. Callers own a
+  // loading spinner, so they need to know when it never opened — otherwise a
+  // rejected amount leaves the Pay button spinning forever.
+  const initializePayment = useCallback((config: Omit<KorapayConfig, 'reference'>): boolean => {
+    setError(null);
+
     if (!window.Korapay) {
       setError('Korapay is not loaded. Please check your connection.');
-      return;
+      return false;
     }
 
-    if (!config.email || !config.amount || config.amount < 1) {
-      setError('Invalid payment configuration. Amount must be at least ₦1.');
-      return;
+    if (!config.email) {
+      setError('An email address is required to take payment.');
+      return false;
+    }
+
+    // Check the gateway's own limits before opening the modal — otherwise a
+    // large cart just gets a modal that closes itself with no explanation.
+    const amountError = paymentAmountError(config.amount);
+    if (amountError) {
+      setError(amountError);
+      return false;
     }
 
     const publicKey = process.env.NEXT_PUBLIC_KORAPAY_PUBLIC_KEY;
     if (!publicKey || publicKey === 'pk_test_your_test_key_here') {
-      setError('Korapay is not configured. Please check your environment variables.');
-      return;
+      setError('Payments are temporarily unavailable. Please contact us to complete your order.');
+      console.error('NEXT_PUBLIC_KORAPAY_PUBLIC_KEY is missing or is the placeholder value.');
+      return false;
     }
 
     const reference = `KENTAZ_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -106,14 +149,18 @@ export function useKorapay() {
             currency: 'NGN',
           });
         },
-        onFailed: () => {
+        onFailed: (response?: { message?: string; status?: string }) => {
           setIsLoading(false);
-          setError('Payment failed. Please try again.');
+          // Show the gateway's own reason when it gives one — "Payment failed,
+          // try again" sends people round the same loop forever.
+          setError(response?.message || 'Payment failed. Please try again or use a different card.');
         },
       });
+      return true;
     } catch (err) {
       setIsLoading(false);
       setError('Failed to initialize payment. Please try again.');
+      return false;
     }
   }, []);
 

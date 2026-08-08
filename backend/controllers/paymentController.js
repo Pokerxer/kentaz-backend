@@ -1,4 +1,3 @@
-const axios = require('axios');
 const crypto = require('crypto');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -7,6 +6,12 @@ const {
   createGatewayTransaction,
   verifyGatewayTransaction,
 } = require('../services/payment.service');
+const {
+  fetchCharge,
+  classifyChargeFailure,
+  isChargePaid,
+  amountLimitError,
+} = require('../utils/korapay');
 
 async function sendOrderEmails(order) {
   const user = await User.findById(order.user).select('name email');
@@ -52,6 +57,11 @@ exports.initializePayment = async (req, res) => {
       return res.status(400).json({ error: 'email, amount and orderId are required' });
     }
 
+    // Catch the merchant-account ceiling here so the shopper reads a sentence
+    // instead of Korapay's AA021 wording.
+    const limitError = amountLimitError(amount);
+    if (limitError) return res.status(400).json({ error: limitError });
+
     // Force our own reference so the callback + verify echo the same value.
     const reference = `KTZ-${orderId}-${Date.now()}`;
 
@@ -80,18 +90,16 @@ exports.verifyPayment = async (req, res) => {
     const { reference } = req.body;
     if (!reference) return res.status(400).json({ error: 'reference is required' });
 
-    const response = await axios.get(
-      `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${getSecretKey()}` } }
-    );
-
-    const txn = response.data.data;
-    const status = txn.status; // 'success' | 'failed' | ...
+    const txn = await fetchCharge(reference);
+    const status = txn.status; // 'success' | 'processing' | 'failed' | ...
+    const paid = isChargePaid(txn);
     const order = await Order.findOne({ korapayRef: reference });
 
     if (order) {
       order.korapayStatus = status;
-      if (status === 'success') {
+      // Only ever advance the order — never walk a confirmed payment backwards
+      // because a later poll caught the charge mid-settlement.
+      if (paid && order.status === 'pending') {
         order.status = 'processing';
         await order.save();
         sendOrderEmails(order).catch(err => console.error('Order email error (verify):', err.message));
@@ -100,10 +108,17 @@ exports.verifyPayment = async (req, res) => {
       }
     }
 
-    res.json({ success: status === 'success', status, data: txn });
+    res.json({ success: paid, status, data: txn });
   } catch (err) {
-    console.error('Korapay verify error:', err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.message || 'Payment verification failed' });
+    const failure = classifyChargeFailure(err);
+    console.error('Korapay verify error:', failure.message);
+    // An unreachable gateway is our problem, not a failed payment — 503 so the
+    // caller can retry instead of telling a paying customer they failed.
+    res.status(failure.definitive ? 400 : 503).json({
+      error: failure.definitive
+        ? failure.message || 'Payment verification failed'
+        : 'Could not reach the payment provider. If you were debited, your order will be confirmed automatically.',
+    });
   }
 };
 

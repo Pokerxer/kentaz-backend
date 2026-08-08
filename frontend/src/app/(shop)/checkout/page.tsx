@@ -25,6 +25,9 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [korapayRef, setKorapayRef] = useState('');
+  // Set when money was taken but the order could not be recorded — kept on the
+  // page (not an alert) because it carries the reference support will need.
+  const [orderError, setOrderError] = useState<string | null>(null);
   
   const { initializePayment, verifyPayment, isLoading: korapayLoading, error: korapayError, isReady: korapayReady } = useKorapay();
   const { shippingInfo, updateShippingInfo, isValid: isShippingValid } = useShippingInfo();
@@ -65,7 +68,7 @@ export default function CheckoutPage() {
     if (!korapayReady || !quote) return;
     setLoading(true);
 
-    initializePayment({
+    const opened = initializePayment({
       email: shippingInfo.email,
       amount: grandTotal,
       firstName: shippingInfo.firstName,
@@ -99,11 +102,20 @@ export default function CheckoutPage() {
             setLoading(false);
             setCurrentStep('confirmation');
           } else {
-            throw new Error('Failed to create order');
+            const detail = await orderResponse.json().catch(() => ({}));
+            throw new Error(detail.error || 'Failed to create order');
           }
         } catch (error) {
+          // The customer has been debited by this point. Never leave them with
+          // a bare "contact support" — show the reference support will ask for
+          // and keep it on screen instead of in a dismissable alert.
           console.error('Error creating order:', error);
-          alert('Failed to create order. Please contact support.');
+          setKorapayRef(reference.reference);
+          setOrderError(
+            `Your payment went through, but we couldn't record the order automatically. ` +
+            `Nothing is lost — quote reference ${reference.reference} and we'll finish it for you. ` +
+            `(${error instanceof Error ? error.message : 'Unknown error'})`
+          );
           setLoading(false);
         }
       },
@@ -111,6 +123,11 @@ export default function CheckoutPage() {
         setLoading(false);
       },
     });
+
+    // The modal never opened (amount over the gateway limit, script blocked,
+    // misconfigured key). korapayError explains why — stop the spinner so the
+    // shopper can read it and act.
+    if (!opened) setLoading(false);
   };
 
   if (items.length === 0 && currentStep !== 'confirmation') {
@@ -405,6 +422,16 @@ export default function CheckoutPage() {
                       <div>
                         <p className="font-medium text-red-800">Payment Error</p>
                         <p className="text-sm text-red-700">{korapayError}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {orderError && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-900">Payment received — order needs attention</p>
+                        <p className="text-sm text-amber-800">{orderError}</p>
                       </div>
                     </div>
                   )}

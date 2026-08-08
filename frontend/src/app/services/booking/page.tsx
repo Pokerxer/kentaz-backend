@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { format, addDays, startOfDay } from 'date-fns';
-import { useKorapay } from '@/lib/korapay';
+import { useKorapay, paymentAmountError } from '@/lib/korapay';
 
 // ── Service config ──────────────────────────────────────────
 const serviceInfo: Record<string, {
@@ -259,6 +259,15 @@ function BookingPageContent() {
       setPaymentLoading(false);
       return;
     }
+    // The gateway caps single transactions; catch it here so a customer isn't
+    // dropped into a modal that dies on open with no explanation.
+    const amountError = paymentAmountError(service.priceNGN);
+    if (amountError) {
+      setError(amountError);
+      setPaymentLoading(false);
+      return;
+    }
+
     try {
       const token = localStorage.getItem('kentaz_token');
       const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';

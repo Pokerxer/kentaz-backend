@@ -12,20 +12,20 @@
 //     paymentStatus/paidAt/paymentDetails field and the status enum has no
 //     'confirmed' value.
 
-const axios = require('axios');
 const crypto = require('crypto');
 const Order = require('../models/Order');
 const { ValidationError, NotFoundError } = require('../utils/errors');
-
-const KORAPAY_BASE_URL = 'https://api.korapay.com/merchant/api/v1';
+const {
+  KORAPAY_BASE_URL,
+  initializeCharge,
+  requestWithRetry,
+  isChargePaid,
+  amountLimitError,
+} = require('../utils/korapay');
 
 // Which gateway customer-facing payments go through. Only 'korapay' is
 // implemented; the switch is kept so re-enabling another gateway is one env var.
 const ACTIVE_GATEWAY = (process.env.PAYMENT_GATEWAY || 'korapay').toLowerCase();
-
-// Read the key at call time so it's always current regardless of when the
-// serverless function was warmed.
-const getSecretKey = () => process.env.KORAPAY_SECRET_KEY;
 
 const defaultRedirectUrl = () =>
   `${process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/payment/verify`;
@@ -48,6 +48,10 @@ const createKorapayCharge = async (amount, email, metadata = {}, options = {}) =
   try {
     if (!email) throw new ValidationError('Customer email is required');
     if (!amount || amount < 1) throw new ValidationError('A valid amount is required');
+
+    // Fail before the network call on amounts the merchant account cannot take.
+    const limitError = amountLimitError(amount);
+    if (limitError) throw new ValidationError(limitError);
 
     const reference =
       options.reference || `KTZ-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -83,12 +87,7 @@ const createKorapayCharge = async (amount, email, metadata = {}, options = {}) =
       redirect_url: options.callbackUrl || defaultRedirectUrl(),
     };
 
-    const response = await axios.post(`${KORAPAY_BASE_URL}/charges/initialize`, payload, {
-      headers: {
-        Authorization: `Bearer ${getSecretKey()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await initializeCharge(payload);
 
     if (response.data.status) {
       return {
@@ -133,15 +132,15 @@ const verifyKorapayCharge = async (reference) => {
   try {
     if (!reference) throw new ValidationError('Payment reference is required');
 
-    const response = await axios.get(
-      `${KORAPAY_BASE_URL}/charges/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${getSecretKey()}` } }
-    );
+    const response = await requestWithRetry({
+      method: 'get',
+      url: `${KORAPAY_BASE_URL}/charges/${encodeURIComponent(reference)}`,
+    });
 
     if (response.data.status) {
       const { data } = response.data;
 
-      if (data.status === 'success') {
+      if (isChargePaid(data)) {
         return {
           success: true,
           status: 'paid',

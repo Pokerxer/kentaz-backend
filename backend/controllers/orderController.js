@@ -1,9 +1,14 @@
-const axios = require('axios');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
 const Discount = require('../models/Discount');
 const { quoteCart } = require('../utils/pricing');
+const {
+  fetchCharge,
+  classifyChargeFailure,
+  isChargePaid,
+  chargeAmountPaid,
+} = require('../utils/korapay');
 const { sendEmail, getOrderStatusEmailHtml, getOrderEmailHtml, getAdminOrderEmailHtml } = require('../utils/email');
 
 /** Underpayment below this many naira is rounding noise, not tampering. */
@@ -74,25 +79,37 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ error: 'None of the items in this order are still available' });
     }
 
-    // Verify payment server-side before creating the order
-    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    // Verify payment server-side before creating the order.
     let korapayStatus = 'pending';
     let paidAmount = null;
     try {
-      const txnRes = await axios.get(
-        `https://api.korapay.com/merchant/api/v1/charges/${encodeURIComponent(korapayRef)}`,
-        { headers: { Authorization: `Bearer ${secretKey}` } }
-      );
-      const txn = txnRes.data.data;
-      korapayStatus = txn.status; // 'success' | 'failed' | ...
-      paidAmount = Number(txn.amount);
+      const txn = await fetchCharge(korapayRef);
+      korapayStatus = txn.status; // 'success' | 'processing' | 'failed' | ...
+      paidAmount = chargeAmountPaid(txn);
 
-      if (txn.status !== 'success') {
+      // `processing` with money already captured is a settling payment (usual
+      // on bank transfers), not an unpaid one — isChargePaid() tells the two
+      // apart so a settling transfer isn't turned away at the door.
+      if (!isChargePaid(txn)) {
         return res.status(402).json({ error: 'Payment not confirmed. Please complete payment before placing the order.' });
       }
     } catch (verifyErr) {
-      // If Korapay is unreachable (e.g. dev environment), warn but allow order through
-      console.warn('[createOrder] Korapay verify failed — proceeding with pending status:', verifyErr.message);
+      const failure = classifyChargeFailure(verifyErr);
+
+      // Korapay answered, and the reference is not a real charge (AA026
+      // "Charge not found", bad key, malformed request). No money moved, so
+      // refuse — this used to fall through and mint an order from any
+      // invented reference string.
+      if (failure.definitive) {
+        console.warn(`[createOrder] rejecting ${korapayRef}: ${failure.code || failure.status} ${failure.message}`);
+        return res.status(402).json({ error: 'Payment could not be verified. Please complete payment before placing the order.' });
+      }
+
+      // Korapay is unreachable even after retries. The shopper has very likely
+      // paid, so never discard the order — record it as pending and let the
+      // webhook confirm it. Losing a real payment is far worse than holding an
+      // order for review.
+      console.error(`[createOrder] Korapay unreachable for ${korapayRef} — recording order as pending:`, failure.message);
     }
 
     // The customer paid whatever the browser asked Korapay for. If that is less
