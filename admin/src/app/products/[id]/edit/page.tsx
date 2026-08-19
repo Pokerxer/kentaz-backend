@@ -47,6 +47,9 @@ interface Variant {
   markup: number;
   useMarkup: boolean;
   stock: number;
+  // Doubles as the barcode, so it must survive the form untouched. If an edit
+  // dropped it, the backend would treat the variant as new and mint a fresh
+  // code — silently voiding every tag already printed and stuck on stock.
   sku: string;
 }
 
@@ -562,8 +565,15 @@ export default function EditProductPage() {
     setVariants(vs => vs.map((v, i) => i === idx ? { ...v, [field]: value } : v));
   const addVariant = () => setVariants(vs => [...vs, { ...EMPTY_VARIANT }]);
   const removeVariant = (idx: number) => setVariants(vs => vs.filter((_, i) => i !== idx));
+  // A duplicate is a *different* variant, so it must not inherit the
+  // original's SKU — two variants answering to one scan is exactly what the
+  // barcode exists to prevent. The backend mints a fresh one on save.
   const duplicateVariant = (idx: number) =>
-    setVariants(vs => { const n = [...vs]; n.splice(idx + 1, 0, { ...vs[idx] }); return n; });
+    setVariants(vs => {
+      const n = [...vs];
+      n.splice(idx + 1, 0, { ...vs[idx], sku: '' });
+      return n;
+    });
 
   const generateVariants = (sizes: string[], colors: string[]) => {
     const combos: Variant[] = [];

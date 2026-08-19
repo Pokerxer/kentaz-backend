@@ -1038,6 +1038,8 @@ export interface Variant {
   useMarkup?: boolean;
   compareAtPrice?: number;
   stock?: number;
+  /** Doubles as the barcode printed on the product tag. Assigned by the
+   *  backend on save when left blank. */
   sku?: string;
 }
 

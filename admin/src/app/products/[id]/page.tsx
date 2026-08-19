@@ -24,6 +24,7 @@ import {
   ExternalLink,
   RotateCcw,
   ShoppingCart,
+  Printer,
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { api, Product, Variant } from '@/lib/api';
@@ -155,6 +156,12 @@ export default function ProductViewPage() {
           </div>
           {isAdmin && (
             <div className="flex items-center gap-2">
+              <Link
+                href={`/products/tags?ids=${productId}`}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:border-[#C9A84C] hover:text-[#C9A84C] text-sm font-medium transition-colors"
+              >
+                <Printer className="w-4 h-4" /> Print Tags
+              </Link>
               <Link
                 href={`/products/${productId}/edit`}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
@@ -687,6 +694,13 @@ export default function ProductViewPage() {
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold"
             >
               <Edit className="w-4 h-4" /> Edit Product
+            </Link>
+            <Link
+              href={`/products/tags?ids=${productId}`}
+              aria-label="Print tags"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold"
+            >
+              <Printer className="w-4 h-4" />
             </Link>
             <button
               onClick={() => setDeleteConfirm(true)}

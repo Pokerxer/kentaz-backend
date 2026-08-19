@@ -208,6 +208,8 @@ export interface PosVariant {
   price: number;
   costPrice?: number;
   stock?: number;
+  /** Doubles as the barcode on the printed tag — identifies this exact size
+   *  and colour, which is what a scan must resolve to. */
   sku?: string;
 
   // ── Resolved by the server, never computed here ──────────────

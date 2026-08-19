@@ -143,11 +143,15 @@ exports.getPosProducts = async (req, res) => {
       ];
     }
 
-    // Filter by barcode specifically
+    // Filter by barcode specifically.
+    //
+    // variants.sku is what the printed tags encode and identifies one size and
+    // colour; product.barcode is the manufacturer's code on goods that arrive
+    // already labelled, and names only the product.
     if (barcode) {
       filter.$or = [
-        { barcode: barcode },
         { 'variants.sku': barcode },
+        { barcode: barcode },
       ];
     }
 

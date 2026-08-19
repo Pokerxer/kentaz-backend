@@ -20,6 +20,8 @@ import {
   ArrowDown,
   ChevronDown,
   Download,
+  Printer,
+  X,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
 import { api, Product } from '@/lib/api';
@@ -96,6 +98,15 @@ export default function ProductsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -140,6 +151,13 @@ export default function ProductsPage() {
   }, [search, statusFilter, categoryFilter, subcategoryFilter]);
 
   useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter, subcategoryFilter]);
+
+  // Selection only ever means "these rows, as shown". Carrying it across a
+  // filter or page change would let you print tags for products you can no
+  // longer see.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page, search, statusFilter, categoryFilter, subcategoryFilter]);
   useEffect(() => { fetchProducts(page); }, [fetchProducts, page]);
 
   useEffect(() => {
@@ -378,6 +396,20 @@ export default function ProductsPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
+                    <th className="px-4 py-4 w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all products on this page"
+                        checked={sortedProducts.length > 0 && selected.size === sortedProducts.length}
+                        ref={el => {
+                          if (el) el.indeterminate = selected.size > 0 && selected.size < sortedProducts.length;
+                        }}
+                        onChange={e =>
+                          setSelected(e.target.checked ? new Set(sortedProducts.map(p => p._id)) : new Set())
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-[#C9A84C] focus:ring-[#C9A84C]/30"
+                      />
+                    </th>
                     {Object.entries(columnConfig).map(([key, config]) => (
                       <th key={key}
                         className={`px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase
@@ -401,7 +433,19 @@ export default function ProductsPage() {
                   {sortedProducts.map(product => {
                     const stockBadge = getStockBadge(product);
                     return (
-                      <tr key={product._id} className="hover:bg-gray-50 transition-colors">
+                      <tr
+                        key={product._id}
+                        className={`transition-colors ${selected.has(product._id) ? 'bg-[#C9A84C]/5' : 'hover:bg-gray-50'}`}
+                      >
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${product.name}`}
+                            checked={selected.has(product._id)}
+                            onChange={() => toggleSelected(product._id)}
+                            className="h-4 w-4 rounded border-gray-300 text-[#C9A84C] focus:ring-[#C9A84C]/30"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="relative h-10 w-10 overflow-hidden rounded-lg bg-gray-100 flex-shrink-0">
@@ -487,8 +531,22 @@ export default function ProductsPage() {
                 return (
                   <div
                     key={product._id}
-                    className="group relative bg-white rounded-2xl border border-gray-100 hover:border-[#C9A84C]/30 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col"
+                    className={`group relative bg-white rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col ${
+                      selected.has(product._id)
+                        ? 'border-[#C9A84C] shadow-lg shadow-[#C9A84C]/10'
+                        : 'border-gray-100 hover:border-[#C9A84C]/30 hover:shadow-lg'
+                    }`}
                   >
+                    <label className="absolute top-2 left-2 z-10 p-1.5 bg-white/90 backdrop-blur rounded-lg shadow-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${product.name}`}
+                        checked={selected.has(product._id)}
+                        onChange={() => toggleSelected(product._id)}
+                        className="h-4 w-4 rounded border-gray-300 text-[#C9A84C] focus:ring-[#C9A84C]/30 block"
+                      />
+                    </label>
+
                     {/* Image */}
                     <div className="relative aspect-square bg-gray-50 overflow-hidden">
                       {product.images?.[0]?.url ? (
@@ -504,8 +562,9 @@ export default function ProductsPage() {
                         </div>
                       )}
 
-                      {/* Status badge */}
-                      <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
+                      {/* Status badge — sits bottom-left; the select checkbox
+                          owns the top-left corner. */}
+                      <span className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
                         {product.status}
                       </span>
 
@@ -564,6 +623,29 @@ export default function ProductsPage() {
           <Pagination />
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center gap-3">
+          <button
+            onClick={() => setSelected(new Set())}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+            aria-label="Clear selection"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <span className="text-sm text-gray-700">
+            <span className="font-semibold">{selected.size}</span> selected
+          </span>
+          <div className="flex-1" />
+          <Link
+            href={`/products/tags?ids=${Array.from(selected).join(',')}`}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl text-sm font-medium hover:bg-[#B8953F] transition-colors"
+          >
+            <Printer className="h-4 w-4" />
+            Print tags
+          </Link>
+        </div>
+      )}
     </AdminLayout>
   );
 }

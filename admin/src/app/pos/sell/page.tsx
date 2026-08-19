@@ -725,6 +725,12 @@ export default function PosPage() {
     processBarcodeRef.current = (barcode: string) => {
       const match = findVariantByBarcode(barcode);
       if (match) {
+        if (match.variantIndex === null) {
+          // The code named the product but not the variant. Open the picker
+          // rather than assuming a size — guessing here sells the wrong item.
+          handleProductClick(match.product);
+          return;
+        }
         const variant = match.product.variants[match.variantIndex];
         if (variant && (variant.stock ?? 0) > 0) {
           addToCart(match.product, match.variantIndex);
@@ -996,16 +1002,22 @@ export default function PosPage() {
     });
   })();
 
-  // Find variant by barcode or SKU — searches the full unfiltered product list
-  // so narrowed search results never break a scan.
-  function findVariantByBarcode(barcodeOrSku: string): { product: PosProduct; variantIndex: number } | null {
+  // Find what was scanned — searches the full unfiltered product list so
+  // narrowed search results never break a scan.
+  //
+  // A variantIndex of null means "this product, but the code doesn't say
+  // which variant" — the caller must ask rather than guess.
+  function findVariantByBarcode(
+    barcodeOrSku: string,
+  ): { product: PosProduct; variantIndex: number | null } | null {
     const searchLower = barcodeOrSku.toLowerCase();
     // Prefer allProductsRef (full list); fall back to current products state
     const pool = allProductsRef.current.length > 0 ? allProductsRef.current : products;
+
+    // The variant SKU first. It is what the printed tag encodes, and it names
+    // one size and colour — so the scan lands on the exact line that leaves
+    // stock.
     for (const p of pool) {
-      if (p.barcode && p.barcode.toLowerCase() === searchLower) {
-        return { product: p, variantIndex: 0 };
-      }
       for (let i = 0; i < p.variants.length; i++) {
         const v = p.variants[i];
         if (v.sku && v.sku.toLowerCase() === searchLower) {
@@ -1013,6 +1025,17 @@ export default function PosPage() {
         }
       }
     }
+
+    // Then the product-level code — the manufacturer's barcode on goods that
+    // arrived already labelled. It identifies the product, never the variant.
+    // This used to resolve straight to variant 0, which sold the wrong size
+    // and decremented the wrong stock line on anything with variants.
+    for (const p of pool) {
+      if (p.barcode && p.barcode.toLowerCase() === searchLower) {
+        return { product: p, variantIndex: p.variants.length === 1 ? 0 : null };
+      }
+    }
+
     return null;
   }
 
@@ -1691,6 +1714,12 @@ export default function PosPage() {
                     // 1. Try in-memory match (works even when products is filtered)
                     const variantMatch = findVariantByBarcode(search);
                     if (variantMatch) {
+                      if (variantMatch.variantIndex === null) {
+                        // Product identified, variant not — let the cashier pick.
+                        handleProductClick(variantMatch.product);
+                        setSearch('');
+                        return;
+                      }
                       const variant = variantMatch.product.variants[variantMatch.variantIndex];
                       if (variant && (variant.stock ?? 0) > 0) {
                         addToCart(variantMatch.product, variantMatch.variantIndex);

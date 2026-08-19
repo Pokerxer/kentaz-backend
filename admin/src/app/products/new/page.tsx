@@ -29,6 +29,7 @@ import {
   Eye,
   EyeOff,
   Upload,
+  Printer,
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { api } from '@/lib/api';
@@ -541,6 +542,7 @@ export default function NewProductPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ _id: string; name: string } | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
@@ -588,7 +590,15 @@ export default function NewProductPage() {
   const addVariant = () => { setVariants(vs => [...vs, { ...EMPTY_VARIANT }]); dirty(); };
   const removeVariant = (idx: number) => { setVariants(vs => vs.filter((_, i) => i !== idx)); dirty(); };
   const duplicateVariant = (idx: number) => {
-    setVariants(vs => { const n = [...vs]; n.splice(idx + 1, 0, { ...vs[idx] }); return n; });
+    // A duplicate is a *different* variant, so it must not inherit the
+    // original's identifiers — two variants answering to one scan is exactly
+    // what the barcode exists to prevent. The backend mints a fresh barcode
+    // on save; the SKU is left for staff to fill in.
+    setVariants(vs => {
+      const n = [...vs];
+      n.splice(idx + 1, 0, { ...vs[idx], sku: '' });
+      return n;
+    });
     dirty();
   };
 
@@ -727,14 +737,17 @@ export default function NewProductPage() {
     setError(null);
     setLoading(true);
     try {
-      await api.products.create({
+      const product = await api.products.create({
         ...formData,
         variants: validVariants,
         images: formData.images.map(url => ({ url })),
       });
       setIsDirty(false);
+      // Stay put rather than bouncing to the list after a second. Tagging is
+      // the natural next step once a product exists, and it can't be offered
+      // from a page that has already navigated away.
+      setCreated(product);
       setSuccess('Product created!');
-      setTimeout(() => router.push('/products'), 1200);
     } catch (err: any) {
       setError(err.message || 'Failed to create product');
     } finally {
@@ -785,9 +798,28 @@ export default function NewProductPage() {
           </div>
         )}
         {success && (
-          <div className="mb-5 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
-            <CheckCircle className="h-5 w-5 text-green-500" />
-            <p className="text-sm text-green-700">{success}</p>
+          <div className="mb-5 p-4 bg-green-50 border border-green-200 rounded-xl flex flex-wrap items-center gap-3">
+            <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+            <p className="text-sm text-green-700 flex-1 min-w-[12rem]">
+              {success}
+              {created && ' Every variant now has a SKU to print.'}
+            </p>
+            {created && (
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/products/tags?ids=${created._id}`}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#C9A84C] text-white rounded-lg text-sm font-medium hover:bg-[#B8953F] transition-colors"
+                >
+                  <Printer className="h-4 w-4" /> Print tags now
+                </Link>
+                <Link
+                  href="/products"
+                  className="px-4 py-2 bg-white border border-green-200 text-green-700 rounded-lg text-sm font-medium hover:bg-green-50 transition-colors"
+                >
+                  Done
+                </Link>
+              </div>
+            )}
           </div>
         )}
         {aiError && (
