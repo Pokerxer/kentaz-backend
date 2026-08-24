@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { pageUrl, SITE_NAME, SITE_DESCRIPTION, DEFAULT_OG_IMAGE, SITE_URL } from '@/lib/seo';
+import { pageUrl, pageAlternates, SITE_NAME, SITE_DESCRIPTION, DEFAULT_OG_IMAGE, SITE_URL } from '@/lib/seo';
 
 export const metadata: Metadata = {
   title: 'Shop — Fashion, Lifestyle & Beauty',
   description: `Browse ${SITE_NAME}'s full collection of premium fashion, lifestyle, beauty, and accessories. Fast delivery across Nigeria. Secure checkout.`,
-  alternates: { canonical: pageUrl('/products') },
+  alternates: pageAlternates('/products'),
   openGraph: {
     title: `Shop | ${SITE_NAME}`,
     description: `Premium fashion, lifestyle & beauty products — shop the full ${SITE_NAME} collection.`,

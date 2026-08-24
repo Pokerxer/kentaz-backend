@@ -1,12 +1,22 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { Providers } from '@/components/Providers';
 import { CartProvider } from '@/contexts/CartContext';
 import { CartSidebar } from '@/components/cart/CartSidebar';
 import { Navbar } from '@/components/ui/Navbar';
 import { Footer } from '@/components/ui/Footer';
-import { SITE_URL, SITE_NAME, SITE_DESCRIPTION, TWITTER_HANDLE, DEFAULT_OG_IMAGE, BUSINESS } from '@/lib/seo';
+import { WhatsAppFloat } from '@/components/ui/WhatsAppFloat';
+import {
+  SITE_URL, SITE_NAME, SITE_DESCRIPTION, TWITTER_HANDLE, DEFAULT_OG_IMAGE,
+  BUSINESS, GEO_META,
+} from '@/lib/seo';
 import './globals.css';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#C9A84C',
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -70,6 +80,18 @@ export const metadata: Metadata = {
 
   alternates: {
     canonical: SITE_URL,
+    languages: {
+      'en-NG': SITE_URL,
+      'x-default': SITE_URL,
+    },
+  },
+
+  // Geo meta tags — local search signals for Abuja, FCT, Nigeria
+  other: {
+    'geo.region': GEO_META.region,
+    'geo.placename': GEO_META.placename,
+    'geo.position': GEO_META.position,
+    ICBM: GEO_META.icbm,
   },
 
   icons: {
@@ -113,7 +135,8 @@ const organizationSchema = {
     contactType: 'customer service',
     telephone: BUSINESS.phone,
     email: BUSINESS.email,
-    availableLanguage: 'English',
+    areaServed: BUSINESS.areaServed,
+    availableLanguage: ['English'],
   },
   sameAs: [BUSINESS.instagram],
 };
@@ -144,6 +167,10 @@ const storeSchema = {
     latitude: BUSINESS.geo.latitude,
     longitude: BUSINESS.geo.longitude,
   },
+  hasMap: BUSINESS.mapsUrl,
+  areaServed: BUSINESS.areaServed.map(name => ({ '@type': 'City', name })),
+  currenciesAccepted: 'NGN',
+  paymentAccepted: BUSINESS.paymentAccepted,
   openingHoursSpecification: BUSINESS.openingHours.map(h => ({
     '@type': 'OpeningHoursSpecification',
     dayOfWeek: h.days === 'Mo-Sa'
@@ -190,6 +217,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Navbar />
             <main className="flex-1">{children}</main>
             <Footer />
+            <WhatsAppFloat />
             <CartSidebar />
           </CartProvider>
         </Providers>

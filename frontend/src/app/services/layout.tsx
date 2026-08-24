@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { pageUrl, SITE_NAME, SITE_URL, DEFAULT_OG_IMAGE, BUSINESS } from '@/lib/seo';
+import { pageUrl, pageAlternates, SITE_NAME, SITE_URL, DEFAULT_OG_IMAGE, BUSINESS } from '@/lib/seo';
 
 export const metadata: Metadata = {
   title: 'Services — Therapy & Podcast Sessions',
   description: `Book professional therapy sessions and podcast studio time with ${SITE_NAME} in Abuja, Nigeria. Expert therapists, state-of-the-art podcast facilities, flexible scheduling.`,
-  alternates: { canonical: pageUrl('/services') },
+  alternates: pageAlternates('/services'),
   openGraph: {
     title: `Services | ${SITE_NAME}`,
     description: 'Professional therapy and podcast studio sessions in Abuja, Nigeria.',

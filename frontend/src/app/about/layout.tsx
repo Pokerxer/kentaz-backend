@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { pageUrl, SITE_NAME, DEFAULT_OG_IMAGE, SITE_URL, BUSINESS } from '@/lib/seo';
+import { pageUrl, pageAlternates, SITE_NAME, DEFAULT_OG_IMAGE, SITE_URL, BUSINESS } from '@/lib/seo';
 
 const ABOUT_DESCRIPTION =
   'Discover premium fashion, luxury hair, skincare, and wellness services curated for the modern individual in Abuja, Nigeria. Elegant. Luxury. Classy. Refined.';
@@ -8,7 +8,7 @@ const ABOUT_DESCRIPTION =
 export const metadata: Metadata = {
   title: 'About Us',
   description: ABOUT_DESCRIPTION,
-  alternates: { canonical: pageUrl('/about') },
+  alternates: pageAlternates('/about'),
   openGraph: {
     title: `About Us | ${SITE_NAME}`,
     description: ABOUT_DESCRIPTION,

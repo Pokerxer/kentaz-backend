@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { pageUrl, SITE_NAME, SITE_DESCRIPTION, DEFAULT_OG_IMAGE, SITE_URL } from '@/lib/seo';
+import { pageUrl, pageAlternates, SITE_NAME, SITE_DESCRIPTION, DEFAULT_OG_IMAGE, SITE_URL } from '@/lib/seo';
 
 export const metadata: Metadata = {
   title: 'Flash Sale — Limited-Time Deals',
   description: `Shop today's ${SITE_NAME} flash sale. Limited-time markdowns on premium fashion, beauty, hair and lifestyle pieces. When the clock hits zero, the deals are gone.`,
-  alternates: { canonical: pageUrl('/flash-sale') },
+  alternates: pageAlternates('/flash-sale'),
   openGraph: {
     title: `Flash Sale | ${SITE_NAME}`,
     description: `Limited-time deals on luxury fashion, beauty & lifestyle — shop before the clock runs out.`,

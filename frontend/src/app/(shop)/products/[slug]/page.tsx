@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { SITE_URL, SITE_NAME, truncate, pageUrl } from '@/lib/seo';
+import { SITE_URL, SITE_NAME, truncate, pageUrl, pageAlternates } from '@/lib/seo';
 import ProductDetailClient from './ProductDetailClient';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
 
-    alternates: { canonical },
+    alternates: pageAlternates(`/products/${slug}`),
 
     openGraph: {
       type: 'website',

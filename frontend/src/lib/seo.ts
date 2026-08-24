@@ -26,6 +26,9 @@ export const BUSINESS = {
   instagramHandle: '@KENTAZ EMPORIUM',
   // Approximate geo coordinates for Usuma Street, Maitama, Abuja
   geo: { latitude: 9.0765, longitude: 7.4805 },
+  mapsUrl: 'https://www.google.com/maps/search/?api=1&query=911+Mall+Usuma+Street+Maitama+Abuja',
+  paymentAccepted: 'Cards, Bank Transfer, USSD (via Paystack & Korapay)',
+  areaServed: ['Abuja', 'Federal Capital Territory', 'Nigeria'],
   openingHours: [
     { days: 'Mo-Sa', opens: '09:00', closes: '19:00' },
     { days: 'Su', opens: '12:00', closes: '18:00' },
@@ -44,3 +47,27 @@ export function truncate(text: string | undefined | null, max = 160): string {
 export function pageUrl(path: string): string {
   return `${SITE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
+
+/**
+ * Canonical + hreflang alternates for a single-locale (Nigerian English) site.
+ * Use for every indexable page so each emits consistent en-NG / x-default
+ * language signals alongside its self-referencing canonical.
+ */
+export function pageAlternates(path: string) {
+  const url = pageUrl(path);
+  return {
+    canonical: url,
+    languages: {
+      'en-NG': url,
+      'x-default': url,
+    },
+  };
+}
+
+/** Geo meta-tag values for local search signals (Abuja, FCT, Nigeria). */
+export const GEO_META = {
+  region: 'NG-FC',
+  placename: 'Abuja',
+  position: `${BUSINESS.geo.latitude};${BUSINESS.geo.longitude}`,
+  icbm: `${BUSINESS.geo.latitude}, ${BUSINESS.geo.longitude}`,
+} as const;

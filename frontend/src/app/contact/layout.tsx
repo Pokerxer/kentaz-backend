@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { pageUrl, SITE_NAME, DEFAULT_OG_IMAGE, SITE_URL, BUSINESS } from '@/lib/seo';
+import { pageUrl, pageAlternates, SITE_NAME, DEFAULT_OG_IMAGE, SITE_URL, BUSINESS } from '@/lib/seo';
 
 export const metadata: Metadata = {
   title: 'Contact Us',
   description: `Get in touch with ${SITE_NAME}. Reach our team in Abuja, Nigeria for product enquiries, order support, or service bookings. We reply within 24 hours.`,
-  alternates: { canonical: pageUrl('/contact') },
+  alternates: pageAlternates('/contact'),
   openGraph: {
     title: `Contact Us | ${SITE_NAME}`,
     description: `Reach the ${SITE_NAME} team for enquiries, support, or bookings.`,

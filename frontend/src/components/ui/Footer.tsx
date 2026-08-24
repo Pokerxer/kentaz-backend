@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { MessageCircle, MapPin, Instagram, ArrowRight } from 'lucide-react';
+import { MapPin, Instagram, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { WhatsAppIcon } from '@/components/ui/WhatsAppIcon';
+import { BUSINESS } from '@/lib/seo';
 
 export function Footer() {
   return (
@@ -15,9 +17,16 @@ export function Footer() {
             <p className="text-[#888888] text-sm mb-4">Luxury. Lifestyle. Wellness.</p>
             <p className="text-[#888888] text-sm mb-6 max-w-md">Discover premium fashion, luxury hair, skincare, and wellness services curated for the modern individual in Abuja, Nigeria.</p>
             <div className="flex flex-col gap-3 text-sm text-[#888888]">
-              <a href="https://wa.me/2347081856411" className="flex items-center gap-3 hover:text-[#C9A84C] transition-colors">
-                <MessageCircle className="h-4 w-4" />
-                07081856411
+              <a
+                href={`https://wa.me/${BUSINESS.whatsapp}?text=${encodeURIComponent("Hello Kentaz Emporium! I'd like to make an enquiry.")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 hover:text-[#C9A84C] transition-colors"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white transition-transform duration-300 hover:scale-110">
+                  <WhatsAppIcon className="h-4 w-4" />
+                </span>
+                {BUSINESS.phoneDisplay}
               </a>
               <div className="flex items-center gap-3">
                 <MapPin className="h-4 w-4" />
