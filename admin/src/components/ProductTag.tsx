@@ -49,6 +49,16 @@ export function ProductTag({
 }: Props) {
   const sku = (tag.sku || '').trim();
 
+  // Type scales with label height (25 mm is the reference stock) so a big tag
+  // reads like a tag rather than a small one lost in a corner, and a small one
+  // does not clip. Clamped: past these bounds the text is either microscopic
+  // or cartoonish, and neither prints usefully.
+  const s = Math.min(1.6, Math.max(0.72, heightMm / TAG_HEIGHT_MM));
+  const mm = (v: number) => `${Math.round(v * 100) / 100}mm`;
+
+  // Bars grow with the label too, within the range every common scanner takes.
+  const barHeightMm = Math.min(10, Math.max(4.5, heightMm * 0.3));
+
   // Leave 9mm each side for the label's own padding plus the barcode's quiet
   // zones. On the 50mm thermal label this lands on exactly 32mm, so the roll
   // output is unchanged; a 45.7mm sticker gets a proportionally smaller symbol
@@ -76,9 +86,9 @@ export function ProductTag({
       <div style={{ textAlign: 'center', width: '100%' }}>
         <div
           style={{
-            fontSize: '1.9mm',
+            fontSize: mm(1.9 * s),
             fontWeight: 700,
-            letterSpacing: '0.42mm',
+            letterSpacing: mm(0.42 * s),
             lineHeight: 1.15,
             textTransform: 'uppercase',
           }}
@@ -87,10 +97,10 @@ export function ProductTag({
         </div>
         <div
           style={{
-            fontSize: '2.4mm',
+            fontSize: mm(2.4 * s),
             fontWeight: 600,
             lineHeight: 1.2,
-            marginTop: '0.4mm',
+            marginTop: mm(0.4 * s),
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -99,21 +109,21 @@ export function ProductTag({
         >
           {tag.productName}
         </div>
-        <div style={{ fontSize: '2mm', lineHeight: 1.2, color: '#333' }}>
+        <div style={{ fontSize: mm(2 * s), lineHeight: 1.2, color: '#333' }}>
           {variantLine(tag)}
         </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-        <Code128Barcode value={sku} symbolWidthMm={symbolWidthMm} barHeightMm={7.5} />
+        <Code128Barcode value={sku} symbolWidthMm={symbolWidthMm} barHeightMm={barHeightMm} />
         {/* The same value the bars carry, so a scanner failure never stops
             staff reading the code off the label by eye. */}
         <div
           style={{
-            fontSize: '2.1mm',
+            fontSize: mm(2.1 * s),
             lineHeight: 1.1,
-            marginTop: '0.5mm',
-            letterSpacing: '0.15mm',
+            marginTop: mm(0.5 * s),
+            letterSpacing: mm(0.15 * s),
             fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
             fontVariantNumeric: 'tabular-nums',
             maxWidth: '100%',

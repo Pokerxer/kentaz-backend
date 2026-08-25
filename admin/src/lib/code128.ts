@@ -60,8 +60,11 @@ function toValues(data: string): number[] {
 
   if (allDigits) {
     // Odd length: spend one symbol on the leading digit in B, then switch to C
-    // for the even remainder.
-    const values = [START_B, data.charCodeAt(0) - 32, CODE_C];
+    // for the even remainder. The switch is only emitted when a pair actually
+    // follows — a dangling CODE_C before the check digit makes decoders read
+    // the check as data, and the checksum then fails validation.
+    const values: number[] = [START_B, data.charCodeAt(0) - 32];
+    if (data.length > 2) values.push(CODE_C);
     for (let i = 1; i < data.length; i += 2) values.push(Number(data.slice(i, i + 2)));
     return values;
   }

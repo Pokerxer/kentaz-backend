@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { ProductTag, TagData, TAG_WIDTH_MM, TAG_HEIGHT_MM } from '@/components/ProductTag';
+import { moduleCount } from '@/lib/code128';
 import { api, Product } from '@/lib/api';
 
 // A whole roll is 500-1000 labels. This cap is not a technical limit — it is
@@ -55,6 +56,53 @@ const MAX_OFFSET_MM = 10;
 const OFFSET_STEP_MM = 0.5;
 
 const OFFSET_STORAGE_KEY = 'kentaz.tagSheetOffset';
+
+// ── Thermal label sizing ─────────────────────────────────────────────────────
+
+// The physical envelope thermal printers can take: a 20mm label is below what
+// a 203 dpi head can hold a readable Code128 in; past 120mm it is a sheet, not
+// a label.
+const THERMAL_MIN_W_MM = 20;
+const THERMAL_MAX_W_MM = 120;
+const THERMAL_MIN_H_MM = 15;
+const THERMAL_MAX_H_MM = 100;
+
+interface LabelSize { w: number; h: number }
+
+const THERMAL_PRESETS: { name: string; size: LabelSize }[] = [
+  { name: '50 × 25 mm', size: { w: TAG_WIDTH_MM, h: TAG_HEIGHT_MM } },
+  { name: '50 × 30 mm', size: { w: 50, h: 30 } },
+  { name: '40 × 30 mm', size: { w: 40, h: 30 } },
+  { name: '58 × 40 mm', size: { w: 58, h: 40 } },
+  { name: '100 × 50 mm', size: { w: 100, h: 50 } },
+];
+
+const THERMAL_SIZE_STORAGE_KEY = 'kentaz.tagThermalSize';
+
+const DEFAULT_THERMAL: LabelSize = { w: TAG_WIDTH_MM, h: TAG_HEIGHT_MM };
+
+/** Snap to 0.1mm and hold inside the physical envelope. */
+function clampLabelSize(size: LabelSize): LabelSize {
+  const clamp = (v: number, min: number, max: number) =>
+    Number.isFinite(v) ? Math.round(Math.min(max, Math.max(min, v)) * 10) / 10 : min;
+  return {
+    w: clamp(size.w, THERMAL_MIN_W_MM, THERMAL_MAX_W_MM),
+    h: clamp(size.h, THERMAL_MIN_H_MM, THERMAL_MAX_H_MM),
+  };
+}
+
+// The narrowest bar a cheap scanner still reads reliably. Below this the
+// symbol may look perfect and still refuse to scan — the failure mode the
+// density warning exists to prevent.
+const MIN_SCANNABLE_MODULE_MM = 0.19;
+
+/** The preset matching this size, or "custom" when the shop dialed one in. */
+function presetKeyFor(size: LabelSize): string {
+  const hit = THERMAL_PRESETS.find(
+    p => p.size.w === size.w && p.size.h === size.h,
+  );
+  return hit ? `${hit.size.w}x${hit.size.h}` : 'custom';
+}
 
 interface Offset { x: number; y: number }
 
@@ -153,6 +201,7 @@ function TagStudio() {
   const [mounted, setMounted] = useState(false);
   const [format, setFormat] = useState<TagFormat>('thermal');
   const [offset, setOffset] = useState<Offset>(NO_OFFSET);
+  const [thermal, setThermal] = useState<LabelSize>(DEFAULT_THERMAL);
 
   useEffect(() => setMounted(true), []);
 
@@ -168,6 +217,28 @@ function TagStudio() {
     } catch {
       // A corrupt or blocked store is not worth a broken page; zero is correct.
     }
+    // Same for the label size: a shop that prints 58 × 40 rolls should not
+    // have to re-dial it every visit.
+    try {
+      const raw = window.localStorage.getItem(THERMAL_SIZE_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<LabelSize>;
+      setThermal(clampLabelSize({ w: Number(saved?.w), h: Number(saved?.h) }));
+    } catch {
+      // Defaults are correct.
+    }
+  }, []);
+
+  const resize = useCallback((patch: Partial<LabelSize>) => {
+    setThermal(current => {
+      const next = clampLabelSize({ w: patch.w ?? current.w, h: patch.h ?? current.h });
+      try {
+        window.localStorage.setItem(THERMAL_SIZE_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Resizing still works for this session even if it cannot be saved.
+      }
+      return next;
+    });
   }, []);
 
   const nudge = useCallback((patch: Partial<Offset>) => {
@@ -206,15 +277,21 @@ function TagStudio() {
   }, [ids]);
 
   // Printing is driven by state rather than called inline so the labels are
-  // committed to the DOM before the print dialog reads the page.
+  // committed to the DOM before the print dialog reads the page. Two frames:
+  // the first commits, the second lets layout settle — printing one frame
+  // early has been observed to snapshot stale layout in Chromium.
   useEffect(() => {
     if (!job) return;
     const clear = () => setJob(null);
     window.addEventListener('afterprint', clear);
-    const frame = requestAnimationFrame(() => window.print());
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => window.print());
+    });
     return () => {
       window.removeEventListener('afterprint', clear);
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
     };
   }, [job]);
 
@@ -228,6 +305,25 @@ function TagStudio() {
   const overCap = total > MAX_LABELS;
   const sheetMode = format === 'sheet';
   const sheets = Math.ceil(total / PER_SHEET);
+
+  // Scan-density check: the label width fixes how wide the symbol can be, and
+  // a long SKU squeezed into it produces bars too narrow for a scanner to
+  // resolve. Report the worst offender, not an average — one bad SKU is
+  // enough to make a print run unscannable.
+  const labelWidthMm = sheetMode ? SHEET.labelWidthMm : thermal.w;
+  const symbolWidthMm = Math.max(20, labelWidthMm - 18);
+  let densest: { sku: string; moduleMm: number } | null = null;
+  for (const row of printable) {
+    try {
+      const moduleMm = symbolWidthMm / moduleCount(row.sku as string);
+      if (!densest || moduleMm < densest.moduleMm) {
+        densest = { sku: row.sku as string, moduleMm };
+      }
+    } catch {
+      // Unencodable SKUs are already flagged on the label itself.
+    }
+  }
+  const tooDense = densest !== null && densest.moduleMm < MIN_SCANNABLE_MODULE_MM;
 
   const print = () => {
     const queue: TagData[] = [];
@@ -249,7 +345,10 @@ function TagStudio() {
 
   return (
     <AdminLayout>
-      <PrintStyles format={job?.format ?? format} />
+      <PrintStyles
+        format={job?.format ?? format}
+        thermal={thermal}
+      />
 
       <div className="max-w-5xl mx-auto pb-24">
         <div className="flex items-center gap-3 mb-6">
@@ -265,7 +364,7 @@ function TagStudio() {
             <p className="text-sm text-gray-500">
               {sheetMode
                 ? `${SHEET.labelWidthMm} × ${SHEET.labelHeightMm} mm on A4 · ${PER_SHEET} per sheet`
-                : `${TAG_WIDTH_MM} × ${TAG_HEIGHT_MM} mm thermal labels · one per page`}
+                : `${thermal.w} × ${thermal.h} mm thermal labels · one per page`}
             </p>
           </div>
         </div>
@@ -303,12 +402,28 @@ function TagStudio() {
               </Notice>
             )}
 
-            {sheetMode && (
+            {sheetMode ? (
               <Notice tone="info" icon={<Info className="h-4 w-4" />}>
                 In the browser&rsquo;s print dialog set <strong>Scale: 100%</strong> — not
                 &ldquo;Fit to page&rdquo; — and <strong>Margins: None</strong>. Any other setting
                 resizes the page and every label lands off its sticker. Print the calibration
                 sheet on plain paper first and hold it against a real sheet.
+              </Notice>
+            ) : (
+              <Notice tone="info" icon={<Info className="h-4 w-4" />}>
+                In the browser&rsquo;s print dialog set <strong>Paper size</strong> to your label
+                roll ({thermal.w} × {thermal.h} mm), <strong>Scale: 100%</strong> and{' '}
+                <strong>Margins: None</strong>. Print one test label first. Use Chrome or Edge —
+                Firefox cannot set custom label sizes.
+              </Notice>
+            )}
+
+            {tooDense && densest && (
+              <Notice tone="warn" icon={<AlertTriangle className="h-4 w-4" />}>
+                At this label width the bars on SKU <span className="font-mono">{densest.sku}</span>{' '}
+                come out {densest.moduleMm.toFixed(2)} mm wide — scanners struggle below{' '}
+                {MIN_SCANNABLE_MODULE_MM} mm and the tag may not scan. Pick a wider label, or
+                shorten the SKU.
               </Notice>
             )}
 
@@ -323,9 +438,52 @@ function TagStudio() {
                   onChange={e => setFormat(e.target.value as TagFormat)}
                   className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
                 >
-                  <option value="thermal">Thermal {TAG_WIDTH_MM}×{TAG_HEIGHT_MM}mm</option>
+                  <option value="thermal">Thermal roll</option>
                   <option value="sheet">A4 sheet — Avery L7654</option>
                 </select>
+                {!sheetMode && (
+                  <>
+                    <label
+                      htmlFor="tag-size-preset"
+                      className="text-xs font-medium text-gray-500"
+                    >
+                      Label size
+                    </label>
+                    <select
+                      id="tag-size-preset"
+                      value={presetKeyFor(thermal)}
+                      onChange={e => {
+                        if (e.target.value === 'custom') return;
+                        const hit = THERMAL_PRESETS.find(
+                          p => `${p.size.w}x${p.size.h}` === e.target.value,
+                        );
+                        if (hit) resize(hit.size);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                    >
+                      {THERMAL_PRESETS.map(p => (
+                        <option key={`${p.size.w}x${p.size.h}`} value={`${p.size.w}x${p.size.h}`}>
+                          {p.name}
+                        </option>
+                      ))}
+                      <option value="custom">Custom…</option>
+                    </select>
+                    <SizeControl
+                      label="W"
+                      value={thermal.w}
+                      min={THERMAL_MIN_W_MM}
+                      max={THERMAL_MAX_W_MM}
+                      onChange={w => resize({ w })}
+                    />
+                    <SizeControl
+                      label="H"
+                      value={thermal.h}
+                      min={THERMAL_MIN_H_MM}
+                      max={THERMAL_MAX_H_MM}
+                      onChange={h => resize({ h })}
+                    />
+                  </>
+                )}
                 <div className="flex-1" />
                 <ToolbarButton
                   onClick={printCalibration}
@@ -432,8 +590,8 @@ function TagStudio() {
                     key={row.key}
                     tag={rowToTag(row)}
                     outlined
-                    widthMm={sheetMode ? SHEET.labelWidthMm : TAG_WIDTH_MM}
-                    heightMm={sheetMode ? SHEET.labelHeightMm : TAG_HEIGHT_MM}
+                    widthMm={sheetMode ? SHEET.labelWidthMm : thermal.w}
+                    heightMm={sheetMode ? SHEET.labelHeightMm : thermal.h}
                   />
                 ))}
                 {printable.length === 0 && (
@@ -486,7 +644,7 @@ function TagStudio() {
           {job.format === 'thermal'
             ? job.kind === 'tags' && job.tags.map((tag, i) => (
                 <div className="tag-page" key={i}>
-                  <ProductTag tag={tag} />
+                  <ProductTag tag={tag} widthMm={thermal.w} heightMm={thermal.h} />
                 </div>
               ))
             : job.kind === 'calibration'
@@ -560,7 +718,7 @@ function CalibrationSheet({ offset }: { offset: Offset }) {
   );
 }
 
-function PrintStyles({ format }: { format: TagFormat }) {
+function PrintStyles({ format, thermal }: { format: TagFormat; thermal: LabelSize }) {
   return (
     <style>{`
       #tag-print-root { display: none; }
@@ -568,7 +726,7 @@ function PrintStyles({ format }: { format: TagFormat }) {
       @media print {
         /* Matches the label stock. Without this the printer pages at A4 and
            every tag lands in the top-left corner of a blank sheet. */
-        @page { size: ${format === 'sheet' ? 'A4' : `${TAG_WIDTH_MM}mm ${TAG_HEIGHT_MM}mm`}; margin: 0; }
+        @page { size: ${format === 'sheet' ? 'A4' : `${thermal.w}mm ${thermal.h}mm`}; margin: 0; }
 
         html, body {
           margin: 0 !important;
@@ -580,8 +738,8 @@ function PrintStyles({ format }: { format: TagFormat }) {
         #tag-print-root { display: block !important; }
 
         .tag-page {
-          width: 50mm;
-          height: 25mm;
+          width: ${thermal.w}mm;
+          height: ${thermal.h}mm;
           overflow: hidden;
           break-after: page;
           page-break-after: always;
@@ -724,6 +882,55 @@ function OffsetControl({ label, value, onChange }: { label: string; value: numbe
         onClick={() => onChange(value + OFFSET_STEP_MM)}
         className="p-1 rounded-lg text-gray-400 hover:text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all"
         aria-label={`Move ${label} half a millimetre forward`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+      <span className="text-xs text-gray-400">mm</span>
+    </div>
+  );
+}
+
+function SizeControl({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (mm: number) => void;
+}) {
+  const id = `tag-size-${label.toLowerCase()}`;
+  const step = 1;
+  return (
+    <div className="flex items-center gap-1">
+      <label htmlFor={id} className="text-xs font-medium text-gray-500 w-3">{label}</label>
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, value - step))}
+        className="p-1 rounded-lg text-gray-400 hover:text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all"
+        aria-label={`Label ${label} one millimetre smaller`}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <input
+        id={id}
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="w-14 px-2 py-1 text-center border border-gray-200 rounded-lg text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(max, value + step))}
+        className="p-1 rounded-lg text-gray-400 hover:text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all"
+        aria-label={`Label ${label} one millimetre larger`}
       >
         <Plus className="h-3.5 w-3.5" />
       </button>
