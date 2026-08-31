@@ -78,6 +78,50 @@ const THERMAL_PRESETS: { name: string; size: LabelSize }[] = [
 ];
 
 const THERMAL_SIZE_STORAGE_KEY = 'kentaz.tagThermalSize';
+const ROTATION_STORAGE_KEY = 'kentaz.tagRotation';
+
+// ── Which way the tag sits on the label ──────────────────────────────────────
+
+/**
+ * Thermal drivers disagree about which edge of the label is the page's top.
+ * Most of the cheap ones describe their media portrait — 25mm across, 50mm
+ * along the feed — whichever way the labels actually come off the roll. Asked
+ * to print a landscape page, the driver quietly rotates the content to fit that
+ * portrait media, and the result is a tag printed sideways whose 50mm now runs
+ * along the feed: it spans two stickers, straddles the die-cut gap that splits
+ * the barcode in half, and leaves blank labels behind it.
+ *
+ * No amount of `@page` sizing argues a driver out of that, because the driver
+ * has already decided. So this is a setting rather than a guess: it rotates the
+ * tag *and* swaps the page box to match, which turns the driver's rotation into
+ * a no-op and puts one tag on one sticker. The shop finds its value once with
+ * the test label and never touches it again.
+ */
+type Rotation = 0 | 90 | 180 | 270;
+
+const ROTATIONS: { value: Rotation; label: string; hint: string }[] = [
+  { value: 0, label: '0°', hint: 'Upright. Start here.' },
+  { value: 90, label: '90°', hint: 'For a driver that describes the roll portrait and rotates the page itself.' },
+  { value: 180, label: '180°', hint: 'Upside down, for a roll that feeds the other way.' },
+  { value: 270, label: '270°', hint: 'Like 90°, turned the other way.' },
+];
+
+function isRotation(value: unknown): value is Rotation {
+  return value === 0 || value === 90 || value === 180 || value === 270;
+}
+
+/**
+ * The paper the printer is asked for.
+ *
+ * At 90° and 270° the tag lies across the page, so the page is the label turned
+ * on its side. Getting this wrong is the whole bug: a page that disagrees with
+ * the media is what makes one tag consume two labels.
+ */
+function pageSize(label: LabelSize, rotation: Rotation): LabelSize {
+  return rotation === 90 || rotation === 270
+    ? { w: label.h, h: label.w }
+    : { w: label.w, h: label.h };
+}
 
 const DEFAULT_THERMAL: LabelSize = { w: TAG_WIDTH_MM, h: TAG_HEIGHT_MM };
 
@@ -202,6 +246,7 @@ function TagStudio() {
   const [format, setFormat] = useState<TagFormat>('thermal');
   const [offset, setOffset] = useState<Offset>(NO_OFFSET);
   const [thermal, setThermal] = useState<LabelSize>(DEFAULT_THERMAL);
+  const [rotation, setRotation] = useState<Rotation>(0);
 
   useEffect(() => setMounted(true), []);
 
@@ -209,23 +254,42 @@ function TagStudio() {
   // so the next batch does not cost another sheet to rediscover. Read after
   // mount rather than in the initialiser, so the server and client agree.
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(OFFSET_STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as Partial<Offset>;
-      setOffset({ x: clampOffset(Number(saved?.x)), y: clampOffset(Number(saved?.y)) });
-    } catch {
-      // A corrupt or blocked store is not worth a broken page; zero is correct.
+    // Each setting is restored in its own try, and none of them may `return`:
+    // an early exit here used to mean that a shop which had never nudged the
+    // sheet also never got its saved label size back.
+    const read = (key: string) => {
+      try {
+        const raw = window.localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        // A corrupt or blocked store is not worth a broken page.
+        return null;
+      }
+    };
+
+    const savedOffset = read(OFFSET_STORAGE_KEY) as Partial<Offset> | null;
+    if (savedOffset) {
+      setOffset({ x: clampOffset(Number(savedOffset.x)), y: clampOffset(Number(savedOffset.y)) });
     }
-    // Same for the label size: a shop that prints 58 × 40 rolls should not
-    // have to re-dial it every visit.
+
+    // A shop that prints 58 × 40 rolls should not have to re-dial it every visit.
+    const savedSize = read(THERMAL_SIZE_STORAGE_KEY) as Partial<LabelSize> | null;
+    if (savedSize) {
+      setThermal(clampLabelSize({ w: Number(savedSize.w), h: Number(savedSize.h) }));
+    }
+
+    // Least of all the rotation: it is a property of the printer's driver, and
+    // rediscovering it costs a wasted strip of labels every time.
+    const savedRotation = read(ROTATION_STORAGE_KEY);
+    if (isRotation(savedRotation)) setRotation(savedRotation);
+  }, []);
+
+  const rotate = useCallback((next: Rotation) => {
+    setRotation(next);
     try {
-      const raw = window.localStorage.getItem(THERMAL_SIZE_STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as Partial<LabelSize>;
-      setThermal(clampLabelSize({ w: Number(saved?.w), h: Number(saved?.h) }));
+      window.localStorage.setItem(ROTATION_STORAGE_KEY, JSON.stringify(next));
     } catch {
-      // Defaults are correct.
+      // Rotating still works for this session even if it cannot be saved.
     }
   }, []);
 
@@ -305,6 +369,9 @@ function TagStudio() {
   const overCap = total > MAX_LABELS;
   const sheetMode = format === 'sheet';
   const sheets = Math.ceil(total / PER_SHEET);
+  // The paper to ask the print dialog for — the label, transposed when the tag
+  // is turned sideways on it.
+  const thermalPage = pageSize(thermal, rotation);
 
   // Scan-density check: the label width fixes how wide the symbol can be, and
   // a long SKU squeezed into it produces bars too narrow for a scanner to
@@ -348,6 +415,7 @@ function TagStudio() {
       <PrintStyles
         format={job?.format ?? format}
         thermal={thermal}
+        rotation={rotation}
       />
 
       <div className="max-w-5xl mx-auto pb-24">
@@ -364,7 +432,7 @@ function TagStudio() {
             <p className="text-sm text-gray-500">
               {sheetMode
                 ? `${SHEET.labelWidthMm} × ${SHEET.labelHeightMm} mm on A4 · ${PER_SHEET} per sheet`
-                : `${thermal.w} × ${thermal.h} mm thermal labels · one per page`}
+                : `${thermal.w} × ${thermal.h} mm thermal labels · one per label${rotation ? ` · turned ${rotation}°` : ''}`}
             </p>
           </div>
         </div>
@@ -411,9 +479,12 @@ function TagStudio() {
               </Notice>
             ) : (
               <Notice tone="info" icon={<Info className="h-4 w-4" />}>
-                In the browser&rsquo;s print dialog set <strong>Paper size</strong> to your label
-                roll ({thermal.w} × {thermal.h} mm), <strong>Scale: 100%</strong> and{' '}
-                <strong>Margins: None</strong>. Print one test label first. Use Chrome or Edge —
+                In the browser&rsquo;s print dialog set <strong>Paper size</strong> to{' '}
+                <strong>{thermalPage.w} × {thermalPage.h} mm</strong>, <strong>Scale: 100%</strong>{' '}
+                and <strong>Margins: None</strong>. Print one test label first. If it comes out
+                sideways, or one tag spreads across two stickers with blank ones after it, that is
+                the printer driver turning the page — change <strong>Orientation</strong> above
+                until a tag lands square on a single sticker, then leave it. Use Chrome or Edge —
                 Firefox cannot set custom label sizes.
               </Notice>
             )}
@@ -482,6 +553,20 @@ function TagStudio() {
                       max={THERMAL_MAX_H_MM}
                       onChange={h => resize({ h })}
                     />
+                    <label htmlFor="tag-rotation" className="text-xs font-medium text-gray-500">
+                      Orientation
+                    </label>
+                    <select
+                      id="tag-rotation"
+                      value={rotation}
+                      onChange={e => rotate(Number(e.target.value) as Rotation)}
+                      title={ROTATIONS.find(r => r.value === rotation)?.hint}
+                      className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                    >
+                      {ROTATIONS.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
                   </>
                 )}
                 <div className="flex-1" />
@@ -644,7 +729,9 @@ function TagStudio() {
           {job.format === 'thermal'
             ? job.kind === 'tags' && job.tags.map((tag, i) => (
                 <div className="tag-page" key={i}>
-                  <ProductTag tag={tag} widthMm={thermal.w} heightMm={thermal.h} />
+                  <div className="tag-rotate">
+                    <ProductTag tag={tag} widthMm={thermal.w} heightMm={thermal.h} />
+                  </div>
                 </div>
               ))
             : job.kind === 'calibration'
@@ -718,15 +805,25 @@ function CalibrationSheet({ offset }: { offset: Offset }) {
   );
 }
 
-function PrintStyles({ format, thermal }: { format: TagFormat; thermal: LabelSize }) {
+function PrintStyles({
+  format,
+  thermal,
+  rotation,
+}: {
+  format: TagFormat;
+  thermal: LabelSize;
+  rotation: Rotation;
+}) {
+  const page = pageSize(thermal, rotation);
   return (
     <style>{`
       #tag-print-root { display: none; }
 
       @media print {
         /* Matches the label stock. Without this the printer pages at A4 and
-           every tag lands in the top-left corner of a blank sheet. */
-        @page { size: ${format === 'sheet' ? 'A4' : `${thermal.w}mm ${thermal.h}mm`}; margin: 0; }
+           every tag lands in the top-left corner of a blank sheet. At 90° and
+           270° the page is the label on its side — see pageSize(). */
+        @page { size: ${format === 'sheet' ? 'A4' : `${page.w}mm ${page.h}mm`}; margin: 0; }
 
         html, body {
           margin: 0 !important;
@@ -738,8 +835,9 @@ function PrintStyles({ format, thermal }: { format: TagFormat; thermal: LabelSiz
         #tag-print-root { display: block !important; }
 
         .tag-page {
-          width: ${thermal.w}mm;
-          height: ${thermal.h}mm;
+          position: relative;
+          width: ${page.w}mm;
+          height: ${page.h}mm;
           overflow: hidden;
           break-after: page;
           page-break-after: always;
@@ -747,6 +845,22 @@ function PrintStyles({ format, thermal }: { format: TagFormat; thermal: LabelSiz
         .tag-page:last-child {
           break-after: auto;
           page-break-after: auto;
+        }
+
+        /* The tag itself, centred in the page and turned to face the label.
+           Absolute rather than in-flow so the page box has no line content of
+           its own: an in-flow child a fraction of a millimetre taller than the
+           page emits a blank label after every tag, which on a roll is half the
+           stock. Rotating about the centre means one rule covers all four
+           angles — at 90° and 270° the page is already the transposed size, so
+           the rotated tag fills it exactly. */
+        .tag-rotate {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: ${thermal.w}mm;
+          height: ${thermal.h}mm;
+          transform: translate(-50%, -50%) rotate(${rotation}deg);
         }
 
         /* --- A4 sticker sheet --- */

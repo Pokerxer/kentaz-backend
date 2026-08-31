@@ -83,14 +83,6 @@ function slugify(str: string) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-function generateSku(productName: string, variant: Variant, index: number) {
-  const base = productName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'SKU';
-  const size = variant.size ? variant.size.toUpperCase().slice(0, 3) : '';
-  const color = variant.color ? variant.color.toUpperCase().slice(0, 3) : '';
-  const suffix = `${String(index + 1).padStart(2, '0')}`;
-  return [base, size, color, suffix].filter(Boolean).join('-');
-}
-
 function calcMargin(cost: number, price: number) {
   if (!cost || !price || price <= cost) return null;
   return Math.round(((price - cost) / price) * 100);
@@ -260,8 +252,11 @@ function CategoryDropdown({ options, value, onChange }: {
 
 // ─── Variant Card (mobile) / Row (desktop) ────────────────────────────────────
 
-function VariantRow({ variant, idx, totalVariants, productName, onChange, onDuplicate, onRemove, mode }: {
-  variant: Variant; idx: number; totalVariants: number; productName: string;
+function VariantRow({ variant, idx, totalVariants, onAutoSku, assigningSku, onChange, onDuplicate, onRemove, mode }: {
+  variant: Variant; idx: number; totalVariants: number;
+  /** Reserves a real SKU from the server for this variant. */
+  onAutoSku: () => void;
+  assigningSku: boolean;
   onChange: (field: keyof Variant, value: any) => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -285,8 +280,6 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
       if (cost && mkp) onChange('price', Math.round(cost * (1 + mkp / 100)));
     }
   };
-
-  const autoSku = () => onChange('sku', generateSku(productName, variant, idx));
 
   const numInput = (placeholder: string, value: number, onChg: (n: number) => void, extra?: string) => (
     <div className="relative">
@@ -395,15 +388,17 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
         <td className="px-3 py-3">
           <div className="flex items-center gap-1">
             <input
-              type="text" placeholder="SKU-001" value={variant.sku}
+              type="text" placeholder="Assigned on save" value={variant.sku}
               onChange={e => onChange('sku', e.target.value)}
               className="w-28 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-white font-mono"
             />
             <button
-              type="button" onClick={autoSku} title="Auto-generate SKU"
-              className="flex-shrink-0 p-1.5 text-gray-400 hover:text-[#C9A84C] bg-gray-50 hover:bg-[#C9A84C]/10 rounded-lg transition-all"
+              type="button" onClick={onAutoSku} disabled={assigningSku} title="Reserve a SKU now"
+              className="flex-shrink-0 p-1.5 text-gray-400 hover:text-[#C9A84C] bg-gray-50 hover:bg-[#C9A84C]/10 rounded-lg transition-all disabled:opacity-40"
             >
-              <Hash className="h-3.5 w-3.5" />
+              {assigningSku
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Hash className="h-3.5 w-3.5" />}
             </button>
           </div>
         </td>
@@ -521,12 +516,14 @@ function VariantRow({ variant, idx, totalVariants, productName, onChange, onDupl
           <div>
             <p className="text-xs text-gray-500 mb-1">SKU / Barcode</p>
             <div className="flex items-center gap-1.5">
-              <input type="text" placeholder="ABC-001" value={variant.sku}
+              <input type="text" placeholder="Assigned on save" value={variant.sku}
                 onChange={e => onChange('sku', e.target.value)}
                 className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]" />
-              <button type="button" onClick={autoSku} title="Auto-generate"
-                className="flex-shrink-0 p-2 bg-white rounded-lg border border-gray-200 text-gray-400 hover:text-[#C9A84C] transition-colors">
-                <Hash className="h-3.5 w-3.5" />
+              <button type="button" onClick={onAutoSku} disabled={assigningSku} title="Reserve a SKU now"
+                className="flex-shrink-0 p-2 bg-white rounded-lg border border-gray-200 text-gray-400 hover:text-[#C9A84C] transition-colors disabled:opacity-40">
+                {assigningSku
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Hash className="h-3.5 w-3.5" />}
               </button>
             </div>
           </div>
@@ -568,6 +565,8 @@ export default function NewProductPage() {
   });
 
   const [variants, setVariants] = useState<Variant[]>([{ ...EMPTY_VARIANT }]);
+  /** Indices of variants whose SKU is being reserved right now. */
+  const [assigningSkus, setAssigningSkus] = useState<number[]>([]);
 
   useEffect(() => {
     api.categories.getAll()
@@ -601,6 +600,42 @@ export default function NewProductPage() {
     });
     dirty();
   };
+
+  // SKUs come from the server's sequence, never from the product's name.
+  //
+  // The old button built a code out of the product's initials plus the size and
+  // colour ("KZS-M-GOL-01"). Two products whose names share initials and whose
+  // variants share a size and colour produce the same string — and because the
+  // SKU *is* the barcode, that is two different items answering to one scan,
+  // which the save hook cannot catch: it only de-duplicates within one product.
+  //
+  // Reserving from the server also keeps the code numeric, and numeric codes
+  // encode about half as wide in Code128 as letters and dashes do — which is
+  // the difference between bars a scanner resolves on a 50mm label and bars it
+  // does not.
+  const assignSkus = useCallback(async (indices: number[]) => {
+    if (indices.length === 0) return;
+    setAssigningSkus(prev => [...prev, ...indices]);
+    setError(null);
+    try {
+      const { skus } = await api.products.reserveSkus(indices.length);
+      setVariants(vs => vs.map((v, i) => {
+        const at = indices.indexOf(i);
+        return at === -1 || !skus[at] ? v : { ...v, sku: skus[at] };
+      }));
+      dirty();
+    } catch (err) {
+      // Loud, because the alternative — silently leaving the field blank — looks
+      // identical to never having pressed the button.
+      setError(err instanceof Error ? err.message : 'Could not reserve a SKU');
+    } finally {
+      setAssigningSkus(prev => prev.filter(i => !indices.includes(i)));
+    }
+  }, [dirty]);
+
+  const blankSkuIndices = variants
+    .map((v, i) => (v.sku.trim() ? -1 : i))
+    .filter(i => i !== -1);
 
   const generateVariants = (sizes: string[], colors: string[]) => {
     const combos: Variant[] = [];
@@ -1048,6 +1083,27 @@ export default function NewProductPage() {
               >
                 <div className="pt-1 space-y-4">
                   <VariantBuilder onGenerate={generateVariants} />
+                  {blankSkuIndices.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-3 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+                      <span className="text-xs text-gray-500">
+                        {blankSkuIndices.length} variant{blankSkuIndices.length === 1 ? '' : 's'} without a
+                        SKU. They are assigned automatically on save — reserve them now if you want to
+                        print tags before saving.
+                      </span>
+                      <div className="flex-1" />
+                      <button
+                        type="button"
+                        onClick={() => assignSkus(blankSkuIndices)}
+                        disabled={assigningSkus.length > 0}
+                        className="flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 hover:text-[#C9A84C] hover:border-[#C9A84C]/40 transition-all disabled:opacity-40"
+                      >
+                        {assigningSkus.length > 0
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Hash className="h-3.5 w-3.5" />}
+                        Assign all SKUs
+                      </button>
+                    </div>
+                  )}
                   {/* Desktop table */}
                   <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200">
                     <table className="w-full text-sm">
@@ -1069,7 +1125,8 @@ export default function NewProductPage() {
                         {variants.map((v, i) => (
                           <VariantRow
                             key={i} mode="table" variant={v} idx={i} totalVariants={variants.length}
-                            productName={formData.name}
+                            onAutoSku={() => assignSkus([i])}
+                            assigningSku={assigningSkus.includes(i)}
                             onChange={(field, val) => updateVariant(i, field, val)}
                             onDuplicate={() => duplicateVariant(i)}
                             onRemove={() => removeVariant(i)}
@@ -1091,7 +1148,8 @@ export default function NewProductPage() {
                     {variants.map((v, i) => (
                       <VariantRow
                         key={i} mode="mobile" variant={v} idx={i} totalVariants={variants.length}
-                        productName={formData.name}
+                        onAutoSku={() => assignSkus([i])}
+                        assigningSku={assigningSkus.includes(i)}
                         onChange={(field, val) => updateVariant(i, field, val)}
                         onDuplicate={() => duplicateVariant(i)}
                         onRemove={() => removeVariant(i)}

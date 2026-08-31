@@ -21,7 +21,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
-const { allocate } = require('../utils/variantSku');
+const { allocateUnused } = require('../utils/variantSku');
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -68,7 +68,7 @@ async function main() {
     return;
   }
 
-  const codes = await allocate(gaps.length);
+  const codes = await allocateUnused(Product, gaps.length);
 
   const byProduct = new Map();
   gaps.forEach((gap, i) => {

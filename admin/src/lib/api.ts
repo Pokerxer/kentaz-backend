@@ -87,6 +87,20 @@ export const api = {
         method: 'DELETE',
       }),
 
+    /**
+     * Take `count` SKUs from the same sequence the save hook uses.
+     *
+     * The form used to invent its own codes from the product's initials, which
+     * could collide across products and encoded far wider in Code128 than the
+     * label has room for. Reserving real ones means what staff see in the form
+     * is what ends up on the tag and in the till.
+     */
+    reserveSkus: (count: number) =>
+      request<{ skus: string[] }>('/api/admin/products/skus/reserve', {
+        method: 'POST',
+        body: JSON.stringify({ count }),
+      }),
+
     parseCSV: (csv: string) =>
       request<{ products: Record<string, string>[]; count: number }>('/api/admin/products/parse-csv', {
         method: 'POST',

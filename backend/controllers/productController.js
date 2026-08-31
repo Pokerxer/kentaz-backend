@@ -2,6 +2,7 @@ const Product = require('../models/Product');
 const Review = require('../models/Review');
 const { v4: uuidv4 } = require('uuid');
 const { uploadImage, deleteImage, deleteImages, getOptimizedUrl } = require('../utils/cloudinary');
+const { allocateUnused } = require('../utils/variantSku');
 const multer = require('multer');
 const path = require('path');
 const os = require('os');
@@ -345,6 +346,40 @@ function parseCSV(csvText) {
 
   return rows;
 }
+
+// POST /api/admin/products/skus/reserve - Take numeric SKUs from the counter
+//
+// The admin form used to mint its own codes ("KZS-M-GOL-01"). Two problems with
+// that: they collide — the same initials plus the same size and colour on a
+// different product produce the same string, and the save hook only
+// de-duplicates within one product, so the collision reaches the database and
+// two items answer to one scan. And they encode roughly twice as wide in
+// Code128 as the digits the save hook assigns, which is what pushes a 50mm tag
+// under the width a scanner can resolve.
+//
+// So the form reserves from the same counter the save hook uses. One format in
+// the catalogue, unique by construction, and it fits on the label.
+//
+// Reserving before the product is saved means an abandoned form burns its
+// numbers. That is the intended trade: gaps are free, duplicates are not.
+exports.reserveVariantSkus = async (req, res) => {
+  try {
+    const count = Number(req.body && req.body.count);
+    // Comfortably above any real product's variant count. A request for
+    // thousands is a bug or a runaway script, and neither should be able to run
+    // the sequence forward.
+    if (!Number.isInteger(count) || count < 1 || count > 200) {
+      return res.status(400).json({ error: 'count must be a whole number between 1 and 200' });
+    }
+    // allocateUnused, not allocate: generated codes now share the 219 namespace
+    // with the supplier ones, so a reservation has to be checked against the
+    // catalogue rather than trusted for being freshly minted.
+    const skus = await allocateUnused(Product, count);
+    res.json({ skus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
 // POST /api/admin/products/import - Bulk import products
 exports.importProducts = async (req, res) => {

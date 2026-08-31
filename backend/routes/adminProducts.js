@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { createProduct, updateProduct, deleteProduct, getAdminProducts, getAdminProductById, upload, uploadFile, importProducts, parseCSV, parseFile, importFile } = require('../controllers/productController');
+const { createProduct, updateProduct, deleteProduct, getAdminProducts, getAdminProductById, upload, uploadFile, importProducts, parseCSV, parseFile, importFile, reserveVariantSkus } = require('../controllers/productController');
 const { auth, adminOnly, staffOrAdmin } = require('../middleware/auth');
 
 router.get('/', auth, staffOrAdmin, getAdminProducts);
+// Above /:id so the literal path can never be swallowed by the id matcher.
+router.post('/skus/reserve', auth, adminOnly, reserveVariantSkus);
 router.get('/:id', auth, staffOrAdmin, getAdminProductById);
 router.post('/', auth, adminOnly, upload.array('images', 10), createProduct);
 router.put('/:id', auth, adminOnly, upload.array('images', 10), updateProduct);
