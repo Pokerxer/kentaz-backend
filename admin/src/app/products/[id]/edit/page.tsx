@@ -736,6 +736,22 @@ export default function EditProductPage() {
         variants: validVariants,
         images: formData.images.map(url => ({ url })),
       });
+      // Auto-assign on save: the backend fills any blank (or duplicated-then-
+      // blanked) SKU from its sequence, so mirror the returned codes back into
+      // the form. Otherwise a freshly added variant shows an empty SKU field
+      // even though a tag can be printed for it right now.
+      const savedVariants = (updated as any)?.variants;
+      if (Array.isArray(savedVariants) && savedVariants.length === validVariants.length) {
+        setVariants(vs => {
+          let k = 0;
+          return vs.map(v => {
+            if (v.price <= 0) return v;
+            const s = savedVariants[k]?.sku;
+            k += 1;
+            return s ? { ...v, sku: s } : v;
+          });
+        });
+      }
       setOriginalProduct(updated as Product);
       setHasChanges(false);
       setSuccess('Saved!');

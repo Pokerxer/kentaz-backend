@@ -123,6 +123,36 @@ function pageSize(label: LabelSize, rotation: Rotation): LabelSize {
     : { w: label.w, h: label.h };
 }
 
+/**
+ * The CSS transform that turns the tag to face at `rotation` inside the page
+ * produced by `pageSize`. Rotates about the origin (transform-origin: 0 0) and
+ * then translates by whole millimetres so every corner lands on an exact
+ * millimetre — filling the page at every angle:
+ *
+ *    0°      translate(0, 0)        rotate(0)
+ *    180°    translate(w, h)        rotate(180)      (flipped in place)
+ *    90°     translate(h, 0)        rotate(90)       (page is w×h -> h×w)
+ *    270°    translate(0, w)        rotate(270)
+ *
+ * The shifts come from the label's own size, never percentages: on the 50×25
+ * roll that is 0/0, 50/25, 25/0 and 0/50 mm, all integers, so the barcode bars
+ * (drawn on whole millimetre modules) stay on whole raster units when the
+ * driver rasterises the page.
+ */
+function rotateTransform(label: LabelSize, rotation: Rotation): string {
+  const { w, h } = label;
+  switch (rotation) {
+    case 90:
+      return `translate(${h}mm, 0) rotate(90deg)`;
+    case 180:
+      return `translate(${w}mm, ${h}mm) rotate(180deg)`;
+    case 270:
+      return `translate(0, ${w}mm) rotate(270deg)`;
+    default:
+      return `translate(0, 0) rotate(0deg)`;
+  }
+}
+
 const DEFAULT_THERMAL: LabelSize = { w: TAG_WIDTH_MM, h: TAG_HEIGHT_MM };
 
 /** Snap to 0.1mm and hold inside the physical envelope. */
@@ -847,20 +877,27 @@ function PrintStyles({
           page-break-after: auto;
         }
 
-        /* The tag itself, centred in the page and turned to face the label.
-           Absolute rather than in-flow so the page box has no line content of
-           its own: an in-flow child a fraction of a millimetre taller than the
-           page emits a blank label after every tag, which on a roll is half the
-           stock. Rotating about the centre means one rule covers all four
-           angles — at 90° and 270° the page is already the transposed size, so
-           the rotated tag fills it exactly. */
+        /* The tag itself, pinned to the page origin and turned to face the
+           label. Absolute rather than in-flow so the page box has no line
+           content of its own: an in-flow child a fraction of a millimetre
+           taller than the page emits a blank label after every tag, which on
+           a roll is half the stock.
+
+           The transform rotates about the origin (top-left) and then shifts
+           by whole millimetres so the tag lands exactly inside the page for
+           every angle. No percentage centring: a translate(-50%,-50%)
+           rotate() composed with a 50% transform-origin lands the crisp
+           barcode bars on fractional pixels, and a thermal driver rasterising
+           that can turn the symbol slightly diagonal. An integer shift keeps
+           every bar on a whole raster unit, so all four angles print square. */
         .tag-rotate {
           position: absolute;
-          top: 50%;
-          left: 50%;
+          top: 0;
+          left: 0;
           width: ${thermal.w}mm;
           height: ${thermal.h}mm;
-          transform: translate(-50%, -50%) rotate(${rotation}deg);
+          transform-origin: 0 0;
+          transform: ${rotateTransform(thermal, rotation)};
         }
 
         /* --- A4 sticker sheet --- */

@@ -777,11 +777,31 @@ export default function NewProductPage() {
         variants: validVariants,
         images: formData.images.map(url => ({ url })),
       });
+      // Auto-assign on save: the backend fills any blank SKU from its sequence,
+      // so mirror the returned codes back into the form. Staff can then read —
+      // and scan — the exact code that went off to the tag without a round trip
+      // to the reserve endpoint first.
+      // `validVariants` is the price-filtered slice actually submitted, and the
+      // server echoes it in the same order — so walk that order rather than
+      // indexing the full variants list, which may contain price-0 rows the
+      // save never saw.
+      const savedVariants = (product as any)?.variants;
+      if (Array.isArray(savedVariants) && savedVariants.length === validVariants.length) {
+        setVariants(vs => {
+          let k = 0;
+          return vs.map(v => {
+            if (v.price <= 0) return v;
+            const s = savedVariants[k]?.sku;
+            k += 1;
+            return s ? { ...v, sku: s } : v;
+          });
+        });
+      }
       setIsDirty(false);
       // Stay put rather than bouncing to the list after a second. Tagging is
       // the natural next step once a product exists, and it can't be offered
       // from a page that has already navigated away.
-      setCreated(product);
+      setCreated({ _id: product._id, name: product.name });
       setSuccess('Product created!');
     } catch (err: any) {
       setError(err.message || 'Failed to create product');
