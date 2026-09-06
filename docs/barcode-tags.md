@@ -87,6 +87,16 @@ Pure functions, verified against hand-derived Code128 vectors
 - **Thermal roll**: any size from the Tag Studio (presets or custom W/H,
   20–120 × 15–100 mm, persisted in localStorage). `@page` size and `.tag-page`
   follow the chosen size; tag typography and bar height scale with it.
+- **Direct printing** is the primary path on a thermal roll, added 2026-09.
+  When `tools/label-bridge` runs on the machine the printer is plugged into,
+  tags are rendered to TSPL and written to the print queue as RAW — no page, no
+  driver paper size, no orientation to guess, and the gap sensor is callable
+  (`GAPDETECT`). The browser path below stays as the fallback for shops that do
+  not run it, and remains the only path for A4 sheets. Why, at length:
+  [`thermal-printing-xprinter.md`](thermal-printing-xprinter.md). The short
+  version is that a browser hands the driver a *page*, and the driver is free to
+  re-decide its size and turn it — which is what put a tag sideways across two
+  stickers through three rounds of CSS fixes.
 - **Orientation** (0/90/180/270, persisted as `kentaz.tagRotation`): rotates the
   tag *and* transposes the page box together — see `pageSize()`. Cheap thermal
   drivers describe their media portrait however the labels leave the roll, and

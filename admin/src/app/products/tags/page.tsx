@@ -17,11 +17,23 @@ import {
   Minus,
   Plus,
   Ruler,
+  PlugZap,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { ProductTag, TagData, TAG_WIDTH_MM, TAG_HEIGHT_MM } from '@/components/ProductTag';
 import { moduleCount } from '@/lib/code128';
 import { api, Product } from '@/lib/api';
+import {
+  BridgeInfo,
+  BridgeLabel,
+  probeBridge,
+  printViaBridge,
+  calibrateViaBridge,
+  readBridgePrinter,
+  writeBridgePrinter,
+} from '@/lib/labelBridge';
 
 // A whole roll is 500-1000 labels. This cap is not a technical limit — it is
 // there so a mistyped "match stock" cannot quietly send 4,000 pages to a
@@ -79,6 +91,19 @@ const THERMAL_PRESETS: { name: string; size: LabelSize }[] = [
 
 const THERMAL_SIZE_STORAGE_KEY = 'kentaz.tagThermalSize';
 const ROTATION_STORAGE_KEY = 'kentaz.tagRotation';
+const THERMAL_GAP_STORAGE_KEY = 'kentaz.tagThermalGap';
+
+// The die-cut gap between stickers. The browser never needed this — a page is a
+// page — but a printer driven directly has to be told the pitch of the roll, or
+// it cannot know where one label ends. 2mm is the common die on 50 × 25 stock;
+// 3mm turns up on bigger labels. 0 means continuous paper with no gap at all.
+const DEFAULT_GAP_MM = 2;
+const MAX_GAP_MM = 10;
+
+function clampGap(mm: number): number {
+  if (!Number.isFinite(mm)) return DEFAULT_GAP_MM;
+  return Math.round(Math.min(MAX_GAP_MM, Math.max(0, mm)) * 10) / 10;
+}
 
 // ── Which way the tag sits on the label ──────────────────────────────────────
 
@@ -277,6 +302,17 @@ function TagStudio() {
   const [offset, setOffset] = useState<Offset>(NO_OFFSET);
   const [thermal, setThermal] = useState<LabelSize>(DEFAULT_THERMAL);
   const [rotation, setRotation] = useState<Rotation>(0);
+  const [gap, setGap] = useState<number>(DEFAULT_GAP_MM);
+
+  // The local print bridge, if this machine is running one. `null` after the
+  // probe means "not there", which is a normal state and not an error — the
+  // browser print path is unchanged for shops that never install it.
+  const [bridge, setBridge] = useState<BridgeInfo | null>(null);
+  const [probing, setProbing] = useState(true);
+  const [bridgePrinter, setBridgePrinter] = useState<string | null>(null);
+  const [directBusy, setDirectBusy] = useState(false);
+  const [directNote, setDirectNote] =
+    useState<{ tone: 'info' | 'warn' | 'error'; text: string } | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -312,7 +348,32 @@ function TagStudio() {
     // rediscovering it costs a wasted strip of labels every time.
     const savedRotation = read(ROTATION_STORAGE_KEY);
     if (isRotation(savedRotation)) setRotation(savedRotation);
+
+    const savedGap = read(THERMAL_GAP_STORAGE_KEY);
+    if (typeof savedGap === 'number') setGap(clampGap(savedGap));
   }, []);
+
+  /**
+   * Look for the label bridge on this machine. Runs once on mount and on
+   * demand, because the usual sequence is "open the studio, notice it is not
+   * connected, start the bridge" — and having to reload the page at that point
+   * is the kind of small friction that makes a shop give up on the fix.
+   */
+  const checkBridge = useCallback(async () => {
+    setProbing(true);
+    const info = await probeBridge();
+    setBridge(info);
+    setProbing(false);
+    if (!info) return;
+    // Prefer the printer the shop chose last time, but only if it is still
+    // installed — a remembered name that no longer exists is worse than none.
+    const saved = readBridgePrinter();
+    setBridgePrinter(
+      saved && info.printers.includes(saved) ? saved : info.suggestedPrinter,
+    );
+  }, []);
+
+  useEffect(() => { void checkBridge(); }, [checkBridge]);
 
   const rotate = useCallback((next: Rotation) => {
     setRotation(next);
@@ -333,6 +394,21 @@ function TagStudio() {
       }
       return next;
     });
+  }, []);
+
+  const changeGap = useCallback((mm: number) => {
+    const next = clampGap(mm);
+    setGap(next);
+    try {
+      window.localStorage.setItem(THERMAL_GAP_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // The gap still applies this session even if it cannot be saved.
+    }
+  }, []);
+
+  const choosePrinter = useCallback((name: string) => {
+    setBridgePrinter(name);
+    writeBridgePrinter(name);
   }, []);
 
   const nudge = useCallback((patch: Partial<Offset>) => {
@@ -422,7 +498,54 @@ function TagStudio() {
   }
   const tooDense = densest !== null && densest.moduleMm < MIN_SCANNABLE_MODULE_MM;
 
+  /**
+   * Whether this print goes straight to the printer instead of through the
+   * browser. Thermal only: an A4 sheet is a page, the driver has no quarrel
+   * with A4, and there is nothing to route around.
+   */
+  const direct = !sheetMode && bridge !== null;
+
+  const sendDirect = async (labels: BridgeLabel[]) => {
+    setDirectBusy(true);
+    setDirectNote(null);
+    try {
+      const result = await printViaBridge(
+        labels,
+        { widthMm: thermal.w, heightMm: thermal.h, gapMm: gap },
+        bridgePrinter,
+      );
+      // The bridge reports the queue it actually reached; remember that name
+      // rather than the one we asked for.
+      choosePrinter(result.printer);
+      const count = `${result.printed} label${result.printed === 1 ? '' : 's'}`;
+      setDirectNote(
+        result.warnings.length > 0
+          ? { tone: 'warn', text: `Sent ${count} to ${result.printer}. ${result.warnings.join(' ')}` }
+          : { tone: 'info', text: `Sent ${count} to ${result.printer}.` },
+      );
+    } catch (err) {
+      setDirectNote({
+        tone: 'error',
+        text: err instanceof Error ? err.message : 'The label bridge refused the job.',
+      });
+    } finally {
+      setDirectBusy(false);
+    }
+  };
+
   const print = () => {
+    if (direct) {
+      // Copies stay a count rather than repeated rows: the printer repeats a
+      // label itself, far faster than they can be sent one at a time.
+      void sendDirect(printable.map(row => ({
+        productName: row.productName,
+        size: row.size,
+        color: row.color,
+        sku: row.sku,
+        copies: row.copies,
+      })));
+      return;
+    }
     const queue: TagData[] = [];
     for (const row of printable) {
       for (let i = 0; i < row.copies; i++) queue.push(rowToTag(row));
@@ -431,9 +554,43 @@ function TagStudio() {
   };
 
   const printCalibration = () => {
+    if (direct) {
+      void sendDirect([{ ...CALIBRATION_TAG, copies: 1 }]);
+      return;
+    }
     setJob(sheetMode
       ? { kind: 'calibration', format: 'sheet' }
       : { kind: 'tags', format: 'thermal', tags: [CALIBRATION_TAG] });
+  };
+
+  /**
+   * Teach the printer the pitch of this roll. Nothing is printed — it feeds a
+   * label or two while it finds the gaps, and afterwards it knows where every
+   * label starts. This is the fix for blank stickers between tags, and for a
+   * tag that lands halfway down the label.
+   */
+  const calibrateRoll = async () => {
+    setDirectBusy(true);
+    setDirectNote(null);
+    try {
+      const printer = await calibrateViaBridge(
+        { widthMm: thermal.w, heightMm: thermal.h, gapMm: gap },
+        bridgePrinter,
+      );
+      choosePrinter(printer);
+      setDirectNote({
+        tone: 'info',
+        text: `${printer} calibrated for ${thermal.w} × ${thermal.h} mm labels with a ${gap} mm gap. `
+          + 'It may have fed a label or two while finding them.',
+      });
+    } catch (err) {
+      setDirectNote({
+        tone: 'error',
+        text: err instanceof Error ? err.message : 'Calibration failed.',
+      });
+    } finally {
+      setDirectBusy(false);
+    }
   };
 
   const setAllCopies = (fn: (row: TagRow) => number) => {
@@ -462,7 +619,9 @@ function TagStudio() {
             <p className="text-sm text-gray-500">
               {sheetMode
                 ? `${SHEET.labelWidthMm} × ${SHEET.labelHeightMm} mm on A4 · ${PER_SHEET} per sheet`
-                : `${thermal.w} × ${thermal.h} mm thermal labels · one per label${rotation ? ` · turned ${rotation}°` : ''}`}
+                : direct
+                  ? `${thermal.w} × ${thermal.h} mm thermal labels · direct to ${bridgePrinter ?? 'printer'}`
+                  : `${thermal.w} × ${thermal.h} mm thermal labels · one per label${rotation ? ` · turned ${rotation}°` : ''}`}
             </p>
           </div>
         </div>
@@ -507,16 +666,175 @@ function TagStudio() {
                 resizes the page and every label lands off its sticker. Print the calibration
                 sheet on plain paper first and hold it against a real sheet.
               </Notice>
-            ) : (
-              <Notice tone="info" icon={<Info className="h-4 w-4" />}>
-                In the browser&rsquo;s print dialog set <strong>Paper size</strong> to{' '}
-                <strong>{thermalPage.w} × {thermalPage.h} mm</strong>, <strong>Scale: 100%</strong>{' '}
-                and <strong>Margins: None</strong>. Print one test label first. If it comes out
-                sideways, or one tag spreads across two stickers with blank ones after it, that is
-                the printer driver turning the page — change <strong>Orientation</strong> above
-                until a tag lands square on a single sticker, then leave it. Use Chrome or Edge —
-                Firefox cannot set custom label sizes.
+            ) : direct ? (
+              <>
+                {/* Nothing about paper size, scale, margins or Orientation
+                    appears here, because none of them apply any more: the
+                    printer is being told the label size in its own language
+                    and there is no page for a driver to reinterpret. */}
+                <Notice tone="success" icon={<CheckCircle2 className="h-4 w-4" />}>
+                  <strong>Direct printing is on.</strong> Tags go straight to the printer, so
+                  there is no print dialog, no paper size to choose and no Orientation to guess —
+                  the label size below is what the printer prints. If a tag ever comes out
+                  sideways again, it will not be from here.
+                </Notice>
+
+                <div className="mb-6 px-4 py-3 bg-white border border-gray-200 rounded-xl flex flex-wrap items-center gap-3">
+                  <PlugZap className="h-4 w-4 text-emerald-600" />
+                  <label htmlFor="tag-printer" className="text-xs font-medium text-gray-500">
+                    Printer
+                  </label>
+                  <select
+                    id="tag-printer"
+                    value={bridgePrinter ?? ''}
+                    onChange={e => choosePrinter(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                  >
+                    {bridge.printers.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <SizeControl
+                    label="Gap"
+                    value={gap}
+                    min={0}
+                    max={MAX_GAP_MM}
+                    onChange={changeGap}
+                  />
+                  <div className="flex-1" />
+                  <ToolbarButton
+                    onClick={() => void calibrateRoll()}
+                    disabled={directBusy}
+                    icon={<Ruler className="h-3.5 w-3.5" />}
+                  >
+                    Calibrate labels
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={() => void checkBridge()}
+                    disabled={probing}
+                    icon={<RefreshCw className={`h-3.5 w-3.5 ${probing ? 'animate-spin' : ''}`} />}
+                  >
+                    Recheck
+                  </ToolbarButton>
+                </div>
+
+                {directNote && (
+                  <Notice
+                    tone={directNote.tone}
+                    icon={directNote.tone === 'error'
+                      ? <AlertTriangle className="h-4 w-4" />
+                      : <Info className="h-4 w-4" />}
+                  >
+                    {directNote.text}
+                  </Notice>
+                )}
+              </>
+            ) : probing ? (
+              /* Enumerating printers on Windows goes through PowerShell and can
+                 take a second. Flashing "printing sideways?" at a shop that does
+                 have the bridge, just because the answer has not arrived yet,
+                 teaches exactly the wrong thing. */
+              <Notice tone="info" icon={<Loader2 className="h-4 w-4 animate-spin" />}>
+                Looking for the label bridge on this computer…
               </Notice>
+            ) : (
+              <>
+                {/* The browser path. Everything below is an attempt to talk a
+                    driver out of a decision it has already made, which is why
+                    the bridge is offered first. */}
+                <Notice tone="warn" icon={<PlugZap className="h-4 w-4" />}>
+                  <strong>Printing sideways, or one tag across two stickers?</strong> That is the
+                  printer driver turning the page, and no setting on this screen can overrule it —
+                  the browser can only hand over a page and hope. The fix is to bypass the driver:
+                  run the <strong>label bridge</strong> on the computer the printer is plugged
+                  into, and tags go straight to the printer with no dialog and nothing to guess.
+                  Setup is about two minutes — see{' '}
+                  <code className="bg-white/60 px-1.5 py-0.5 rounded text-xs">tools/label-bridge/README.md</code>{' '}
+                  in the Kentaz project folder. Once it is running, press{' '}
+                  <button
+                    type="button"
+                    onClick={() => void checkBridge()}
+                    disabled={probing}
+                    className="underline font-medium hover:text-amber-900 disabled:opacity-50"
+                  >
+                    {probing ? 'checking…' : 'check again'}
+                  </button>.
+                </Notice>
+
+                <Notice tone="info" icon={<Info className="h-4 w-4" />}>
+                  The tag prints on the paper <strong>your printer driver</strong> is set to — the
+                  browser cannot force a size the driver does not know. So first create a die-cut
+                  paper of exactly <strong>{thermal.w} × {thermal.h} mm</strong> in the driver,
+                  then in this browser&rsquo;s print dialog pick that paper, set{' '}
+                  <strong>Scale: 100%</strong> (not &ldquo;Fit to page&rdquo;) and{' '}
+                  <strong>Margins: None</strong>. Use Chrome or Edge — Firefox cannot create custom
+                  label sizes.
+                </Notice>
+                {rotation !== 0 && (
+                  <Notice tone="warn" icon={<AlertTriangle className="h-4 w-4" />}>
+                    Orientation is {rotation}°. The page above is transposed to{' '}
+                    <strong>{thermalPage.w} × {thermalPage.h} mm</strong>, so the driver must also
+                    have a paper defined at exactly that size — otherwise it falls back to its own
+                    default paper and turns the tag sideways. On XPrinter that means creating{' '}
+                    <em>both</em> sizes ({thermal.w} × {thermal.h} and{' '}
+                    {thermalPage.w} × {thermalPage.h}) in the driver. If a label printed at 0° came
+                    out upright, leave Orientation at{' '}
+                    <strong>0°</strong> and skip the others.
+                  </Notice>
+                )}
+                <details className="mb-6 px-4 py-3 bg-white border border-gray-200 rounded-xl">
+                  <summary className="cursor-pointer select-none text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Ruler className="h-4 w-4 text-[#C9A84C]" />
+                    Thermal printer setup — XPrinter and other label printers
+                    <span className="ml-auto font-normal text-gray-400 text-xs">one-time, ~2 minutes</span>
+                  </summary>
+                  <div className="mt-3 text-sm text-gray-600 space-y-3">
+                    <p>
+                      Label printers size and turn the page from the paper sizes in their{' '}
+                      <strong>driver</strong>, not from the web page. Sideways tags mean the
+                      driver&rsquo;s paper does not match the label. Set it up once:
+                    </p>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      <li>
+                        <strong>Install the driver</strong> for your exact model. XPrinter: go to{' '}
+                        <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">xprintertech.com → Support → Driver</code>,
+                        download and install.
+                      </li>
+                      <li>
+                        <strong>Create the label paper size</strong> (Windows): Start → Printers →
+                        right-click your XPrinter → <em>Printing preferences</em> →{' '}
+                        <em>Page setup / Label size</em> → add a die-cut label of exactly{' '}
+                        <strong>{thermal.w} mm wide × {thermal.h} mm tall</strong> and save it.
+                        Then repeat under right-click → <em>Printer properties</em> →{' '}
+                        <em>Advanced</em> → <em>Printing defaults</em> — apps often read that copy,
+                        not the first.
+                      </li>
+                      <li>
+                        <strong>Calibrate the media</strong>: hold <strong>Feed</strong> /{' '}
+                        <strong>Pause</strong> until the printer advances a label and learns the
+                        gaps between stickers.
+                      </li>
+                      <li>
+                        <strong>Print from this page</strong>: in the browser print dialog select
+                        the paper you just created, <strong>Scale = 100%</strong>,{' '}
+                        <strong>Margins = None</strong>, <strong>Background graphics: on</strong>.
+                      </li>
+                      <li>
+                        <strong>Test at 0°</strong>: click &ldquo;Print one test label&rdquo;.
+                        One tag must fill one sticker dead square. If it is still sideways, the
+                        driver is turning the page — that is fixed in the driver&rsquo;s own
+                        paper/orientation settings, not by changing Orientation here.
+                      </li>
+                    </ol>
+                    <p>
+                      <strong>Two classic gotchas:</strong> &ldquo;Fit to page&rdquo; or any scale
+                      below 100% shrinks the tag just enough to slip off the sticker, and the
+                      driver&rsquo;s built-in &ldquo;minimum margins&rdquo; clips it. The browser
+                      must be at Margins: None; keep margins at 0 in the driver too.
+                    </p>
+                  </div>
+                </details>
+              </>
             )}
 
             {tooDense && densest && (
@@ -583,25 +901,34 @@ function TagStudio() {
                       max={THERMAL_MAX_H_MM}
                       onChange={h => resize({ h })}
                     />
-                    <label htmlFor="tag-rotation" className="text-xs font-medium text-gray-500">
-                      Orientation
-                    </label>
-                    <select
-                      id="tag-rotation"
-                      value={rotation}
-                      onChange={e => rotate(Number(e.target.value) as Rotation)}
-                      title={ROTATIONS.find(r => r.value === rotation)?.hint}
-                      className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
-                    >
-                      {ROTATIONS.map(r => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
-                      ))}
-                    </select>
+                    {/* Only meaningful on the browser path. Printing direct,
+                        the printer's own DIRECTION already put the tag the
+                        right way up, and offering a control that does nothing
+                        is how a shop ends up back where it started. */}
+                    {!direct && (
+                      <>
+                        <label htmlFor="tag-rotation" className="text-xs font-medium text-gray-500">
+                          Orientation
+                        </label>
+                        <select
+                          id="tag-rotation"
+                          value={rotation}
+                          onChange={e => rotate(Number(e.target.value) as Rotation)}
+                          title={ROTATIONS.find(r => r.value === rotation)?.hint}
+                          className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C]"
+                        >
+                          {ROTATIONS.map(r => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                   </>
                 )}
                 <div className="flex-1" />
                 <ToolbarButton
                   onClick={printCalibration}
+                  disabled={directBusy}
                   icon={sheetMode ? <LayoutGrid className="h-3.5 w-3.5" /> : <Ruler className="h-3.5 w-3.5" />}
                 >
                   {sheetMode ? 'Print calibration sheet' : 'Print one test label'}
@@ -743,11 +1070,15 @@ function TagStudio() {
           <Link href="/products" className="text-sm text-gray-500 hover:text-gray-900">Cancel</Link>
           <button
             onClick={print}
-            disabled={total === 0 || overCap}
+            disabled={total === 0 || overCap || directBusy}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#C9A84C] text-white rounded-xl text-sm font-medium hover:bg-[#B8953F] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            <Printer className="h-4 w-4" />
-            Print {total > 0 ? total : ''} tag{total === 1 ? '' : 's'}
+            {directBusy
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Printer className="h-4 w-4" />}
+            {directBusy
+              ? 'Sending…'
+              : `Print ${total > 0 ? total : ''} tag${total === 1 ? '' : 's'}${direct ? ' directly' : ''}`}
           </button>
         </div>
       )}
@@ -992,12 +1323,13 @@ function Stepper({ value, onChange, disabled }: { value: number; onChange: (n: n
   );
 }
 
-function ToolbarButton({ onClick, icon, children }: { onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+function ToolbarButton({ onClick, icon, children, disabled }: { onClick: () => void; icon: React.ReactNode; children: React.ReactNode; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 hover:text-[#C9A84C] hover:border-[#C9A84C]/40 transition-all"
+      disabled={disabled}
+      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 hover:text-[#C9A84C] hover:border-[#C9A84C]/40 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-600 disabled:hover:border-gray-200 transition-all"
     >
       {icon}
       {children}
@@ -1090,12 +1422,14 @@ function SizeControl({
   );
 }
 
-function Notice({ tone, icon, children }: { tone: 'warn' | 'error' | 'info'; icon: React.ReactNode; children: React.ReactNode }) {
+function Notice({ tone, icon, children }: { tone: 'warn' | 'error' | 'info' | 'success'; icon: React.ReactNode; children: React.ReactNode }) {
   const styles = tone === 'error'
     ? 'bg-red-50 border-red-200 text-red-700'
-    : tone === 'info'
-      ? 'bg-blue-50 border-blue-200 text-blue-800'
-      : 'bg-amber-50 border-amber-200 text-amber-800';
+    : tone === 'success'
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+      : tone === 'info'
+        ? 'bg-blue-50 border-blue-200 text-blue-800'
+        : 'bg-amber-50 border-amber-200 text-amber-800';
   return (
     <div className={`flex items-start gap-2 px-4 py-3 border rounded-xl text-sm mb-6 ${styles}`}>
       <span className="mt-0.5 flex-shrink-0">{icon}</span>
