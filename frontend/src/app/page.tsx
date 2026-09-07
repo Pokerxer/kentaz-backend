@@ -58,104 +58,11 @@ const services = [
   },
 ];
 
-const defaultStats = [
-  { value: "500+", label: "Happy Customers" },
-  { value: "1000+", label: "Products" },
-  { value: "Abuja", label: "Nigeria" },
-  { value: "4.8", label: "Average Rating" },
-];
-
 const fallbackTestimonials = [
   { name: "Amara J.", text: "The quality of the human hair wigs is amazing! Exactly what I was looking for.", rating: 5, image: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=100" },
   { name: "Chioma M.", text: "Fast delivery and excellent customer service. Will definitely order again!", rating: 5, image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100" },
   { name: "Nadia K.", text: "Love the skincare products. My skin has never looked better.", rating: 5, image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100" },
 ];
-
-function AnimatedCounter({ value }: { value: string }) {
-  const [displayValue, setDisplayValue] = useState("0");
-  const [hasAnimated, setHasAnimated] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated) {
-          setHasAnimated(true);
-          const numericValue = parseFloat(value.replace(/[^0-9.]/g, ""));
-          const suffix = value.replace(/[0-9.]/g, "");
-          const duration = 2000;
-          const steps = 60;
-          const increment = numericValue / steps;
-          let current = 0;
-          let step = 0;
-
-          const timer = setInterval(() => {
-            step++;
-            current = Math.min(increment * step, numericValue);
-            const display = Number.isInteger(numericValue)
-              ? Math.round(current).toString()
-              : current.toFixed(1);
-            setDisplayValue(display + suffix);
-
-            if (step >= steps) {
-              clearInterval(timer);
-              setDisplayValue(value);
-            }
-          }, duration / steps);
-        }
-      },
-      { threshold: 0.5 }
-    );
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [value, hasAnimated]);
-
-  return <span ref={ref}>{displayValue}</span>;
-}
-
-function StatsSection() {
-  const [stats, setStats] = useState(defaultStats);
-
-  useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
-    fetch(`${apiUrl}/api/store/stats`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.productCount || data.avgRating) {
-          setStats([
-            { value: "500+", label: "Happy Customers" },
-            { value: `${data.productCount}+`, label: "Products" },
-            { value: "Abuja", label: "Nigeria" },
-            { value: String(data.avgRating), label: "Average Rating" },
-          ]);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  return (
-    <section className="py-8 md:py-12 bg-gradient-to-b from-[#FAFAFA] to-[#F5F5F0]">
-      <div className="container mx-auto px-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {stats.map((stat, index) => (
-            <ScrollReveal key={stat.label} direction="up" delay={index * 100}>
-              <div className="text-center group">
-                <div className="text-2xl md:text-3xl lg:text-4xl font-bold mb-1 animate-gold-shimmer bg-gradient-to-r from-[#C9A84C] via-[#E8D48A] to-[#C9A84C] bg-clip-text text-transparent">
-                  <AnimatedCounter value={stat.value} />
-                </div>
-                <div className="text-[#6B6B6B] text-xs md:text-sm font-medium">{stat.label}</div>
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function ServicesSection() {
   return (
@@ -1171,7 +1078,6 @@ export default function Home() {
         Kentaz Emporium — Premium Fashion, Lifestyle &amp; Wellness in Abuja, Nigeria
       </h1>
       <HeroSection />
-      <StatsSection />
       <ServicesSection />
       <CategoriesSection />
       <FlashSaleSection />
