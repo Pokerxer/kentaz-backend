@@ -37,6 +37,7 @@ const app = express();
 // CORS configuration - support both static origins and env variable
 const corsOrigin = process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || [
   'http://localhost:3000',
+  'http://127.0.0.1:3000',
   'http://localhost:3001',
   'http://localhost:3002',
   'http://localhost:7002',
