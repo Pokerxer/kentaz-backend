@@ -9,85 +9,50 @@ interface HeroSlide {
   subtitle?: string;
   description?: string;
   image: string;
+  imageFit?: "cover" | "contain";
   ctaText: string;
   ctaLink: string;
   isActive: boolean;
   order: number;
 }
 
-const defaultSlides: HeroSlide[] = [
-  {
-    _id: 'default-1',
-    title: "Luxury.",
-    subtitle: "Lifestyle. Wellness.",
-    description: "Elevate your presence with our curated collection of premium fashion, luxury hair, and skincare.",
-    image: "/images/hero-banner.jpg",
-    ctaText: "Shop Now",
-    ctaLink: "/products",
-    isActive: true,
-    order: 0,
-  },
-  {
-    _id: 'default-2',
-    title: "Luxury. Human Hair.",
-    subtitle: "Collections.",
-    description: "100% authentic human hair wigs and extensions. Natural look, effortless style.",
-    image: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=1920&q=80",
-    ctaText: "Shop Hair",
-    ctaLink: "/products",
-    isActive: true,
-    order: 1,
-  },
-  {
-    _id: 'default-3',
-    title: "Mental Health & Therapy.",
-    subtitle: "Consultation.",
-    description: "Professional counseling services for your mental wellness. Book your session today.",
-    image: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1920&q=80",
-    ctaText: "Book Session",
-    ctaLink: "/services",
-    isActive: true,
-    order: 2,
-  },
-];
-
 export function HeroSection() {
-  const [heroes, setHeroes] = useState<HeroSlide[]>(defaultSlides);
+  const [heroes, setHeroes] = useState<HeroSlide[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function fetchHeroes() {
-      const bases = [
-        process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000',
-        'http://localhost:9000',
-      ];
+      const bases = [process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000'];
       for (const base of new Set(bases)) {
         try {
           const res = await fetch(`${base}/api/heroes`);
           if (res.ok) {
             const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
+            if (Array.isArray(data)) {
               setHeroes(data);
+              setIsLoading(false);
               return;
             }
           }
         } catch {
-          // Try the next backend, then fall back to bundled defaults.
+          // Try the next configured backend.
         }
       }
+      setIsLoading(false);
     }
     fetchHeroes();
   }, []);
 
   const nextSlide = useCallback(() => {
-    setCurrentSlide((prev) => (prev + 1) % heroes.length);
-  }, []);
+    setCurrentSlide((prev) => heroes.length > 1 ? (prev + 1) % heroes.length : 0);
+  }, [heroes.length]);
 
   const prevSlide = useCallback(() => {
-    setCurrentSlide((prev) => (prev - 1 + heroes.length) % heroes.length);
-  }, []);
+    setCurrentSlide((prev) => heroes.length > 1 ? (prev - 1 + heroes.length) % heroes.length : 0);
+  }, [heroes.length]);
 
   const goToSlide = useCallback((index: number) => {
     setCurrentSlide(index);
@@ -95,17 +60,25 @@ export function HeroSection() {
 
   const startAutoPlay = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
+    if (heroes.length < 2 || isHovering) return;
     intervalRef.current = setInterval(nextSlide, 7000);
-  }, [nextSlide]);
+  }, [nextSlide, heroes.length, isHovering]);
 
   useEffect(() => {
+    if (heroes.length < 2) return;
     if (!isHovering) {
       startAutoPlay();
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [startAutoPlay, isHovering]);
+  }, [startAutoPlay, isHovering, heroes.length]);
+
+  if (isLoading) {
+    return <section className="relative w-full aspect-[2/1] max-h-[80vh] bg-[#0a0a0a]" aria-label="Loading hero banners" />;
+  }
+
+  if (heroes.length === 0) return null;
 
   return (
     <section
@@ -118,16 +91,17 @@ export function HeroSection() {
         {heroes.map((heroSlide, index) => (
           <div
             key={heroSlide._id}
-            className={`absolute inset-0 transition-all duration-[1500ms] ${
-              index === currentSlide ? "opacity-100 scale-100" : "opacity-0 scale-105"
+            className={`absolute inset-0 transition-opacity duration-[1500ms] ${
+              index === currentSlide ? "opacity-100" : "opacity-0"
             }`}
           >
             <div
               className="absolute inset-0"
               style={{
                 backgroundImage: `url(${heroSlide.image})`,
-                backgroundSize: "cover",
+                backgroundSize: heroSlide.imageFit || "cover",
                 backgroundPosition: "center",
+                backgroundRepeat: "no-repeat",
               }}
             />
           </div>
@@ -135,6 +109,7 @@ export function HeroSection() {
       </div>
 
       {/* Navigation Arrows */}
+      {heroes.length > 1 && <>
       <button
         onClick={() => {
           prevSlide();
@@ -181,6 +156,7 @@ export function HeroSection() {
           </button>
         ))}
       </div>
+      </>}
     </section>
   );
 }

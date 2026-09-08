@@ -16,6 +16,7 @@ const BLANK: Omit<Hero, '_id' | 'createdAt' | 'updatedAt'> = {
   description: '',
   image: '',
   imageAlt: '',
+  imageFit: 'cover',
   ctaText: 'Shop Now',
   ctaLink: '/products',
   isActive: true,
@@ -33,7 +34,7 @@ function HeroForm({
   onDelete?: () => Promise<void>;
   isNew: boolean;
 }) {
-  const [form, setForm] = useState({ ...initial });
+  const [form, setForm] = useState({ ...initial, imageFit: initial.imageFit || 'cover' });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -42,9 +43,9 @@ function HeroForm({
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    setForm({ ...initial });
+    setForm({ ...initial, imageFit: initial.imageFit || 'cover' });
     setShowDelete(false);
-  }, [(initial as any)._id]);
+  }, [initial]);
 
   function showMsg(type: 'ok' | 'err', msg: string) {
     setToast({ type, msg });
@@ -135,7 +136,7 @@ function HeroForm({
             />
             {form.image ? (
               <div className="relative aspect-[2/1] max-w-xl rounded-xl overflow-hidden border border-gray-200">
-                <img src={form.image} alt={form.imageAlt || form.title} className="w-full h-full object-cover" />
+                <img src={form.image} alt={form.imageAlt || form.title} className="w-full h-full bg-[#0a0a0a]" style={{ objectFit: form.imageFit }} />
                 <button
                   type="button"
                   onClick={() => setForm(f => ({ ...f, image: '', imageAlt: '' }))}
@@ -162,6 +163,21 @@ function HeroForm({
               </button>
             )}
             <p className="text-xs text-gray-400 mt-1">Recommended: 1920x960px or similar aspect ratio</p>
+          </div>
+
+          <div>
+            <label htmlFor="image-fit" className="block text-sm font-medium text-gray-700 mb-1.5">Image fit</label>
+            <select
+              id="image-fit"
+              value={form.imageFit}
+              onChange={e => setForm(f => ({ ...f, imageFit: e.target.value as 'cover' | 'contain' }))}
+              aria-describedby="image-fit-help"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400"
+            >
+              <option value="cover">Cover — fill the banner</option>
+              <option value="contain">Contain — show the full image</option>
+            </select>
+            <p id="image-fit-help" className="text-xs text-gray-500 mt-1">Cover may crop the edges. Contain shows the full image with space around it when needed. The preview updates immediately.</p>
           </div>
 
           {/* Title */}
@@ -246,7 +262,7 @@ function HeroForm({
         <div className="px-6 pb-6 flex items-center gap-2">
           <button
             type="submit"
-            disabled={saving || (!isNew && form.title === initial.title && form.image === initial.image)}
+            disabled={saving || uploading || !form.title.trim() || !form.image}
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 disabled:opacity-40 transition"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -376,7 +392,7 @@ export default function HeroesPage() {
                 >
                   <div className="w-14 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
                     {h.image ? (
-                      <img src={h.image} alt="" className="w-full h-full object-cover" />
+                      <img src={h.image} alt="" className="w-full h-full bg-[#0a0a0a]" style={{ objectFit: h.imageFit || 'cover' }} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Image className="w-4 h-4 text-gray-300" />

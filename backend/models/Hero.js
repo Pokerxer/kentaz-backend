@@ -6,6 +6,7 @@ const heroSchema = new mongoose.Schema({
   description: { type: String },
   image: { type: String, required: true },
   imageAlt: { type: String },
+  imageFit: { type: String, enum: ['cover', 'contain'], default: 'cover' },
   ctaText: { type: String, default: 'Shop Now' },
   ctaLink: { type: String, default: '/products' },
   isActive: { type: Boolean, default: true },

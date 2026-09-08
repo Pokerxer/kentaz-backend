@@ -952,6 +952,7 @@ export interface Hero {
   description?: string;
   image: string;
   imageAlt?: string;
+  imageFit?: 'cover' | 'contain';
   ctaText: string;
   ctaLink: string;
   isActive: boolean;
