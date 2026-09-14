@@ -2,11 +2,18 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Grid3X3, List, X, SlidersHorizontal, ChevronDown, ChevronLeft, ChevronRight, Star, ArrowUpDown } from 'lucide-react';
+import { Search, Grid3X3, List, X, SlidersHorizontal, ChevronDown, ChevronLeft, ChevronRight, Star, ArrowUpDown, BadgePercent, Check } from 'lucide-react';
 import { QuickViewModal } from '@/components/shop/QuickViewModal';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
+import type { Transition } from 'framer-motion';
 import { ProductContent } from '@/components/shop/ProductContent';
+
+// Motion tokens — one rhythm for the whole page (ui-ux-pro-max §7)
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]; // easeOutQuint
+const MICRO: Transition = { duration: 0.22, ease: EASE };          // taps, icon swaps
+const ENTER: Transition = { duration: 0.42, ease: EASE };          // panel / section entrances
+const SPRING_EDGE: Transition = { type: 'spring', damping: 26, stiffness: 240, mass: 0.9 };
 
 const COLOR_HEX_MAP: Record<string, string> = {
   black: '#000000', white: '#FFFFFF', navy: '#1e3a5f', red: '#dc2626',
@@ -16,6 +23,146 @@ const COLOR_HEX_MAP: Record<string, string> = {
   teal: '#0d9488', maroon: '#7f1d1d', khaki: '#c3b091', olive: '#6b7c32',
   nude: '#e8c4a0', tan: '#d2b48c', mint: '#98d8c8', coral: '#ff7f7f',
 };
+
+// Vendors write the same colour many ways ("Black & Gold", "navy-blue",
+// "Royal Blue", "black leather"). Split on word boundaries and collapse to a
+// single canonical value so the sidebar offers ONE swatch per colour family
+// instead of dozens of near-duplicates — and so filters actually match.
+const COLOR_SPLIT_RE = /[\s/&,+()\-]+/;
+
+function normalizeColor(raw: string): { value: string; name: string; hex: string | null } | null {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (COLOR_HEX_MAP[lower]) {
+    return { value: lower, name: lower.charAt(0).toUpperCase() + lower.slice(1), hex: COLOR_HEX_MAP[lower] };
+  }
+  const known = lower.split(COLOR_SPLIT_RE).map(t => t.trim()).filter(Boolean).find(t => COLOR_HEX_MAP[t]);
+  if (known) {
+    return { value: known, name: known.charAt(0).toUpperCase() + known.slice(1), hex: COLOR_HEX_MAP[known] };
+  }
+  return { value: lower, name: trimmed, hex: null };
+}
+
+// The colour words inside a variant's value ("Black & Gold" → ['black', 'gold']),
+// used to match canonical selections without string-equality misses.
+function colorWords(value?: string): string[] {
+  return (value || '').trim().toLowerCase().split(COLOR_SPLIT_RE).filter(Boolean);
+}
+
+// ─────────────────────────── Smart search ───────────────────────────
+// Field weights for relevance scoring (ui-ux-pro-max §7: search, not just "contains").
+const SEARCH_WEIGHT = { name: 50, phrase: 22, category: 14, color: 12, tags: 9, size: 4, description: 1 };
+
+// Lightweight catalogue synonyms so intent matches even when wording differs.
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  trainers: ['sneaker', 'shoe'], sneakers: ['sneaker', 'shoe'],
+  handbag: ['bag', 'purse', 'tote'], handbags: ['bag', 'purse', 'tote'],
+  bag: ['handbag', 'purse', 'tote', 'clutch'], totes: ['tote', 'bag'],
+  purse: ['bag', 'handbag'], clutch: ['bag', 'handbag', 'purse'],
+  dress: ['gown', 'costume', 'outfit'], dresses: ['gown', 'outfit'],
+  gown: ['dress', 'outfit'], gowns: ['dress', 'outfit'],
+  costume: ['dress', 'outfit'], outfit: ['dress', 'costume'],
+  shirt: ['tee', 't-shirt', 'blouse', 'top'], shirts: ['tee', 'top'],
+  tshirt: ['shirt', 'tee', 'top'], teeshirt: ['shirt', 'tee', 'top'],
+  tee: ['shirt', 'top'], tees: ['shirt', 'top'],
+  blouse: ['shirt', 'top'], top: ['shirt', 'blouse', 'tee'],
+  trousers: ['jeans', 'pants', 'chino'], pants: ['trousers', 'jeans'],
+  jeans: ['denim', 'trousers'], denim: ['jeans'],
+  jacket: ['coat', 'blazer'], coat: ['jacket', 'blazer'],
+  fragrance: ['perfume', 'cologne', 'scent'], perfumes: ['perfume', 'fragrance'],
+  scent: ['perfume'], cologne: ['perfume'],
+  wig: ['human hair', 'weave'], wigs: ['human hair', 'weave'],
+  weave: ['human hair', 'wig'],
+  hoody: ['hoodie'], hoodies: ['hoodie'],
+  earphone: ['headphone', 'earbud'], earphones: ['headphone', 'earbud'],
+  earpod: ['earbud', 'headphone'],
+  shades: ['sunglasses'], sunglasses: ['shades'],
+  jewellery: ['jewelry', 'necklace', 'pendant'], jewelry: ['necklace', 'pendant'],
+  pendant: ['necklace'], smartwatch: ['watch'], watches: ['watch', 'smartwatch'],
+  sneaker: ['trainer', 'shoe'],
+};
+
+// Crude singularization ("dresses" → "dress", "boxes" → "box") so searches
+// match either form.
+function singularize(word: string): string {
+  if (word.length <= 3) return word;
+  if (word.endsWith('ies') && word.length > 4) return word.slice(0, -3) + 'y';
+  if (word.endsWith('ves') && word.length > 4) return word.slice(0, -3) + 'f';
+  if (word.endsWith('oes') && word.length > 4) return word.slice(0, -2);
+  if (word.endsWith('sses')) return word.slice(0, -2);
+  if (word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us')) return word.slice(0, -1);
+  return word;
+}
+
+function wordForms(word: string): string[] {
+  const set = new Set<string>([word, singularize(word)]);
+  return [...set];
+}
+
+// Expand one query token into forgiving variants: synonyms + singular forms.
+function expandToken(token: string): string[] {
+  const out = new Set<string>();
+  const add = (w: string) => wordForms(w).forEach(f => out.add(f));
+  add(token);
+  (SEARCH_SYNONYMS[token] || []).forEach(add);
+  const sing = singularize(token);
+  if (sing !== token) (SEARCH_SYNONYMS[sing] || []).forEach(add);
+  return [...out];
+}
+
+// Classic Levenshtein distance for typo tolerance. Returns 9 (an impossible
+// edit count) for words that differ too much in length so callers never treat
+// a length-mismatch as a close typo.
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 9;
+  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+const SEARCH_TOKENIZE_RE = /[\s,/()\-]+/;
+function tokenize(text: string): string[] {
+  return text.toLowerCase().split(SEARCH_TOKENIZE_RE).map(t => t.trim()).filter(Boolean);
+}
+
+// Quality (0..1) of the best match for a query token against a word list.
+// Exact word = 1 · prefix = 0.85 · close typo (edit ≤ 1-2) = 0.8.
+function bestTokenMatch(tokens: string[], queryForms: string[]): number {
+  for (const doc of tokens) {
+    for (const q of queryForms) {
+      if (doc === q) return 1;
+    }
+  }
+  let best = 0;
+  for (const doc of tokens) {
+    for (const q of queryForms) {
+      if (q.length >= 3 && doc.startsWith(q)) best = Math.max(best, 0.85);
+      else if (doc[0] === q[0]) {
+        // Fuzzy tier scoped by word length + first-letter guard: only ever
+        // match close typos, never different words ("blue" ≠ "blouse").
+        const threshold =
+          q.length >= 9 ? 3 :
+          q.length >= 7 ? 2 :
+          q.length >= 5 ? 1 : 0;
+        if (threshold > 0 && levenshtein(doc, q) <= threshold) best = Math.max(best, 0.8);
+      }
+    }
+  }
+  return best;
+}
 
 const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '2XL', '3XL', 'One Size'];
 
@@ -69,19 +216,26 @@ function getMinPrice(product: Product): number {
 
 function FilterChip({ label, onRemove, color }: { label: string; onRemove: () => void; color?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 bg-gray-900 text-white text-xs rounded-full font-medium">
+    <motion.span
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={MICRO}
+      className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 bg-[#2D2D2D] text-white text-xs rounded-full font-medium"
+    >
       {color && (
         <span className="w-2.5 h-2.5 rounded-full border border-white/30 shrink-0" style={{ backgroundColor: color }} />
       )}
       {label}
       <button
         onClick={onRemove}
-        className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors"
+        className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         aria-label={`Remove ${label} filter`}
       >
         <X className="h-3 w-3" />
       </button>
-    </span>
+    </motion.span>
   );
 }
 
@@ -96,9 +250,9 @@ function DualRangeSlider({ min, max, value, onChange, step = 1000 }: {
 
   return (
     <div className="relative flex items-center h-6 my-2">
-      <div className="absolute w-full h-1.5 bg-gray-200 rounded-full" />
+      <div className="absolute w-full h-1.5 bg-[#E5E5E5] rounded-full" />
       <div
-        className="absolute h-1.5 bg-gray-900 rounded-full pointer-events-none"
+        className="absolute h-1.5 bg-gradient-to-r from-[#C9A84C] to-[#E8D48A] rounded-full pointer-events-none"
         style={{ left: `${loP}%`, right: `${100 - hiP}%` }}
       />
       <input
@@ -114,11 +268,11 @@ function DualRangeSlider({ min, max, value, onChange, step = 1000 }: {
         style={{ zIndex: 4 }}
       />
       <div
-        className="absolute -translate-x-1/2 top-1/2 -translate-y-1/2 w-5 h-5 bg-white border-2 border-gray-900 rounded-full shadow-md pointer-events-none"
+        className="absolute -translate-x-1/2 top-1/2 -translate-y-1/2 w-5 h-5 bg-white border-2 border-[#C9A84C] rounded-full shadow-md pointer-events-none"
         style={{ left: `${loP}%`, zIndex: 6 }}
       />
       <div
-        className="absolute -translate-x-1/2 top-1/2 -translate-y-1/2 w-5 h-5 bg-white border-2 border-gray-900 rounded-full shadow-md pointer-events-none"
+        className="absolute -translate-x-1/2 top-1/2 -translate-y-1/2 w-5 h-5 bg-white border-2 border-[#C9A84C] rounded-full shadow-md pointer-events-none"
         style={{ left: `${hiP}%`, zIndex: 6 }}
       />
     </div>
@@ -132,29 +286,34 @@ function FilterSection({
   children: React.ReactNode; count?: number;
 }) {
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className="border border-border rounded-xl overflow-hidden bg-surface">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between p-4 hover:bg-surface-alt transition-colors"
         aria-expanded={expanded}
       >
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-gray-900">{title}</h3>
+          <h3 className="font-semibold text-[#2D2D2D] tracking-tight">{title}</h3>
           {count !== undefined && count > 0 && (
-            <span className="text-xs bg-gray-900 text-white rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-none">
+            <motion.span
+              initial={{ scale: 0.6 }}
+              animate={{ scale: 1 }}
+              transition={SPRING_EDGE}
+              className="text-xs bg-[#C9A84C] text-[#1A1A1A] rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-none font-bold"
+            >
               {count}
-            </span>
+            </motion.span>
           )}
         </div>
-        <ChevronDown className={cn("h-4 w-4 text-gray-500 transition-transform duration-200", expanded && "rotate-180")} />
+        <ChevronDown className={cn("h-4 w-4 text-gray-500 transition-transform duration-300", expanded && "rotate-180")} />
       </button>
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: 'auto' }}
-            exit={{ height: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            initial={{ clipPath: 'inset(0 0 100% 0)', opacity: 0 }}
+            animate={{ clipPath: 'inset(0 0 0% 0)', opacity: 1 }}
+            exit={{ clipPath: 'inset(0 0 100% 0)', opacity: 0 }}
+            transition={MICRO}
             className="overflow-hidden"
           >
             {children}
@@ -185,46 +344,62 @@ function Pagination({ currentPage, totalPages, onPageChange }: {
   const pages = getPageRange(currentPage, totalPages);
 
   return (
-    <nav className="flex items-center justify-center gap-1.5 mt-10" aria-label="Pagination">
-      <button
+    <nav className="flex items-center justify-center gap-1.5 mt-4" aria-label="Pagination">
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
-        className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-gray-600 hover:bg-surface-alt hover:text-[#2D2D2D] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-surface disabled:hover:text-gray-600 transition-colors shadow-sm"
         aria-label="Previous page"
       >
         <ChevronLeft className="h-4 w-4" />
         <span className="hidden sm:inline">Prev</span>
-      </button>
+      </motion.button>
 
-      {pages.map((p, i) =>
-        p === '...' ? (
-          <span key={`ellipsis-${i}`} className="px-1.5 text-gray-400 select-none">…</span>
-        ) : (
-          <button
-            key={p}
-            onClick={() => onPageChange(p)}
-            aria-current={p === currentPage ? 'page' : undefined}
-            className={cn(
-              "min-w-[2.5rem] px-3 py-2 text-sm rounded-lg border transition-colors",
-              p === currentPage
-                ? "bg-gray-900 text-white border-gray-900 font-medium"
-                : "border-gray-200 text-gray-600 hover:bg-gray-50"
-            )}
-          >
-            {p}
-          </button>
-        )
-      )}
+      <div className="flex items-center gap-1.5">
+        {pages.map((p, i) =>
+          p === '...' ? (
+            <span key={`ellipsis-${i}`} className="px-1.5 text-gray-400 select-none">…</span>
+          ) : (
+            <motion.button
+              key={p}
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.94 }}
+              onClick={() => onPageChange(p)}
+              aria-current={p === currentPage ? 'page' : undefined}
+              className={cn(
+                "min-w-[2.5rem] px-3 py-2 text-sm rounded-lg border transition-colors relative",
+                p === currentPage
+                  ? "border-transparent text-[#1A1A1A] font-medium shadow-md shadow-black/10"
+                  : "border-border bg-surface text-gray-600 hover:bg-surface-alt hover:text-[#2D2D2D]"
+              )}
+            >
+              {p === currentPage && (
+                <motion.span
+                  layoutId="active-page"
+                  transition={SPRING_EDGE}
+                  className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#C9A84C] to-[#E8D48A]"
+                  aria-hidden
+                />
+              )}
+              <span className="relative z-10">{p}</span>
+            </motion.button>
+          )
+        )}
+      </div>
 
-      <button
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
-        className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-gray-600 hover:bg-surface-alt hover:text-[#2D2D2D] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-surface disabled:hover:text-gray-600 transition-colors shadow-sm"
         aria-label="Next page"
       >
         <span className="hidden sm:inline">Next</span>
         <ChevronRight className="h-4 w-4" />
-      </button>
+      </motion.button>
     </nav>
   );
 }
@@ -294,21 +469,18 @@ function ProductsPage() {
   }, [products]);
 
   const colorOptions = useMemo(() => {
-    const seen = new Map<string, string>();
+    // Group messy vendor colour strings into canonical families.
+    const groups = new Map<string, { name: string; hex: string | null }>();
     for (const p of products) {
       for (const v of p.variants || []) {
-        if (v.color) {
-          const key = v.color.trim().toLowerCase();
-          if (!seen.has(key)) seen.set(key, v.color.trim());
-        }
+        const c = normalizeColor(v.color || '');
+        if (!c) continue;
+        const existing = groups.get(c.value);
+        if (!existing || (!existing.hex && c.hex)) groups.set(c.value, c);
       }
     }
-    return Array.from(seen.entries())
-      .map(([key, displayName]) => ({
-        value: key,
-        name: displayName,
-        hex: COLOR_HEX_MAP[key] ?? null,
-      }))
+    return Array.from(groups.entries())
+      .map(([value, o]) => ({ value, name: o.name, hex: o.hex }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [products]);
 
@@ -478,48 +650,74 @@ function ProductsPage() {
       return minPrice === 0 || (minPrice >= priceRange[0] && minPrice <= priceRange[1]);
     });
 
-    if (selectedColors.length > 0) {
-      result = result.filter(p =>
-        p.variants?.some(v => v.color && selectedColors.includes(v.color.toLowerCase()))
-      );
-    }
+    // Colour + size are matched PER-VARIANT: a product only qualifies when one of
+    // its variants carries every selected filter at the same time. Filtering each
+    // field independently lets products through where "Black" lives in one variant
+    // and "M" in another — i.e. combinations that don't actually exist.
+    const colorSel = selectedColors.map(c => c.trim().toLowerCase()).filter(Boolean);
+    const sizeSel = selectedSizes.map(s => s.trim().toLowerCase()).filter(Boolean);
 
-    if (selectedSizes.length > 0) {
-      result = result.filter(p =>
-        p.variants?.some(v => v.size && selectedSizes.includes(v.size))
-      );
+    if (colorSel.length > 0 || sizeSel.length > 0) {
+      result = result.filter(p => {
+        const variants = p.variants || [];
+        return variants.some(v => {
+          if (colorSel.length > 0) {
+            const words = colorWords(v.color);
+            if (words.length === 0 || !words.some(w => colorSel.includes(w))) return false;
+          }
+          if (sizeSel.length > 0) {
+            const s = (v.size || '').trim().toLowerCase();
+            if (!s || !sizeSel.includes(s)) return false;
+          }
+          return true;
+        });
+      });
     }
 
     if (selectedRating !== null) {
       result = result.filter(p => (p.ratings?.avg || 0) >= selectedRating);
     }
 
-    // Tokenized search with relevance scoring across name, category, subcategory, tags, description
+    // Smart search: tokenized relevance across name, category, tags, description,
+    // AND colour + size (from variants). Typo-tolerant, synonym-aware, and it
+    // understands plural/singular forms. e.g. "dres", "blak handbag", "gold dress".
     let searchScores: Map<string, number> | null = null;
     if (debouncedSearch.trim()) {
-      const tokens = debouncedSearch.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      const queryForms = tokenize(debouncedSearch).map(expandToken);
+      const phrase = debouncedSearch.toLowerCase().trim();
+
       const scored = result.map(p => {
-        const name = p.name.toLowerCase();
-        const desc = (p.description || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
         const cat = (p.category || '').toLowerCase();
         const subcat = (p.subcategory || '').toLowerCase();
-        const tags = (p.tags || []).join(' ').toLowerCase();
+        const tags = (p.tags || [])
+          .map(t => typeof t === 'string' ? t : String((t as { value?: string })?.value ?? ''))
+          .join(' ').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const colorText = (p.variants || [])
+          .flatMap(v => [normalizeColor(v.color || '')?.value ?? '', ...colorWords(v.color)])
+          .filter(Boolean).join(' ');
+        const sizeText = (p.variants || []).map(v => (v.size || '')).join(' ').toLowerCase();
+
+        const nameTokens = tokenize(name);
+        const catTokens = tokenize(`${cat} ${subcat}`);
+        const tagsTokens = tokenize(tags);
+        const colorTokens = colorWords(colorText);
+        const sizeTokens = tokenize(sizeText);
+        const descTokens = tokenize(desc);
 
         let score = 0;
-        for (const token of tokens) {
-          // Name: highest weight
-          if (name === token) score += 40;
-          else if (name.startsWith(token + ' ')) score += 25;
-          else if (name.includes(token)) score += 15;
-          // Category / subcategory
-          if (cat === token || subcat === token) score += 10;
-          else if (cat.includes(token) || subcat.includes(token)) score += 6;
-          // Tags
-          if (tags.split(' ').includes(token)) score += 8;
-          else if (tags.includes(token)) score += 4;
-          // Description: lowest weight
-          if (desc.includes(token)) score += 1;
+        for (const forms of queryForms) {
+          score += bestTokenMatch(nameTokens, forms) * SEARCH_WEIGHT.name;
+          score += bestTokenMatch(catTokens, forms) * SEARCH_WEIGHT.category;
+          score += bestTokenMatch(tagsTokens, forms) * SEARCH_WEIGHT.tags;
+          score += bestTokenMatch(colorTokens, forms) * SEARCH_WEIGHT.color;
+          score += bestTokenMatch(sizeTokens, forms) * SEARCH_WEIGHT.size;
+          score += bestTokenMatch(descTokens, forms) * SEARCH_WEIGHT.description;
         }
+        // Phrase bonus: the whole query appears in the product name.
+        if (phrase.length >= 4 && name.includes(phrase)) score += SEARCH_WEIGHT.phrase;
+
         return { p, score };
       }).filter(({ score }) => score > 0);
 
@@ -639,16 +837,20 @@ function ProductsPage() {
               const isActive = activeCategory.toLowerCase() === category.handle.toLowerCase();
               return (
                 <li key={category.handle}>
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => { handleCategoryClick(category.handle); setShowFilterDrawer(false); }}
                     className={cn(
-                      "w-full text-left flex items-center justify-between py-2 px-3 rounded-lg transition-all",
-                      isActive ? 'bg-gray-900 text-white font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      "w-full text-left flex items-center justify-between py-2 px-3 rounded-lg transition-colors",
+                      isActive
+                        ? 'bg-[#C9A84C]/10 text-[#A16207] font-semibold'
+                        : 'text-gray-600 hover:bg-[#F5F5F0] hover:text-[#2D2D2D]'
                     )}
+                    aria-pressed={isActive}
                   >
                     <span className="text-sm">{category.name}</span>
-                    <span className={cn("text-xs", isActive ? 'text-gray-300' : 'text-gray-400')}>{count}</span>
-                  </button>
+                    <span className={cn("text-xs tabular-nums", isActive ? 'text-[#C9A84C] font-bold' : 'text-gray-400')}>{count}</span>
+                  </motion.button>
                 </li>
               );
             })}
@@ -677,7 +879,7 @@ function ProductsPage() {
                 placeholder={`${priceStats.min.toLocaleString()}`}
                 value={priceRange[0] === priceStats.min ? '' : priceRange[0]}
                 onChange={e => setPriceRange([parseInt(e.target.value) || priceStats.min, priceRange[1]])}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
             <div className="flex-1">
@@ -687,7 +889,7 @@ function ProductsPage() {
                 placeholder={`${priceStats.max.toLocaleString()}`}
                 value={priceRange[1] === priceStats.max ? '' : priceRange[1]}
                 onChange={e => setPriceRange([priceRange[0], parseInt(e.target.value) || priceStats.max])}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
           </div>
@@ -718,8 +920,8 @@ function ProductsPage() {
                     className={cn(
                       "relative w-9 h-9 rounded-full border-2 transition-all duration-150 hover:scale-110",
                       isSelected
-                        ? "border-gray-900 ring-2 ring-gray-900 ring-offset-2 scale-105"
-                        : "border-gray-200 hover:border-gray-400"
+                        ? "border-[#2D2D2D] ring-2 ring-[#2D2D2D] ring-offset-2 scale-105"
+                        : "border-border hover:border-[#A16207]"
                     )}
                     style={{ backgroundColor: color.hex ?? '#e5e7eb' }}
                     title={color.name}
@@ -756,10 +958,10 @@ function ProductsPage() {
                       isSelected ? prev.filter(s => s !== size) : [...prev, size]
                     )}
                     className={cn(
-                      "px-3 py-1.5 text-sm rounded-lg border transition-all",
+                      "px-3 py-1.5 text-sm rounded-lg border transition-all duration-150",
                       isSelected
-                        ? "bg-gray-900 text-white border-gray-900 shadow-sm"
-                        : "bg-white text-gray-600 border-gray-200 hover:border-gray-900 hover:bg-gray-50"
+                        ? "bg-[#2D2D2D] text-white border-[#2D2D2D] shadow-sm"
+                        : "bg-surface text-gray-600 border-border hover:border-[#2D2D2D] hover:bg-[#F5F5F0]"
                     )}
                   >
                     {size}
@@ -786,12 +988,12 @@ function ProductsPage() {
                 onClick={() => setSelectedRating(isSelected ? null : option.value)}
                 className={cn(
                   "w-full flex items-center gap-3 p-2 rounded-lg transition-all text-left",
-                  isSelected ? "bg-gray-100" : "hover:bg-gray-50"
+                  isSelected ? "bg-[#C9A84C]/10" : "hover:bg-[#F5F5F0]"
                 )}
               >
                 <div className="flex">
                   {[...Array(5)].map((_, i) => (
-                    <Star key={i} className={cn("h-4 w-4", i < option.stars ? "fill-yellow-400 text-yellow-400" : "text-gray-300")} />
+                    <Star key={i} className={cn("h-4 w-4", i < option.stars ? "fill-[#C9A84C] text-[#C9A84C]" : "text-[#E5E5E5]")} />
                   ))}
                 </div>
                 <span className="text-sm text-gray-600">{option.label}</span>
@@ -804,19 +1006,55 @@ function ProductsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+
+          {/* Page hero */}
+          <motion.header
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={ENTER}
+            className="mb-8 lg:mb-10"
+          >
+            <p className="text-[11px] sm:text-xs font-semibold tracking-[0.2em] uppercase text-[#C9A84C]">
+              The Collection
+            </p>
+            <h1 className="mt-2 text-3xl sm:text-4xl lg:text-5xl font-semibold text-[#2D2D2D] tracking-tight leading-tight">
+              Shop Kentaz
+            </h1>
+            <span className="mt-3 block h-[3px] w-16 rounded-full bg-gradient-to-r from-[#C9A84C] to-[#E8D48A]" aria-hidden />
+            <p className="mt-3 text-sm sm:text-base text-muted max-w-xl leading-relaxed">
+              Luxury fashion, beauty &amp; lifestyle — every piece curated for the modern Nigerian.
+            </p>
+
+            <motion.a
+              href="/flash-sale"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...ENTER, delay: 0.15 }}
+              className="group mt-5 inline-flex items-center gap-2.5 bg-gradient-to-r from-[#C9A84C] via-[#A68A3D] to-[#C9A84C] text-white text-xs sm:text-sm font-bold pl-4 pr-3 py-3 rounded-full shadow-lg shadow-[#C9A84C]/30 hover:shadow-xl hover:shadow-[#C9A84C]/40 hover:brightness-105 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2"
+            >
+              <BadgePercent className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span>Flash Sale live — up to 50% off handpicked pieces</span>
+              <ChevronRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+            </motion.a>
+          </motion.header>
+
+          <div className="flex flex-col lg:flex-row gap-8">
 
           {/* Desktop Filter Sidebar */}
           <div className="hidden lg:block w-64 flex-shrink-0">
             <div className="sticky top-8">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+                <h2 className="text-lg font-semibold text-[#2D2D2D] tracking-tight flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-[#C9A84C]" />
+                  Filters
+                </h2>
                 {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
-                    className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+                    className="text-sm text-muted hover:text-[#A16207] transition-colors font-medium"
                   >
                     Clear all
                   </button>
@@ -833,30 +1071,41 @@ function ProductsPage() {
 
             {/* Search Bar */}
             <div className="mb-4">
-              <div className="relative">
-                <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+              <div className="relative group">
+                <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400 transition-colors group-focus-within:text-[#C9A84C]" />
                 <input
                   type="text"
-                  placeholder="Search products..."
+                  placeholder="Search by colour, brand, name…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 sm:pl-12 pr-10 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  className="w-full pl-10 sm:pl-12 pr-10 py-2.5 sm:py-3 text-sm sm:text-base border border-border rounded-xl bg-surface focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent focus:shadow-[0_0_0_4px_rgba(201,168,76,0.15)] transition-[border-color,box-shadow] shadow-sm"
                 />
                 {searchQuery && (
-                  <button
+                  <motion.button
+                    initial={{ scale: 0, rotate: -90 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={SPRING_EDGE}
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-surface-alt rounded-full transition-colors"
                     aria-label="Clear search"
                   >
                     <X className="h-4 w-4 text-gray-400" />
-                  </button>
+                  </motion.button>
                 )}
               </div>
             </div>
 
             {/* Active Filter Chips */}
-            {hasActiveFilters && (
-              <div className="flex flex-wrap items-center gap-2 mb-4">
+            <AnimatePresence>
+              {hasActiveFilters && (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={MICRO}
+                  className="flex flex-wrap items-center gap-2 mb-4"
+                >
                 {activeCategory !== 'all' && (
                   <FilterChip
                     label={activeCategory}
@@ -869,12 +1118,12 @@ function ProductsPage() {
                     onRemove={() => setPriceRange([priceStats.min, priceStats.max])}
                   />
                 )}
-                {selectedColors.map(c => {
+{selectedColors.map(c => {
                   const opt = colorOptions.find(o => o.value === c);
                   return (
                     <FilterChip
                       key={c}
-                      label={opt?.name ?? c}
+                      label={opt?.name ?? c.charAt(0).toUpperCase() + c.slice(1)}
                       color={opt?.hex ?? undefined}
                       onRemove={() => setSelectedColors(prev => prev.filter(x => x !== c))}
                     />
@@ -899,69 +1148,99 @@ function ProductsPage() {
                     onRemove={() => setSearchQuery('')}
                   />
                 )}
-                <button
+                <motion.button
+                  layout
                   onClick={clearFilters}
-                  className="text-xs text-gray-500 hover:text-red-600 transition-colors px-1 font-medium"
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  className="text-xs text-muted hover:text-[#A16207] transition-colors px-1 font-semibold"
                 >
                   Clear all
-                </button>
-              </div>
-            )}
+                </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Filter & Sort Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
               <div className="flex items-center gap-2">
-                <button
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => setShowFilterDrawer(true)}
-                  className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors lg:hidden whitespace-nowrap"
+                  className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg bg-surface hover:bg-surface-alt transition-colors lg:hidden whitespace-nowrap shadow-sm"
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <span className="text-sm font-medium">Filters</span>
-                  {activeFilterCount > 0 && (
-                    <span className="bg-gray-900 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
+                  <SlidersHorizontal className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-semibold">Filters</span>
+                  <AnimatePresence>
+                    {activeFilterCount > 0 && (
+                      <motion.span
+                        key="count"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        transition={SPRING_EDGE}
+                        className="bg-[#C9A84C] text-[#1A1A1A] text-xs px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none font-bold"
+                      >
+                        {activeFilterCount}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
               </div>
 
-              <div className="flex items-center justify-between sm:gap-4 gap-2">
-                <span className="text-sm text-gray-500 whitespace-nowrap">
-                  {filteredAndSortedProducts.length} products
-                </span>
+              <div className="flex items-center justify-between sm:gap-5 gap-2">
+                <motion.span
+                  key={`${filteredAndSortedProducts.length}-${currentPage}`}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={MICRO}
+                  className="text-sm text-muted whitespace-nowrap tabular-nums"
+                >
+                  {filteredAndSortedProducts.length} <span className="text-[#9CA3AF]">products</span>
+                </motion.span>
 
                 <div className="relative" ref={sortDropdownRef}>
                   <button
                     onClick={() => setShowSortDropdown(!showSortDropdown)}
-                    className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                    className={cn(
+                      "flex items-center gap-2 text-sm font-semibold transition-colors rounded-lg px-1 py-1",
+                      showSortDropdown ? "text-[#2D2D2D]" : "text-gray-600 hover:text-[#2D2D2D]"
+                    )}
+                    aria-expanded={showSortDropdown}
                   >
-                    <ArrowUpDown className="h-4 w-4" />
-                    <span>Sort:</span>
-                    <span className="text-gray-900">
+                    <ArrowUpDown className="h-4 w-4 text-[#C9A84C]" />
+                    <span className="hidden sm:inline">Sort:</span>
+                    <span className="text-[#2D2D2D]">
                       {debouncedSearch.trim() && sortBy === 'featured'
                         ? 'Relevance'
                         : sortOptions.find(o => o.value === sortBy)?.label}
                     </span>
-                    <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform duration-200", showSortDropdown && "rotate-180")} />
+                    <ChevronDown className={cn("h-4 w-4 text-[#C9A84C] transition-transform duration-200", showSortDropdown && "rotate-180")} />
                   </button>
                   <AnimatePresence>
                     {showSortDropdown && (
                       <motion.div
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50"
+                        initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        transition={MICRO}
+                        className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl shadow-black/5 border border-border py-2 z-50 overflow-hidden"
                       >
                         {sortOptions.map((option) => (
                           <button
                             key={option.value}
                             onClick={() => { setSortBy(option.value); setShowSortDropdown(false); }}
                             className={cn(
-                              "w-full text-left px-4 py-2 text-sm transition-colors",
-                              sortBy === option.value ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'
+                              "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2",
+                              sortBy === option.value
+                                ? 'bg-[#C9A84C]/10 text-[#A16207] font-semibold'
+                                : 'text-gray-600 hover:bg-[#F5F5F0] hover:text-[#2D2D2D]'
                             )}
                           >
                             {option.label}
+                            {sortBy === option.value && (
+                              <Check className="h-4 w-4 text-[#C9A84C]" />
+                            )}
                           </button>
                         ))}
                       </motion.div>
@@ -969,18 +1248,30 @@ function ProductsPage() {
                   </AnimatePresence>
                 </div>
 
-                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                <div className="flex items-center bg-[#F5F5F0] rounded-lg p-1 border border-border">
                   <button
                     onClick={() => setViewMode('grid')}
-                    className={cn("p-2 rounded-md transition-all", viewMode === 'grid' ? 'bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}
+                    className={cn(
+                      "p-2 rounded-md transition-all duration-200",
+                      viewMode === 'grid'
+                        ? 'bg-[#2D2D2D] text-white shadow-sm'
+                        : 'text-gray-500 hover:text-[#2D2D2D]'
+                    )}
                     aria-label="Grid view"
+                    aria-pressed={viewMode === 'grid'}
                   >
                     <Grid3X3 className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setViewMode('list')}
-                    className={cn("p-2 rounded-md transition-all", viewMode === 'list' ? 'bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}
+                    className={cn(
+                      "p-2 rounded-md transition-all duration-200",
+                      viewMode === 'list'
+                        ? 'bg-[#2D2D2D] text-white shadow-sm'
+                        : 'text-gray-500 hover:text-[#2D2D2D]'
+                    )}
                     aria-label="List view"
+                    aria-pressed={viewMode === 'list'}
                   >
                     <List className="h-4 w-4" />
                   </button>
@@ -988,37 +1279,54 @@ function ProductsPage() {
               </div>
             </div>
 
-            {/* Products */}
-            <ProductContent
-              products={paginatedProducts}
-              loading={loading}
-              error={error}
-              viewMode={viewMode}
-              hasActiveFilters={false}
-              searchQuery={searchQuery}
-              activeCategory={activeCategory}
-              priceRange={priceRange}
-              selectedColors={selectedColors}
-              selectedSizes={selectedSizes}
-              selectedRating={selectedRating}
-              compareList={compareList}
-              onCompareToggle={handleCompareToggle}
-              onQuickView={(p: any) => { setQuickViewProduct(p); setIsQuickViewOpen(true); }}
-              onClearFilters={clearFilters}
-              setSearchQuery={setSearchQuery}
-              setActiveCategory={handleCategoryClick}
-              setPriceRange={setPriceRange}
-              setSelectedColors={setSelectedColors}
-              setSelectedSizes={setSelectedSizes}
-              setSelectedRating={setSelectedRating}
-            />
+            {/* Products — crossfades + slides in whenever filters/sort/page change */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${activeCategory}|${priceRange.join('-')}|${selectedColors.join(',')}|${selectedSizes.join(',')}|${selectedRating ?? 'any'}|${sortBy}|${debouncedSearch.trim()}|${currentPage}`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={MICRO}
+              >
+                <ProductContent
+                  products={paginatedProducts}
+                  loading={loading}
+                  error={error}
+                  viewMode={viewMode}
+                  hasActiveFilters={false}
+                  searchQuery={searchQuery}
+                  activeCategory={activeCategory}
+                  priceRange={priceRange}
+                  selectedColors={selectedColors}
+                  selectedSizes={selectedSizes}
+                  selectedRating={selectedRating}
+                  compareList={compareList}
+                  onCompareToggle={handleCompareToggle}
+                  onQuickView={(p: any) => { setQuickViewProduct(p); setIsQuickViewOpen(true); }}
+                  onClearFilters={clearFilters}
+                  setSearchQuery={setSearchQuery}
+                  setActiveCategory={handleCategoryClick}
+                  setPriceRange={setPriceRange}
+                  setSelectedColors={setSelectedColors}
+                  setSelectedSizes={setSelectedSizes}
+                  setSelectedRating={setSelectedRating}
+                />
+              </motion.div>
+            </AnimatePresence>
 
             {/* Pagination */}
             {!loading && !error && totalResults > 0 && (
               <>
-                <p className="mt-8 text-center text-sm text-gray-500">
-                  Showing {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {totalResults.toLocaleString()} products
-                </p>
+                <motion.p
+                  key={`${rangeStart}-${rangeEnd}-${totalResults}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={MICRO}
+                  className="mt-8 text-center text-sm text-muted tabular-nums"
+                >
+                  Showing <span className="text-[#2D2D2D] font-semibold">{rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()}</span> of{' '}
+                  <span className="text-[#2D2D2D] font-semibold">{totalResults.toLocaleString()}</span> products
+                </motion.p>
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
@@ -1037,38 +1345,45 @@ function ProductsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/50 lg:hidden"
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden"
             onClick={() => setShowFilterDrawer(false)}
           >
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-white overflow-y-auto"
+              transition={SPRING_EDGE}
+              className="absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-background overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-white z-10 border-b border-gray-200 flex items-center justify-between p-4">
+              <div className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 border-b border-border flex items-center justify-between p-4">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-gray-900 text-lg">Filters</h2>
+                  <h2 className="font-semibold text-[#2D2D2D] text-lg tracking-tight">Filters</h2>
                   {activeFilterCount > 0 && (
-                    <span className="text-xs bg-gray-900 text-white rounded-full px-1.5 py-0.5 leading-none">
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={SPRING_EDGE}
+                      className="text-xs bg-[#C9A84C] text-[#1A1A1A] rounded-full px-1.5 py-0.5 leading-none font-bold"
+                    >
                       {activeFilterCount}
-                    </span>
+                    </motion.span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   {hasActiveFilters && (
                     <button
                       onClick={clearFilters}
-                      className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+                      className="text-sm text-muted hover:text-[#A16207] transition-colors font-medium"
                     >
                       Clear all
                     </button>
                   )}
                   <button
                     onClick={() => setShowFilterDrawer(false)}
-                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                    className="p-2 hover:bg-surface-alt rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                    aria-label="Close filters"
                   >
                     <X className="h-5 w-5 text-gray-500" />
                   </button>
@@ -1087,13 +1402,21 @@ function ProductsPage() {
         isOpen={isQuickViewOpen}
         onClose={() => setIsQuickViewOpen(false)}
       />
-    </div>
+        </div>
+    </MotionConfig>
   );
 }
 
 export default function ProductsPageWithSuspense() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-4 w-4 rounded-full bg-gradient-to-r from-[#C9A84C] to-[#E8D48A] mx-auto animate-spin" />
+          <p className="mt-3 text-sm text-muted">Loading the collection…</p>
+        </div>
+      </div>
+    }>
       <ProductsPage />
     </Suspense>
   );

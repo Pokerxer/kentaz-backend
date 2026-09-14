@@ -110,29 +110,33 @@ exports.getTrendingProducts = async (req, res) => {
     const Sale = require('../models/Sale');
     const limit = parseInt(req.query.limit) || 8;
 
+    // Require a nonblank product image before ranking/limiting the results.
+    const hasImage = { $or: [
+      { 'images.url': { $regex: /\S/ } },
+      { thumbnail: { $regex: /\S/ } },
+    ] };
+
     // Aggregate top-sold products from completed sales
     const trending = await Sale.aggregate([
       { $match: { type: 'sale', status: 'completed' } },
       { $unwind: '$items' },
       { $group: { _id: '$items.product', totalSold: { $sum: '$items.quantity' } } },
       { $sort: { totalSold: -1 } },
-      { $limit: limit },
       { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
       { $unwind: '$product' },
-      { $replaceRoot: { newRoot: { $mergeObjects: ['$product', { totalSold: '$totalSold' }] } } }
+      { $replaceRoot: { newRoot: { $mergeObjects: ['$product', { totalSold: '$totalSold' }] } } },
+      { $match: hasImage },
+      { $limit: limit }
     ]);
 
     if (trending.length >= 4) {
       return res.json({ products: trending, total: trending.length, source: 'sales' });
     }
 
-    // Fallback: prefer products with images, then featured, then any
-    let products = await Product.find({ 'images.0': { $exists: true }, featured: true }).sort({ createdAt: -1 }).limit(limit).lean();
+    // Fallback stays image-only, even when fewer than four products qualify.
+    let products = await Product.find({ ...hasImage, featured: true }).sort({ createdAt: -1 }).limit(limit).lean();
     if (products.length < 4) {
-      products = await Product.find({ 'images.0': { $exists: true } }).sort({ createdAt: -1 }).limit(limit).lean();
-    }
-    if (products.length < 4) {
-      products = await Product.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+      products = await Product.find(hasImage).sort({ createdAt: -1 }).limit(limit).lean();
     }
     res.json({ products: products.map(p => ({ ...p, totalSold: 0 })), total: products.length, source: 'fallback' });
   } catch (err) {

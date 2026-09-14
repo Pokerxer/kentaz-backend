@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
 const Product = require('../models/Product');
+const { usedElsewhere } = require('../utils/variantSku');
 
 const ATLAS_URI =
   'mongodb+srv://jrwaldehzx:NWXdpyCMP7yB7a4N@cluster0.ukrr40p.mongodb.net/kentaz?retryWrites=true&w=majority';
@@ -124,6 +125,45 @@ async function run() {
   }
 
   console.log(`Inserting ${products.length} products (${skipped} skipped)...`);
+
+  // insertMany bypasses the pre-save uniqueness check, so verify SKUs before we
+  // write: a barcode can only name one variant shop-wide. Without this guard a
+  // duplicate would abort the batch halfway through via the unique index.
+  const bySku = new Map();
+  for (const p of products) {
+    for (const v of p.variants || []) {
+      const sku = (v.sku || '').trim();
+      if (!sku) continue;
+      if (!bySku.has(sku)) bySku.set(sku, []);
+      bySku.get(sku).push(p.name);
+    }
+  }
+  const allSkus = [...bySku.keys()];
+  const intraBatch = [...bySku.entries()].filter(([, names]) => names.length > 1);
+
+  const clashes = await usedElsewhere(Product, allSkus, null);
+
+  if (clashes.length > 0 || intraBatch.length > 0) {
+    console.error('\nAborting import — SKU collision detected.');
+    console.error('A SKU is the barcode, so it can only name one variant in the shop.');
+    if (clashes.length > 0) {
+      console.error(`\n${clashes.length} SKU(s) already on an existing product:`);
+      for (const sku of clashes.slice(0, 20)) {
+        const holder = await Product.findOne({ 'variants.sku': sku }).select('name').lean();
+        console.error(`  ${sku} — "${holder ? holder.name : 'unknown product'}"`);
+      }
+      if (clashes.length > 20) console.error(`  ...and ${clashes.length - 20} more`);
+    }
+    if (intraBatch.length > 0) {
+      console.error(`\n${intraBatch.length} SKU(s) appear more than once in this file:`);
+      for (const [sku, names] of intraBatch.slice(0, 20)) {
+        console.error(`  ${sku} — ${names.map(n => `"${n}"`).join(', ')}`);
+      }
+      if (intraBatch.length > 20) console.error(`  ...and ${intraBatch.length - 20} more`);
+    }
+    await mongoose.disconnect();
+    process.exit(1);
+  }
 
   const result = await Product.insertMany(products, { ordered: false });
   console.log(`\nInserted: ${result.length} products`);

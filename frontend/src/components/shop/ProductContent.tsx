@@ -3,7 +3,7 @@
 import { ProductCard, ProductListView } from '@/components/shop/ProductCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { X } from 'lucide-react';
+import { X, SearchX } from 'lucide-react';
 import React from 'react';
 
 interface ProductVariant {
@@ -126,9 +126,18 @@ export function ProductContent(props: ProductContentProps) {
           <p className="text-red-500">{error}</p>
         </div>
       ) : products.length === 0 && !loading ? (
-        <div className="text-center py-16 bg-gray-50 rounded-xl">
-          <p className="text-lg font-medium text-gray-900 mb-2">No products found</p>
-          <p className="text-gray-500 mb-6">Try adjusting your filters or search terms</p>
+        <div className="text-center py-16 bg-surface-alt rounded-2xl border border-dashed border-border">
+          <div className="mx-auto w-12 h-12 rounded-full bg-[#C9A84C]/10 flex items-center justify-center mb-4">
+            <SearchX className="h-5 w-5 text-[#A16207]" />
+          </div>
+          <p className="text-lg font-semibold text-[#2D2D2D] mb-1.5">
+            {searchQuery?.trim() ? `No results for “${searchQuery.trim()}”` : 'No products found'}
+          </p>
+          <p className="text-sm text-muted mb-6 max-w-sm mx-auto">
+            {searchQuery?.trim()
+              ? 'Check the spelling, or try a colour or brand. The search understands typos and synonyms.'
+              : 'Try adjusting your filters or search terms.'}
+          </p>
           <Button variant="outline" onClick={onClearFilters}>
             Clear Filters
           </Button>

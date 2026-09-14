@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const Module = require('node:module');
 
-const { fromSequence, isGenerated, PREFIX, MAX_SEQUENCE } = require('../utils/variantSku');
+const { fromSequence, isGenerated, usedElsewhere, PREFIX, MAX_SEQUENCE } = require('../utils/variantSku');
 
 // SKUs shaped like the ones already in the catalogue: 12 numeric digits from 219.
 const EXISTING = '219218111005';
@@ -303,4 +303,45 @@ test('handles a product with no variants', async () => {
   } finally {
     restore();
   }
+});
+
+/**
+ * usedElsewhere backs the import guard in scripts/importProducts.js, which
+ * insertMany bypasses the pre-save hook. Same offline stub pattern: a fake
+ * Model whose `distinct` returns what the rest of the catalogue holds.
+ */
+function makeCatalogue(held, id = 'self', selfSkus = []) {
+  const queries = [];
+  const model = {
+    distinct: async (_field, filter) => {
+      queries.push(filter);
+      // Honour the $ne: selfId the real implementation writes: when a document
+      // is excluded, the codes that doc itself holds must not be reported.
+      return filter._id ? held.filter(sku => !selfSkus.includes(sku)) : [...held];
+    },
+  };
+  return { model, queries, selfId: id };
+}
+
+test('usedElsewhere returns only the codes the catalogue already holds', async () => {
+  const { model } = makeCatalogue([EXISTING]);
+  const kept = [EXISTING, fromSequence(1)];
+  const clashes = await usedElsewhere(model, kept, null);
+
+  assert.deepStrictEqual(clashes, [EXISTING], 'only the taken code should be reported');
+});
+
+test('usedElsewhere ignores blanks and collapses duplicates in the input', async () => {
+  const { model } = makeCatalogue([OTHER]);
+  const clashes = await usedElsewhere(model, ['', '   ', EXISTING, EXISTING, OTHER], null);
+
+  assert.deepStrictEqual(clashes, [OTHER]);
+});
+
+test('usedElsewhere excludes the document being saved via its selfId', async () => {
+  const { model, queries } = makeCatalogue([EXISTING], 'p1', [EXISTING]);
+  const clashes = await usedElsewhere(model, [EXISTING], 'p1');
+
+  assert.deepStrictEqual(clashes, []);
+  assert.deepStrictEqual(queries[0]._id, { $ne: 'p1' });
 });
