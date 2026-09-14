@@ -512,12 +512,25 @@ function ProductsPage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
     let cancelled = false;
 
+    // Serverless functions (Vercel) can drop the first request on a cold
+    // start, surfacing as TypeError "Failed to fetch". Retry with backoff.
+    async function fetchRetry(url: string, attempts = 3): Promise<Response> {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res;
+      } catch (err) {
+        if (attempts <= 1 || cancelled) throw err;
+        await new Promise(r => setTimeout(r, 1200 * (4 - attempts)));
+        return fetchRetry(url, attempts - 1);
+      }
+    }
+
     async function fetchAll() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${apiUrl}/api/store/products?limit=200&offset=0`);
-        if (!res.ok) throw new Error('Failed to fetch products');
+        const res = await fetchRetry(`${apiUrl}/api/store/products?limit=200&offset=0`);
         const data = await res.json();
 
         const first: any[] = data.products || (Array.isArray(data) ? data : []);
@@ -548,7 +561,7 @@ function ProductsPage() {
         if (totalPages > 1) {
           const rest = await Promise.all(
             Array.from({ length: totalPages - 1 }, (_, i) =>
-              fetch(`${apiUrl}/api/store/products?limit=200&offset=${(i + 1) * 200}`)
+              fetchRetry(`${apiUrl}/api/store/products?limit=200&offset=${(i + 1) * 200}`)
                 .then(r => r.ok ? r.json() : Promise.reject())
                 .then(d => (d.products || []) as any[])
                 .catch(() => [] as any[])
