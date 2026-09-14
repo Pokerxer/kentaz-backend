@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 interface HeroSlide {
@@ -21,6 +21,15 @@ export function HeroSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(true);
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(preference.matches);
+    update();
+    preference.addEventListener('change', update);
+    return () => preference.removeEventListener('change', update);
+  }, []);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -32,7 +41,7 @@ export function HeroSection() {
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) {
-              setHeroes(data);
+              setHeroes(data.filter((slide: HeroSlide) => slide.isActive !== false).sort((a: HeroSlide, b: HeroSlide) => a.order - b.order));
               setIsLoading(false);
               return;
             }
@@ -60,9 +69,9 @@ export function HeroSection() {
 
   const startAutoPlay = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (heroes.length < 2 || isHovering) return;
+    if (heroes.length < 2 || isHovering || isPaused || reducedMotion) return;
     intervalRef.current = setInterval(nextSlide, 7000);
-  }, [nextSlide, heroes.length, isHovering]);
+  }, [nextSlide, heroes.length, isHovering, isPaused, reducedMotion]);
 
   useEffect(() => {
     if (heroes.length < 2) return;
@@ -83,15 +92,22 @@ export function HeroSection() {
   return (
     <section
       className="relative w-full aspect-[2/1] max-h-[80vh] overflow-hidden bg-[#0a0a0a]"
+      aria-label="Featured collections"
+      aria-roledescription="carousel"
+      onFocusCapture={() => setIsHovering(true)}
+      onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovering(false); }}
       onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
+      onMouseLeave={(event) => setIsHovering(event.currentTarget.contains(document.activeElement))}
     >
       {/* Background Image Layer */}
       <div className="absolute inset-0">
         {heroes.map((heroSlide, index) => (
           <div
             key={heroSlide._id}
-            className={`absolute inset-0 transition-opacity duration-[1500ms] ${
+            role="img"
+            aria-label={heroSlide.title}
+            aria-hidden={index !== currentSlide}
+            className={`absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none ${
               index === currentSlide ? "opacity-100" : "opacity-0"
             }`}
           >
@@ -115,8 +131,8 @@ export function HeroSection() {
           prevSlide();
           startAutoPlay();
         }}
-        className={`absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-[#0a0a0a]/40 backdrop-blur-sm border border-white/10 flex items-center justify-center hover:bg-[#C9A84C]/20 hover:border-[#C9A84C]/50 transition-all duration-500 ${
-          isHovering ? "opacity-100 translate-x-0" : "opacity-70 translate-x-0 md:opacity-0 md:-translate-x-3"
+        className={`absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-[#0a0a0a]/40 backdrop-blur-sm border border-white/10 flex items-center justify-center hover:bg-[#C9A84C]/20 hover:border-[#C9A84C]/50 transition-all duration-500 ${
+          isHovering ? "opacity-100 translate-x-0" : "opacity-70 translate-x-0 md:opacity-100"
         }`}
         aria-label="Previous slide"
       >
@@ -128,16 +144,19 @@ export function HeroSection() {
           nextSlide();
           startAutoPlay();
         }}
-        className={`absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-[#0a0a0a]/40 backdrop-blur-sm border border-white/10 flex items-center justify-center hover:bg-[#C9A84C]/20 hover:border-[#C9A84C]/50 transition-all duration-500 ${
-          isHovering ? "opacity-100 translate-x-0" : "opacity-70 translate-x-0 md:opacity-0 md:translate-x-3"
+        className={`absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-[#0a0a0a]/40 backdrop-blur-sm border border-white/10 flex items-center justify-center hover:bg-[#C9A84C]/20 hover:border-[#C9A84C]/50 transition-all duration-500 ${
+          isHovering ? "opacity-100 translate-x-0" : "opacity-70 translate-x-0 md:opacity-100"
         }`}
         aria-label="Next slide"
       >
         <ChevronRight className="h-4 w-4 text-white" />
       </button>
 
+      <button onClick={() => setIsPaused(value => !value)} aria-label={isPaused ? 'Play slideshow' : 'Pause slideshow'} aria-pressed={isPaused} className="absolute bottom-4 right-4 z-30 w-11 h-11 rounded-full bg-black/60 text-white flex items-center justify-center" hidden={reducedMotion}>
+        {isPaused ? <Play size={16} /> : <Pause size={16} />}
+      </button>
       {/* Slide Indicators */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex max-w-[60%] overflow-x-auto items-center gap-2">
         {heroes.map((_, index) => (
           <button
             key={index}
@@ -145,14 +164,11 @@ export function HeroSection() {
               goToSlide(index);
               startAutoPlay();
             }}
-            className={`group relative h-1.5 rounded-full transition-all duration-700 ${
-              index === currentSlide ? "w-8 bg-[#C9A84C]" : "w-1.5 bg-white/30 hover:bg-white/50"
-            }`}
+            className="group relative w-11 h-11 shrink-0 flex items-center justify-center"
+            aria-current={index === currentSlide ? 'true' : undefined}
             aria-label={`Go to slide ${index + 1}`}
           >
-            {index === currentSlide && (
-              <div className="absolute inset-0 rounded-full bg-[#E8D48A] animate-pulse" />
-            )}
+            <span className={`block h-1.5 w-6 rounded-full ${index === currentSlide ? 'bg-[#E8D48A]' : 'bg-white/60'}`} />
           </button>
         ))}
       </div>
