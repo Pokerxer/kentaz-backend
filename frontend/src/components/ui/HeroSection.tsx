@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 
 interface HeroSlide {
   _id: string;
@@ -101,16 +102,8 @@ export function HeroSection() {
     >
       {/* Background Image Layer */}
       <div className="absolute inset-0">
-        {heroes.map((heroSlide, index) => (
-          <div
-            key={heroSlide._id}
-            role="img"
-            aria-label={heroSlide.title}
-            aria-hidden={index !== currentSlide}
-            className={`absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none ${
-              index === currentSlide ? "opacity-100" : "opacity-0"
-            }`}
-          >
+        {heroes.map((heroSlide, index) => {
+          const content = (
             <div
               className="absolute inset-0"
               style={{
@@ -120,8 +113,38 @@ export function HeroSection() {
                 backgroundRepeat: "no-repeat",
               }}
             />
-          </div>
-        ))}
+          );
+          const isCurrent = index === currentSlide;
+          const href = heroSlide.ctaLink?.trim();
+          const isExternal = /^https?:\/\//i.test(href || "");
+          return (
+            <div
+              key={heroSlide._id}
+              role={isCurrent ? "link" : undefined}
+              aria-label={heroSlide.title}
+              aria-hidden={!isCurrent}
+              className={`absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none ${
+                isCurrent
+                  ? "opacity-100 z-10 pointer-events-auto"
+                  : "opacity-0 z-0 pointer-events-none"
+              }`}
+            >
+              {isCurrent && href ? (
+                isExternal ? (
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 block" aria-label={`${heroSlide.title} — ${heroSlide.ctaText}`}>
+                    {content}
+                  </a>
+                ) : (
+                  <Link href={href} className="absolute inset-0 block" aria-label={`${heroSlide.title} — ${heroSlide.ctaText}`}>
+                    {content}
+                  </Link>
+                )
+              ) : (
+                content
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Navigation Arrows */}

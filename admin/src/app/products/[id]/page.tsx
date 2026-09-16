@@ -25,6 +25,7 @@ import {
   RotateCcw,
   ShoppingCart,
   Printer,
+  Download,
 } from 'lucide-react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { api, Product, Variant } from '@/lib/api';
@@ -67,6 +68,43 @@ function StockBadge({ stock }: { stock: number }) {
 function calcMargin(cost: number, price: number): string {
   if (!price || !cost) return '—';
   return (((price - cost) / price) * 100).toFixed(1) + '%';
+}
+
+function fileNameFromUrl(url: string): string {
+  try {
+    const base = url.split('/').pop() || 'image';
+    return base.split('?')[0] || 'image';
+  } catch {
+    return 'image';
+  }
+}
+
+function imageFileName(base: string, index: number): string {
+  const ext = fileNameFromUrl(base).includes('.') ? '.' + fileNameFromUrl(base).split('.').pop() : '.jpg';
+  return `${base}-${index}${ext}`;
+}
+
+// Product images live on Cloudinary (cross-origin), where a plain `<a download>`
+// just navigates instead of downloading. Fetch the file as a blob first so the
+// browser saves it with the desired filename.
+async function downloadImage(url: string, filename?: string) {
+  const name = filename || fileNameFromUrl(url);
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error('Download failed');
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    // Last resort: open the image so the user can save it manually.
+    window.open(url, '_blank');
+  }
 }
 
 export default function ProductViewPage() {
@@ -218,12 +256,33 @@ export default function ProductViewPage() {
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
               {product.images.length > 0 ? (
                 <>
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
+                    <span className="text-xs font-medium text-gray-500">
+                      {product.images.length} image{product.images.length !== 1 ? 's' : ''}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => product.images.forEach((img, i) => downloadImage(img.url, imageFileName(product.slug || productId, i + 1)))}
+                        className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download all
+                      </button>
+                    </div>
+                  </div>
                   <div className="relative aspect-square bg-gray-50">
                     <img
                       src={product.images[activeImage]?.url}
                       alt={product.name}
                       className="w-full h-full object-cover"
                     />
+                    <button
+                      onClick={() => downloadImage(product.images[activeImage].url, imageFileName(product.slug || productId, activeImage + 1))}
+                      title="Download image"
+                      aria-label="Download image"
+                      className="absolute bottom-2 right-2 z-10 w-9 h-9 bg-white/90 rounded-full flex items-center justify-center shadow hover:bg-[#C9A84C] hover:text-white transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
                     {product.images.length > 1 && (
                       <>
                         <button
