@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -110,7 +110,13 @@ async function downloadImage(url: string, filename?: string) {
 export default function ProductViewPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const productId = params.id as string;
+  const requestedReturn = searchParams.get('from');
+  const productsHref = requestedReturn && /^\/products(?:\?|$)/.test(requestedReturn)
+    ? requestedReturn
+    : '/products';
+  const editHref = `/products/${productId}/edit?from=${encodeURIComponent(productsHref)}`;
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
 
@@ -141,7 +147,7 @@ export default function ProductViewPage() {
     setDeleting(true);
     try {
       await api.products.delete(productId);
-      router.push('/products');
+      router.push(productsHref);
     } catch (err: any) {
       setError(err.message);
       setDeleting(false);
@@ -184,7 +190,7 @@ export default function ProductViewPage() {
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <Link href="/products" className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <Link href={productsHref} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
@@ -201,7 +207,7 @@ export default function ProductViewPage() {
                 <Printer className="w-4 h-4" /> Print Tags
               </Link>
               <Link
-                href={`/products/${productId}/edit`}
+                href={editHref}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
               >
                 <Edit className="w-4 h-4" /> Edit Product
@@ -749,7 +755,7 @@ export default function ProductViewPage() {
         {isAdmin && (
           <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 p-4 flex gap-3 z-40">
             <Link
-              href={`/products/${productId}/edit`}
+              href={editHref}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold"
             >
               <Edit className="w-4 h-4" /> Edit Product

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -79,26 +79,43 @@ const statusColors: Record<string, string> = {
 
 const LIMIT = 100;
 
+function readPage(value: string | null) {
+  const parsed = Number.parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function readSortKey(value: string | null): SortKey {
+  return value && value in columnConfig ? value as SortKey : 'name';
+}
+
+function readSortOrder(value: string | null): SortOrder {
+  return value === 'desc' ? 'desc' : 'asc';
+}
+
 export default function ProductsPage() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => readPage(searchParams.get('page')));
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [subcategoryFilter, setSubcategoryFilter] = useState('');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get('category') || '');
+  const [subcategoryFilter, setSubcategoryFilter] = useState(() => searchParams.get('subcategory') || '');
   const [categories, setCategories] = useState<string[]>([]);
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [view, setView] = useState<'list' | 'grid'>('list');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [view, setView] = useState<'list' | 'grid'>(() => searchParams.get('view') === 'grid' ? 'grid' : 'list');
+  const [sortKey, setSortKey] = useState<SortKey>(() => readSortKey(searchParams.get('sort')));
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => readSortOrder(searchParams.get('order')));
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const requestId = useRef(0);
 
   const toggleSelected = (id: string) => {
     setSelected(prev => {
@@ -131,6 +148,7 @@ export default function ProductsPage() {
   };
 
   const fetchProducts = useCallback(async (currentPage: number) => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     try {
       const params: Record<string, any> = { page: currentPage, limit: LIMIT };
@@ -139,18 +157,59 @@ export default function ProductsPage() {
       if (categoryFilter) params.category = categoryFilter;
       if (subcategoryFilter) params.subcategory = subcategoryFilter;
       const data = await api.products.getAll(params);
+      if (currentRequest !== requestId.current) return;
       const list = Array.isArray(data) ? (data as any) : (data.products ?? []);
+      const nextTotalPages = Math.max(1, Array.isArray(data) ? 1 : (data.totalPages ?? 1));
       setProducts(list);
       setTotal(Array.isArray(data) ? list.length : (data.total ?? list.length));
-      setTotalPages(Array.isArray(data) ? 1 : (data.totalPages ?? 1));
+      setTotalPages(nextTotalPages);
+      if (currentPage > nextTotalPages) setPage(nextTotalPages);
     } catch {
-      setMsg({ text: 'Failed to load products', type: 'error' });
+      if (currentRequest === requestId.current) setMsg({ text: 'Failed to load products', type: 'error' });
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
   }, [search, statusFilter, categoryFilter, subcategoryFilter]);
 
-  useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter, subcategoryFilter]);
+  // Search only after the cashier pauses typing. This avoids a request and a
+  // history update for every key press while keeping the field responsive.
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const nextSearch = searchInput.trim();
+      if (nextSearch !== search) {
+        setSearch(nextSearch);
+        setPage(1);
+      }
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput, search]);
+
+  const listQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set('page', String(page));
+    if (search) params.set('search', search);
+    if (statusFilter) params.set('status', statusFilter);
+    if (categoryFilter) params.set('category', categoryFilter);
+    if (subcategoryFilter) params.set('subcategory', subcategoryFilter);
+    if (view === 'grid') params.set('view', view);
+    if (sortKey !== 'name') params.set('sort', sortKey);
+    if (sortOrder !== 'asc') params.set('order', sortOrder);
+    return params.toString();
+  }, [page, search, statusFilter, categoryFilter, subcategoryFilter, view, sortKey, sortOrder]);
+
+  const returnTo = `${pathname}${listQuery ? `?${listQuery}` : ''}`;
+  const productHref = useCallback((id: string, edit = false) => {
+    const destination = `/products/${id}${edit ? '/edit' : ''}`;
+    return `${destination}?from=${encodeURIComponent(returnTo)}`;
+  }, [returnTo]);
+
+  // The URL is the durable list state. It survives details, edits, refreshes,
+  // copied links and browser Back without adding a history entry per filter.
+  useEffect(() => {
+    const nextUrl = `${pathname}${listQuery ? `?${listQuery}` : ''}`;
+    const currentUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+    if (nextUrl !== currentUrl) router.replace(nextUrl, { scroll: false });
+  }, [pathname, listQuery, router, searchParams]);
 
   // Selection only ever means "these rows, as shown". Carrying it across a
   // filter or page change would let you print tags for products you can no
@@ -224,26 +283,62 @@ export default function ProductsPage() {
     return null;
   };
 
+  const paginationItems = useMemo(() => {
+    const visible = new Set([1, totalPages, page - 1, page, page + 1]);
+    const pages = Array.from(visible)
+      .filter(value => value >= 1 && value <= totalPages)
+      .sort((a, b) => a - b);
+    const items: Array<number | string> = [];
+    pages.forEach((value, index) => {
+      const previous = pages[index - 1];
+      if (previous && value - previous > 1) items.push(`ellipsis-${previous}`);
+      items.push(value);
+    });
+    return items;
+  }, [page, totalPages]);
+
   const Pagination = () =>
     totalPages > 1 ? (
-      <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-        <p className="text-sm text-gray-500">Page {page} of {totalPages}</p>
-        <div className="flex items-center gap-2">
+      <div className="px-4 sm:px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <p className="text-sm text-gray-500">
+          Showing <span className="font-medium text-gray-700">{((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, total)}</span> of{' '}
+          <span className="font-medium text-gray-700">{total}</span>
+        </p>
+        <nav className="flex items-center gap-1" aria-label="Product pages">
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
             className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            aria-label="Previous page"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
+          {paginationItems.map(item => typeof item === 'number' ? (
+            <button
+              key={item}
+              onClick={() => setPage(item)}
+              aria-label={`Page ${item}`}
+              aria-current={page === item ? 'page' : undefined}
+              className={`min-w-9 h-9 px-2 rounded-lg text-sm font-medium transition-colors ${
+                page === item
+                  ? 'bg-[#C9A84C] text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-50 border border-transparent'
+              }`}
+            >
+              {item}
+            </button>
+          ) : (
+            <span key={item} className="w-7 text-center text-gray-400" aria-hidden="true">…</span>
+          ))}
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            aria-label="Next page"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-        </div>
+        </nav>
       </div>
     ) : null;
 
@@ -299,10 +394,20 @@ export default function ProductsPage() {
               <input
                 type="text"
                 placeholder="Search products..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50/50 hover:bg-gray-50 transition-all"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] bg-gray-50/50 hover:bg-gray-50 transition-all"
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  aria-label="Clear product search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
             <div className="flex-shrink-0 flex items-center gap-1 border border-gray-200 rounded-xl p-1 bg-white">
               <button
@@ -327,7 +432,7 @@ export default function ProductsPage() {
             {STATUS_FILTERS.map(f => (
               <button
                 key={f.value}
-                onClick={() => setStatusFilter(f.value)}
+                onClick={() => { setStatusFilter(f.value); setPage(1); }}
                 className={`flex-none px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                   statusFilter === f.value
                     ? 'bg-[#C9A84C] text-white shadow-md shadow-[#C9A84C]/20'
@@ -341,7 +446,7 @@ export default function ProductsPage() {
               <div className="relative flex-none">
                 <select
                   value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
+                  onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
                   className="appearance-none px-4 py-2 pr-8 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 cursor-pointer min-w-[140px]"
                 >
                   <option value="">All Categories</option>
@@ -356,7 +461,7 @@ export default function ProductsPage() {
               type="text"
               placeholder="Subcategory..."
               value={subcategoryFilter}
-              onChange={e => setSubcategoryFilter(e.target.value)}
+              onChange={e => { setSubcategoryFilter(e.target.value); setPage(1); }}
               className="flex-none px-3 py-2 rounded-xl text-sm border border-gray-200 text-gray-600 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20 focus:border-[#C9A84C] w-36 bg-white"
             />
           </div>
@@ -459,7 +564,7 @@ export default function ProductsPage() {
                             </div>
                             <div className="min-w-0">
                               <Link
-                                href={`/products/${product._id}/edit`}
+                                href={productHref(product._id, true)}
                                 className="font-medium text-gray-900 hover:text-[#C9A84C] transition-colors line-clamp-1"
                               >
                                 {product.name}
@@ -507,11 +612,11 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <Link href={`/products/${product._id}`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" title="View">
+                            <Link href={productHref(product._id)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" title="View">
                               <Eye className="h-4 w-4" />
                             </Link>
                             {isAdmin && (
-                              <Link href={`/products/${product._id}/edit`} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#C9A84C] transition-colors" title="Edit">
+                              <Link href={productHref(product._id, true)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#C9A84C] transition-colors" title="Edit">
                                 <Edit className="h-4 w-4" />
                               </Link>
                             )}
@@ -579,7 +684,7 @@ export default function ProductsPage() {
                       {/* Action overlay */}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <Link
-                          href={`/products/${product._id}`}
+                          href={productHref(product._id)}
                           className="p-2 bg-white rounded-xl text-gray-700 hover:text-[#C9A84C] shadow-md transition-colors"
                           title="View"
                         >
@@ -587,7 +692,7 @@ export default function ProductsPage() {
                         </Link>
                         {isAdmin && (
                           <Link
-                            href={`/products/${product._id}/edit`}
+                            href={productHref(product._id, true)}
                             className="p-2 bg-white rounded-xl text-gray-700 hover:text-[#C9A84C] shadow-md transition-colors"
                             title="Edit"
                           >
@@ -599,7 +704,7 @@ export default function ProductsPage() {
 
                     {/* Info */}
                     <div className="p-3 flex flex-col gap-1 flex-1">
-                      <Link href={`/products/${product._id}/edit`} className="text-sm font-semibold text-gray-900 hover:text-[#C9A84C] transition-colors leading-tight line-clamp-2">
+                      <Link href={productHref(product._id, true)} className="text-sm font-semibold text-gray-900 hover:text-[#C9A84C] transition-colors leading-tight line-clamp-2">
                         {product.name}
                       </Link>
                       <p className="text-xs text-gray-400">{product.category || 'Uncategorized'}</p>

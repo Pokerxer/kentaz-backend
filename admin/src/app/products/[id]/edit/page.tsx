@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -432,7 +432,13 @@ function VariantRow({ variant, idx, totalVariants, onAutoSku, assigningSku, onCh
 export default function EditProductPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const productId = params.id as string;
+  const requestedReturn = searchParams.get('from');
+  const productsHref = requestedReturn && /^\/products(?:\?|$)/.test(requestedReturn)
+    ? requestedReturn
+    : '/products';
+  const returnContext = `?from=${encodeURIComponent(productsHref)}`;
 
   const [fetching, setFetching] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -804,7 +810,7 @@ export default function EditProductPage() {
               deployed backend (kentaz-backend.vercel.app) but not in the local database. Open the same URL
               in the deployed admin, or check the product list here.
             </p>
-            <Link href="/products" className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#C9A84C] text-white rounded-xl text-sm font-semibold hover:bg-[#B8953F] transition-colors">
+            <Link href={productsHref} className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#C9A84C] text-white rounded-xl text-sm font-semibold hover:bg-[#B8953F] transition-colors">
               <ArrowLeft className="h-4 w-4" /> Back to Products
             </Link>
           </div>
@@ -820,7 +826,7 @@ export default function EditProductPage() {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <Link href="/products" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#C9A84C] transition-colors group">
+            <Link href={productsHref} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#C9A84C] transition-colors group">
               <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
               Back to Products
             </Link>
@@ -828,7 +834,7 @@ export default function EditProductPage() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => prevProduct && router.push(`/products/${prevProduct._id}/edit`)}
+                  onClick={() => prevProduct && router.push(`/products/${prevProduct._id}/edit${returnContext}`)}
                   disabled={!prevProduct}
                   title={prevProduct ? prevProduct.name : undefined}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-[#C9A84C] hover:text-[#C9A84C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
@@ -841,7 +847,7 @@ export default function EditProductPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => nextProduct && router.push(`/products/${nextProduct._id}/edit`)}
+                  onClick={() => nextProduct && router.push(`/products/${nextProduct._id}/edit${returnContext}`)}
                   disabled={!nextProduct}
                   title={nextProduct ? nextProduct.name : undefined}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-[#C9A84C] hover:text-[#C9A84C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
@@ -1197,7 +1203,7 @@ export default function EditProductPage() {
                   className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-[#C9A84C] to-[#B8953F] text-white rounded-xl font-semibold text-sm hover:from-[#B8953F] hover:to-[#A88430] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#C9A84C]/20 hover:-translate-y-0.5 active:translate-y-0">
                   {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : <><Save className="h-4 w-4" />Save Changes</>}
                 </button>
-                <Link href="/products"
+                <Link href={productsHref}
                   className="block text-center text-sm text-gray-400 hover:text-gray-600 transition-colors py-1">
                   Discard changes
                 </Link>
@@ -1270,7 +1276,7 @@ export default function EditProductPage() {
 
           {/* Sticky bottom bar (mobile) */}
           <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white border-t border-gray-200 px-4 py-3 flex gap-3 shadow-xl z-40">
-            <Link href="/products"
+            <Link href={productsHref}
               className="flex-1 flex items-center justify-center py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
             </Link>
