@@ -7,6 +7,7 @@ const protectedRoutes = [
   '/inventory',
   '/purchases',
   '/orders',
+  '/sales',
   '/bookings',
   '/customers',
   '/users',

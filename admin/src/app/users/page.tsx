@@ -58,7 +58,7 @@ const routeGroups: RouteGroup[] = [
     label: 'Point of Sale',
     routes: [
       { href: '/pos/dashboard', label: 'POS Terminal',    icon: Monitor },
-      { href: '/pos/sales',     label: 'POS Sales',       icon: ShoppingCart },
+      { href: '/sales',         label: 'POS Sales',       icon: ShoppingCart },
     ],
   },
   {
@@ -107,7 +107,7 @@ const allRoutes = routeGroups.flatMap(g => g.routes);
 // ── Role presets ───────────────────────────────────────────────────
 
 const ROLE_PRESETS: Record<string, string[]> = {
-  staff: ['/pos/dashboard', '/pos/sales', '/orders', '/inventory'],
+  staff: ['/pos/dashboard', '/sales', '/orders', '/inventory'],
   therapist: ['/bookings', '/dashboard'],
   customer: [],
 };

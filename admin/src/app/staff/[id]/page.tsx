@@ -431,7 +431,7 @@ export default function StaffDetailPage() {
                         {sales.map(sale => (
                           <tr key={sale._id} className="hover:bg-gray-50/60 transition-colors">
                             <td className="px-4 py-3">
-                              <Link href={`/pos/sales/${sale._id}`} className="font-mono text-xs text-blue-600 hover:underline">
+                              <Link href={`/sales/${sale._id}`} className="font-mono text-xs text-blue-600 hover:underline">
                                 {sale.receiptNumber}
                               </Link>
                             </td>
@@ -457,7 +457,7 @@ export default function StaffDetailPage() {
                   {/* Mobile list */}
                   <div className="md:hidden divide-y divide-gray-100">
                     {sales.map(sale => (
-                      <Link key={sale._id} href={`/pos/sales/${sale._id}`} className="block p-4 hover:bg-gray-50">
+                      <Link key={sale._id} href={`/sales/${sale._id}`} className="block p-4 hover:bg-gray-50">
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="font-mono text-xs font-semibold text-gray-700">{sale.receiptNumber}</p>

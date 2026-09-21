@@ -6,6 +6,7 @@ const CashMovement = require('../models/CashMovement');
 const Customer = require('../models/Customer');
 const OfflineSale = require('../models/OfflineSale');
 const Discount = require('../models/Discount');
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -17,6 +18,8 @@ const JWT_SECRET = require('../utils/jwt');
 
 /** Cashier permission required to type a price by hand. Mirrors POS_PERMS in admin/src/lib/posApi.ts. */
 const PRICE_OVERRIDE_PERM = 'pos:price_override';
+const REFUND_PERM = 'pos:refund';
+const VOID_PERM = 'pos:void';
 
 /**
  * Whether this user may override a price.
@@ -30,6 +33,11 @@ async function canOverridePrice(userId) {
   const staff = await User.findById(userId).select('role permissions');
   if (!staff) return false;
   return staff.role === 'admin' || (staff.permissions || []).includes(PRICE_OVERRIDE_PERM);
+}
+
+async function canPerformPosAction(userId, permission) {
+  const staff = await User.findById(userId).select('role permissions').lean();
+  return Boolean(staff && (staff.role === 'admin' || (staff.permissions || []).includes(permission)));
 }
 
 /** Discounts that could mark something down right now. */
@@ -417,9 +425,9 @@ exports.createSale = async (req, res) => {
 // GET /api/pos/sales
 exports.getSales = async (req, res) => {
   try {
-    const { page = 1, limit = 20, date, status, cashierId, search, registerId } = req.query;
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const { page = 1, limit = 20, date, status, cashierId, search, registerId, view } = req.query;
+    const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20));
 
     const filter = {};
     // Staff can only see their own sales; admin sees all (or filtered by cashierId)
@@ -428,18 +436,47 @@ exports.getSales = async (req, res) => {
     if (status) filter.status = status;
     if (registerId) filter.register = registerId;
     if (date) {
-      const d = new Date(date);
-      const start = new Date(d); start.setHours(0, 0, 0, 0);
-      const end = new Date(d); end.setHours(23, 59, 59, 999);
-      filter.createdAt = { $gte: start, $lte: end };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'date must use YYYY-MM-DD' });
+      }
+      // The shop operates in Abuja (UTC+1, no DST). Explicitly anchor the
+      // range there so a deployment running in UTC does not move late-night
+      // sales into the wrong day.
+      const start = new Date(`${date}T00:00:00.000+01:00`);
+      if (Number.isNaN(start.getTime())) return res.status(400).json({ error: 'Invalid date' });
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+      filter.createdAt = { $gte: start, $lt: end };
     }
-    if (search) {
+    const searchTerm = typeof search === 'string' ? search.trim().slice(0, 80) : '';
+    if (searchTerm) {
+      // Treat cashier input as text, not a regular expression. Besides matching
+      // what the UI promises, this prevents expensive regex patterns from
+      // blocking a busy till.
+      const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { receiptNumber: { $regex: search, $options: 'i' } },
-        { customerName: { $regex: search, $options: 'i' } },
-        { customerPhone: { $regex: search, $options: 'i' } },
-        { cashierName: { $regex: search, $options: 'i' } },
+        { receiptNumber: { $regex: escapedSearch, $options: 'i' } },
+        { customerName: { $regex: escapedSearch, $options: 'i' } },
+        { customerPhone: { $regex: escapedSearch, $options: 'i' } },
+        { cashierName: { $regex: escapedSearch, $options: 'i' } },
       ];
+    }
+
+    // The sales screen only needs a compact row. Avoid sending every product,
+    // price audit field and refund field for 25 receipts before one is opened.
+    // Full records remain the default for reports and staff history callers.
+    if (view === 'summary') {
+      const [rows, total] = await Promise.all([
+        Sale.find(filter)
+          .select('receiptNumber type total paymentMethod customerName cashierName status createdAt items._id')
+          .sort({ createdAt: -1 })
+          .skip((pageNum - 1) * limitNum)
+          .limit(limitNum)
+          .lean(),
+        Sale.countDocuments(filter),
+      ]);
+      const sales = rows.map(({ items, ...sale }) => ({ ...sale, itemCount: items?.length || 0 }));
+
+      return res.json({ sales, total, page: pageNum, totalPages: Math.max(1, Math.ceil(total / limitNum)) });
     }
 
     const [sales, total] = await Promise.all([
@@ -447,11 +484,12 @@ exports.getSales = async (req, res) => {
         .populate('cashier', 'name email')
         .sort({ createdAt: -1 })
         .skip((pageNum - 1) * limitNum)
-        .limit(limitNum),
+        .limit(limitNum)
+        .lean(),
       Sale.countDocuments(filter),
     ]);
 
-    res.json({ sales, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
+    res.json({ sales, total, page: pageNum, totalPages: Math.max(1, Math.ceil(total / limitNum)) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -461,32 +499,75 @@ exports.getSales = async (req, res) => {
 exports.getSalesSummary = async (req, res) => {
   try {
     const today = new Date();
-    const start = new Date(today); start.setHours(0, 0, 0, 0);
-    const end = new Date(today); end.setHours(23, 59, 59, 999);
+    const lagosParts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(today).map(part => [part.type, part.value])
+    );
+    const lagosDate = `${lagosParts.year}-${lagosParts.month}-${lagosParts.day}`;
+    const start = new Date(`${lagosDate}T00:00:00.000+01:00`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
 
-    const filter = { createdAt: { $gte: start, $lte: end }, status: 'completed' };
-    if (req.user.role === 'staff') filter.cashier = req.user.id;
+    const filter = { createdAt: { $gte: start, $lt: end }, status: 'completed' };
+    // Mongoose casts normal find queries, but aggregate match stages do not.
+    if (req.user.role === 'staff') filter.cashier = new mongoose.Types.ObjectId(req.user.id);
 
-    const sales = await Sale.find(filter).lean();
+    // Let MongoDB return one compact result instead of transferring every sale
+    // and every line item to Node just to calculate four counters.
+    const [summary] = await Sale.aggregate([
+      { $match: filter },
+      {
+        $project: {
+          total: 1,
+          type: 1,
+          paymentMethod: 1,
+          itemQuantity: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ['$items', []] },
+                as: 'item',
+                in: { $ifNull: ['$$item.quantity', 0] },
+              },
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$total' },
+          totalCount: { $sum: { $cond: [{ $ne: ['$type', 'refund'] }, 1, 0] } },
+          totalRefunds: { $sum: { $cond: [{ $eq: ['$type', 'refund'] }, 1, 0] } },
+          totalItems: {
+            $sum: {
+              $cond: [
+                { $eq: ['$type', 'refund'] },
+                { $multiply: ['$itemQuantity', -1] },
+                '$itemQuantity',
+              ],
+            },
+          },
+          cash: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'cash'] }, '$total', 0] } },
+          card: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'card'] }, '$total', 0] } },
+          transfer: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'transfer'] }, '$total', 0] } },
+          split: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'split'] }, '$total', 0] } },
+        },
+      },
+    ]);
 
-    // Revenue includes refund negatives for accurate net revenue
-    const totalRevenue = sales.reduce((s, sale) => s + sale.total, 0);
-    // Count only original sales (not refund records)
-    const totalCount = sales.filter(s => s.type !== 'refund').length;
-    const totalRefunds = sales.filter(s => s.type === 'refund').length;
-    // Net items: original qty sold minus returned qty
-    const soldItems = sales.filter(s => s.type !== 'refund')
-      .reduce((s, sale) => s + sale.items.reduce((ss, i) => ss + i.quantity, 0), 0);
-    const returnedItems = sales.filter(s => s.type === 'refund')
-      .reduce((s, sale) => s + sale.items.reduce((ss, i) => ss + i.quantity, 0), 0);
-    const totalItems = Math.max(0, soldItems - returnedItems);
-    const byMethod = { cash: 0, card: 0, transfer: 0 };
-    for (const sale of sales) {
-      // sum all (incl. refund negatives) per payment method for net cash position
-      byMethod[sale.paymentMethod] = (byMethod[sale.paymentMethod] || 0) + sale.total;
-    }
-
-    res.json({ totalRevenue, totalCount, totalRefunds, totalItems, byMethod, date: today.toISOString() });
+    res.json({
+      totalRevenue: summary?.totalRevenue || 0,
+      totalCount: summary?.totalCount || 0,
+      totalRefunds: summary?.totalRefunds || 0,
+      totalItems: Math.max(0, summary?.totalItems || 0),
+      byMethod: {
+        cash: summary?.cash || 0,
+        card: summary?.card || 0,
+        transfer: summary?.transfer || 0,
+        split: summary?.split || 0,
+      },
+      date: today.toISOString(),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -495,7 +576,9 @@ exports.getSalesSummary = async (req, res) => {
 // GET /api/pos/sales/:id
 exports.getSaleById = async (req, res) => {
   try {
-    const sale = await Sale.findById(req.params.id)
+    const filter = { _id: req.params.id };
+    if (req.user.role === 'staff') filter.cashier = req.user.id;
+    const sale = await Sale.findOne(filter)
       .populate('cashier', 'name email')
       .populate('items.product', 'name images');
     if (!sale) return res.status(404).json({ error: 'Sale not found' });
@@ -509,8 +592,15 @@ exports.getSaleById = async (req, res) => {
 exports.voidSale = async (req, res) => {
   try {
     const { reason } = req.body;
+    if (!(await canPerformPosAction(req.user.id, VOID_PERM))) {
+      return res.status(403).json({ error: 'You do not have permission to void sales' });
+    }
     const sale = await Sale.findById(req.params.id);
     if (!sale) return res.status(404).json({ error: 'Sale not found' });
+    if (req.user.role === 'staff' && String(sale.cashier) !== String(req.user.id)) {
+      return res.status(403).json({ error: 'You can only void your own sales' });
+    }
+    if (sale.type === 'refund') return res.status(400).json({ error: 'Refund records cannot be voided' });
     if (sale.status === 'voided') return res.status(400).json({ error: 'Sale already voided' });
 
     sale.status = 'voided';
@@ -651,11 +741,17 @@ exports.deleteStaff = async (req, res) => {
 exports.refundSaleItems = async (req, res) => {
   try {
     const { items, reason } = req.body;
+    if (!(await canPerformPosAction(req.user.id, REFUND_PERM))) {
+      return res.status(403).json({ error: 'You do not have permission to refund sales' });
+    }
     // items: [{ saleItemIndex: number, quantity: number }]
     if (!items || items.length === 0) return res.status(400).json({ error: 'No items specified for refund' });
 
     const sale = await Sale.findById(req.params.id);
     if (!sale) return res.status(404).json({ error: 'Sale not found' });
+    if (req.user.role === 'staff' && String(sale.cashier) !== String(req.user.id)) {
+      return res.status(403).json({ error: 'You can only refund your own sales' });
+    }
     if (sale.status === 'voided') return res.status(400).json({ error: 'Sale already voided' });
     if (sale.type === 'refund') return res.status(400).json({ error: 'Cannot refund a refund record' });
 

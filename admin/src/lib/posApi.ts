@@ -104,8 +104,36 @@ export const posApi = {
     return posRequest<{ sales: Sale[]; total: number; page: number; totalPages: number }>(`/api/pos/sales${query ? '?' + query : ''}`);
   },
 
-  getSummary: () =>
-    posRequest<SalesSummary>('/api/pos/sales/summary'),
+  getSalesList: (
+    params?: { page?: number; limit?: number; date?: string; status?: string; search?: string },
+    signal?: AbortSignal,
+  ) => {
+    const filtered = Object.fromEntries(Object.entries({ ...params, view: 'summary' }).filter(([, v]) => v !== undefined && v !== ''));
+    const query = new URLSearchParams(filtered as Record<string, string>).toString();
+    return posRequest<{ sales: Array<SaleListItem | Sale>; total: number; page: number; totalPages: number }>(
+      `/api/pos/sales?${query}`,
+      { signal },
+    ).then(data => ({
+      ...data,
+      // Keeps the admin compatible while the backend deployment rolls out:
+      // an older server returns full Sale records and simply ignores `view`.
+      sales: data.sales.map(sale => ({
+        _id: sale._id,
+        receiptNumber: sale.receiptNumber,
+        type: sale.type,
+        total: sale.total,
+        paymentMethod: sale.paymentMethod,
+        customerName: sale.customerName,
+        cashierName: sale.cashierName,
+        status: sale.status,
+        createdAt: sale.createdAt,
+        itemCount: 'itemCount' in sale ? sale.itemCount : sale.items.length,
+      })),
+    }));
+  },
+
+  getSummary: (signal?: AbortSignal) =>
+    posRequest<SalesSummary>('/api/pos/sales/summary', { signal }),
 
   getSaleById: (id: string) =>
     posRequest<Sale>(`/api/pos/sales/${id}`),
@@ -305,7 +333,7 @@ export interface Sale {
   taxRate: number;
   taxAmount: number;
   total: number;           // tax-inclusive; negative for refund records
-  paymentMethod: 'cash' | 'card' | 'transfer';
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'split';
   amountPaid: number;      // negative for refund records
   change: number;
   customerName?: string;
@@ -319,12 +347,26 @@ export interface Sale {
   createdAt: string;
 }
 
+/** Lightweight row returned to the sales browser before a receipt is opened. */
+export interface SaleListItem {
+  _id: string;
+  receiptNumber: string;
+  type: 'sale' | 'refund';
+  total: number;
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'split';
+  customerName?: string;
+  cashierName?: string;
+  status: 'completed' | 'voided';
+  createdAt: string;
+  itemCount: number;
+}
+
 export interface SalesSummary {
   totalRevenue: number;
   totalCount: number;
   totalRefunds: number;
   totalItems: number;
-  byMethod: { cash: number; card: number; transfer: number };
+  byMethod: { cash: number; card: number; transfer: number; split: number };
   date: string;
 }
 

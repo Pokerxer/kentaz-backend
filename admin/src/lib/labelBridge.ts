@@ -28,6 +28,7 @@ const PRINT_TIMEOUT_MS = 20000;
 export interface BridgeInfo {
   version: string;
   platform: string;
+  printBackend: 'winspool' | 'lprint' | 'cups';
   printers: string[];
   suggestedPrinter: string | null;
   requiresToken: boolean;
@@ -136,6 +137,7 @@ export async function probeBridge(port = readBridgePort()): Promise<BridgeInfo |
     return {
       version: body.version,
       platform: body.platform,
+      printBackend: body.printBackend || (body.platform === 'win32' ? 'winspool' : 'cups'),
       printers: body.printers || [],
       suggestedPrinter: body.suggestedPrinter ?? null,
       requiresToken: Boolean(body.requiresToken),

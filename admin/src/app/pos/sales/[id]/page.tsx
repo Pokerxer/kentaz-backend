@@ -7,7 +7,7 @@ import {
   ArrowLeft, Printer, XCircle, CheckCircle, AlertCircle,
   Loader2, Banknote, CreditCard, ArrowLeftRight, ShoppingBag
 } from 'lucide-react';
-import { posApi, getPosUser, clearPosSession, validatePosToken } from '@/lib/posApi';
+import { posApi, getPosUser, hasPosPermission, POS_PERMS, validatePosToken } from '@/lib/posApi';
 import type { Sale, PosUser } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 
@@ -23,32 +23,36 @@ export default function SaleDetailPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    async function checkAuth() {
-      const u = getPosUser();
-      if (!u) { router.replace('/pos/login'); return; }
+    let active = true;
+    const cachedUser = getPosUser();
+    if (!cachedUser) { router.replace('/pos/login'); return; }
+    setUser(cachedUser);
 
-      const validation = await validatePosToken();
-      if (!validation.valid) {
-        router.replace('/pos/login');
-        return;
-      }
-      setUser(validation.user || u);
+    // Fetch the receipt while the session is being refreshed. The receipt API
+    // still verifies the token, so this removes latency without weakening auth.
+    posApi.getSaleById(id)
+      .then(result => { if (active) setSale(result); })
+      .catch(err => { if (active) setError(err.message); })
+      .finally(() => { if (active) setLoading(false); });
 
-      posApi.getSaleById(id)
-        .then(setSale)
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false));
-    }
-    checkAuth();
+    validatePosToken().then(validation => {
+      if (!active) return;
+      if (!validation.valid) router.replace('/pos/login');
+      else if (validation.user) setUser(validation.user);
+    });
+
+    return () => { active = false; };
   }, [id, router]);
 
   async function handleVoid() {
     if (!voidReason.trim()) return;
+    setError('');
     setVoiding(true);
     try {
       const updated = await posApi.voidSale(id, voidReason);
       setSale(updated);
       setShowVoidModal(false);
+      setVoidReason('');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -57,14 +61,31 @@ export default function SaleDetailPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-gray-300" />
+    <div className="min-h-screen bg-[#FAFAFA]">
+      <div className="h-16 bg-gray-900" />
+      <div className="max-w-md mx-auto px-4 py-6 animate-pulse">
+        <div className="h-[560px] rounded-2xl bg-white border border-gray-100 shadow-sm p-6 space-y-5">
+          <div className="w-12 h-12 rounded-xl bg-gray-100 mx-auto" />
+          <div className="h-5 w-40 bg-gray-100 rounded mx-auto" />
+          <div className="h-px bg-gray-100" />
+          {Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-12 bg-gray-50 rounded-xl" />)}
+        </div>
+      </div>
     </div>
   );
 
   if (error || !sale) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center text-red-500 p-4">{error || 'Sale not found'}</div>
+      <div className="text-center p-6 max-w-sm">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-6 h-6 text-red-500" />
+        </div>
+        <p className="font-bold text-gray-900">Receipt unavailable</p>
+        <p className="text-sm text-gray-500 mt-1">{error || 'Sale not found'}</p>
+        <Link href="/sales" className="inline-flex items-center gap-2 mt-5 px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold">
+          <ArrowLeft className="w-4 h-4" /> Back to sales
+        </Link>
+      </div>
     </div>
   );
 
@@ -73,6 +94,9 @@ export default function SaleDetailPage() {
     : sale.paymentMethod === 'card'
       ? <CreditCard className="w-4 h-4" />
       : <ArrowLeftRight className="w-4 h-4" />;
+  const canVoid = sale.type !== 'refund'
+    && sale.status === 'completed'
+    && hasPosPermission(user, POS_PERMS.VOID);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -80,12 +104,12 @@ export default function SaleDetailPage() {
 
       <header className="no-print bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/pos/sales" className="p-2 rounded-lg hover:bg-white/10 transition">
+          <Link href="/sales" className="p-2 rounded-lg hover:bg-white/10 transition">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
             <h1 className="font-bold text-sm">{sale.receiptNumber}</h1>
-            <p className="text-gray-400 text-xs">{new Date(sale.createdAt).toLocaleString()}</p>
+            <p className="text-gray-400 text-xs">{new Date(sale.createdAt).toLocaleString('en-NG')}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -95,7 +119,7 @@ export default function SaleDetailPage() {
           >
             <Printer className="w-4 h-4" /> Print
           </button>
-          {sale.status === 'completed' && (
+          {canVoid && (
             <button
               onClick={() => setShowVoidModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-sm text-red-300"

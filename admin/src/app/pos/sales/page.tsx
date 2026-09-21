@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -10,7 +10,7 @@ import {
   FileText, RotateCcw, Minus, Plus, Package,
 } from 'lucide-react';
 import { posApi, getPosUser, hasPosPermission, POS_PERMS, validatePosToken } from '@/lib/posApi';
-import type { Sale, SaleItem, PosUser } from '@/lib/posApi';
+import type { Sale, SaleListItem, SalesSummary, PosUser } from '@/lib/posApi';
 import { formatPrice } from '@/lib/utils';
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -20,6 +20,7 @@ function PayBadge({ method }: { method: string }) {
     cash:     { cls: 'bg-green-100 text-green-700',  icon: <Banknote className="w-3 h-3" />,       label: 'Cash' },
     card:     { cls: 'bg-blue-100 text-blue-700',    icon: <CreditCard className="w-3 h-3" />,      label: 'Card' },
     transfer: { cls: 'bg-purple-100 text-purple-700',icon: <ArrowLeftRight className="w-3 h-3" />,  label: 'Transfer' },
+    split:    { cls: 'bg-amber-100 text-amber-800',  icon: <CreditCard className="w-3 h-3" />,      label: 'Split' },
   };
   const m = map[method] ?? map.cash;
   return (
@@ -33,6 +34,21 @@ function StatusBadge({ status }: { status: string }) {
   return status === 'completed'
     ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"><CheckCircle className="w-3 h-3" /> Paid</span>
     : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600"><XCircle className="w-3 h-3" /> Voided</span>;
+}
+
+function toListItem(sale: Sale): SaleListItem {
+  return {
+    _id: sale._id,
+    receiptNumber: sale.receiptNumber,
+    type: sale.type,
+    total: sale.total,
+    paymentMethod: sale.paymentMethod,
+    customerName: sale.customerName,
+    cashierName: sale.cashierName || sale.cashier?.name,
+    status: sale.status,
+    createdAt: sale.createdAt,
+    itemCount: sale.items.length,
+  };
 }
 
 // ── Order Detail Panel ────────────────────────────────────────
@@ -570,8 +586,11 @@ function OrderDetail({
 export default function PosOrdersPage() {
   const router = useRouter();
   const [user, setUser] = useState<PosUser | null>(null);
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<SaleListItem[]>([]);
+  const [summary, setSummary] = useState<SalesSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -579,46 +598,81 @@ export default function PosOrdersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const detailRequest = useRef(0);
+  const detailCache = useRef(new Map<string, Sale>());
 
   useEffect(() => {
-    async function checkAuth() {
-      const u = getPosUser();
-      if (!u) { router.replace('/pos/login'); return; }
+    const cachedUser = getPosUser();
+    if (!cachedUser) { router.replace('/pos/login'); return; }
 
-      const validation = await validatePosToken();
-      if (!validation.valid) {
-        router.replace('/pos/login');
-        return;
-      }
-      setUser(validation.user || u);
-    }
-    checkAuth();
+    // Render immediately from the local session. The sales request is itself
+    // authenticated, so validation can run alongside it instead of blocking it.
+    setUser(cachedUser);
+    validatePosToken().then(validation => {
+      if (!validation.valid) router.replace('/pos/login');
+      else if (validation.user) setUser(validation.user);
+    });
   }, [router]);
 
-  const loadSales = useCallback(async () => {
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
     setLoading(true);
-    try {
-      const data = await posApi.getSales({
-        page,
-        limit: 25,
-        search: search || undefined,
-        status: statusFilter || undefined,
-        date: dateFilter || undefined,
-      });
+    setListError('');
+
+    posApi.getSalesList({
+      page,
+      limit: 25,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      date: dateFilter || undefined,
+    }, controller.signal).then(data => {
       setSales(data.sales);
       setTotal(data.total);
       setTotalPages(data.totalPages);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, statusFilter, dateFilter]);
 
-  useEffect(() => { if (user) loadSales(); }, [user, loadSales]);
+      // A filter may remove the open receipt. Clear it so the detail pane never
+      // disagrees with the visible list.
+      if (selectedSaleId && !data.sales.some(sale => sale._id === selectedSaleId)) {
+        detailRequest.current += 1;
+        setSelectedSaleId(null);
+        setSelectedSale(null);
+        setDetailLoading(false);
+        setDetailError('');
+        setShowMobileDetail(false);
+      }
+    }).catch(err => {
+      if (err?.name !== 'AbortError') setListError(err?.message || 'Could not load sales');
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+
+    return () => controller.abort();
+  }, [user, page, search, statusFilter, dateFilter, reloadKey]);
+
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+    setSummaryLoading(true);
+    posApi.getSummary(controller.signal)
+      .then(setSummary)
+      .catch(err => {
+        if (err?.name !== 'AbortError') setSummary(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSummaryLoading(false);
+      });
+    return () => controller.abort();
+  }, [user, reloadKey]);
+
+  useEffect(() => () => clearTimeout(searchTimeout.current), []);
 
   // Debounce search
   function handleSearchChange(val: string) {
@@ -630,21 +684,45 @@ export default function PosOrdersPage() {
     }, 350);
   }
 
-  function handleSaleClick(sale: Sale) {
-    setSelectedSale(sale);
+  async function handleSaleClick(sale: SaleListItem) {
+    const requestId = ++detailRequest.current;
+    setSelectedSaleId(sale._id);
     setShowMobileDetail(true);
+    setDetailError('');
+    const cached = detailCache.current.get(sale._id);
+    if (cached) {
+      setSelectedSale(cached);
+      setDetailLoading(false);
+      return;
+    }
+
+    setSelectedSale(null);
+    setDetailLoading(true);
+    try {
+      const fullSale = await posApi.getSaleById(sale._id);
+      detailCache.current.set(sale._id, fullSale);
+      if (requestId === detailRequest.current) setSelectedSale(fullSale);
+    } catch (err: any) {
+      if (requestId === detailRequest.current) setDetailError(err?.message || 'Could not open this receipt');
+    } finally {
+      if (requestId === detailRequest.current) setDetailLoading(false);
+    }
   }
 
   function handleUpdated(updated: Sale, refundRecord?: Sale) {
+    detailCache.current.set(updated._id, updated);
+    if (refundRecord) detailCache.current.set(refundRecord._id, refundRecord);
     setSales(prev => {
-      const replaced = prev.map(s => s._id === updated._id ? updated : s);
+      const replaced = prev.map(s => s._id === updated._id ? toListItem(updated) : s);
       // Prepend the new refund record to the list if not already present
       if (refundRecord && !replaced.find(s => s._id === refundRecord._id)) {
-        return [refundRecord, ...replaced];
+        return [toListItem(refundRecord), ...replaced].slice(0, 25);
       }
       return replaced;
     });
+    if (refundRecord) setTotal(value => value + 1);
     setSelectedSale(updated);
+    posApi.getSummary().then(setSummary).catch(() => {});
   }
 
   const tabs = [
@@ -664,12 +742,43 @@ export default function PosOrdersPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="font-bold text-sm">Orders</h1>
-            <p className="text-gray-400 text-xs">{user.name}</p>
+            <h1 className="font-bold text-sm">Sales dashboard</h1>
+            <p className="text-gray-400 text-xs">Orders, receipts and returns · {user.name}</p>
           </div>
         </div>
-        <div className="text-gray-400 text-xs">{total} order{total !== 1 ? 's' : ''}</div>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline text-gray-400 text-xs">{total} record{total !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => setReloadKey(value => value + 1)}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50 transition"
+            title="Refresh sales"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
       </header>
+
+      {/* Today at a glance */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-gray-200 border-b border-gray-200 flex-shrink-0" aria-label="Today's sales summary">
+        {[
+          { label: 'Net sales', value: summary ? formatPrice(summary.totalRevenue) : '—', icon: <Banknote className="w-4 h-4" />, tone: 'text-[#9B7926] bg-amber-50' },
+          { label: 'Orders', value: summary ? summary.totalCount.toLocaleString() : '—', icon: <Receipt className="w-4 h-4" />, tone: 'text-blue-600 bg-blue-50' },
+          { label: 'Refunds', value: summary ? summary.totalRefunds.toLocaleString() : '—', icon: <RotateCcw className="w-4 h-4" />, tone: 'text-orange-600 bg-orange-50' },
+          { label: 'Items sold', value: summary ? summary.totalItems.toLocaleString() : '—', icon: <Package className="w-4 h-4" />, tone: 'text-emerald-600 bg-emerald-50' },
+        ].map(metric => (
+          <div key={metric.label} className="bg-white px-4 py-3 flex items-center gap-3 min-w-0">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${metric.tone}`}>{metric.icon}</div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 truncate">{metric.label} today</p>
+              {summaryLoading && !summary
+                ? <div className="h-5 w-16 rounded bg-gray-100 animate-pulse mt-1" />
+                : <p className="text-sm sm:text-base font-black text-gray-900 truncate">{metric.value}</p>}
+            </div>
+          </div>
+        ))}
+      </section>
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
@@ -711,10 +820,11 @@ export default function PosOrdersPage() {
               </div>
               <button
                 onClick={() => { setSearch(''); setSearchInput(''); setDateFilter(''); setStatusFilter(''); setPage(1); }}
-                className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition"
+                disabled={!searchInput && !dateFilter && !statusFilter}
+                className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition disabled:opacity-30 disabled:hover:bg-transparent"
                 title="Clear filters"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -738,9 +848,27 @@ export default function PosOrdersPage() {
 
           {/* List */}
           <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex justify-center items-center h-40">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
+            {loading && sales.length === 0 ? (
+              <div className="divide-y divide-gray-50" aria-label="Loading sales">
+                {Array.from({ length: 7 }).map((_, index) => (
+                  <div key={index} className="px-4 py-4 flex items-center gap-3 animate-pulse">
+                    <div className="w-9 h-9 rounded-xl bg-gray-100" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-gray-100 rounded w-2/3" />
+                      <div className="h-2.5 bg-gray-100 rounded w-1/2" />
+                    </div>
+                    <div className="h-3 bg-gray-100 rounded w-16" />
+                  </div>
+                ))}
+              </div>
+            ) : listError && sales.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-52 px-8 text-center">
+                <AlertCircle className="w-9 h-9 text-red-300 mb-3" />
+                <p className="text-sm font-semibold text-gray-700">Sales could not be loaded</p>
+                <p className="text-xs text-gray-400 mt-1">{listError}</p>
+                <button onClick={() => setReloadKey(value => value + 1)} className="mt-4 px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold">
+                  Try again
+                </button>
               </div>
             ) : sales.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-gray-400">
@@ -753,7 +881,7 @@ export default function PosOrdersPage() {
             ) : (
               <div className="divide-y divide-gray-50">
                 {sales.map(sale => {
-                  const isActive = selectedSale?._id === sale._id;
+                  const isActive = selectedSaleId === sale._id;
                   const isRefund = sale.type === 'refund';
                   const isVoided = sale.status === 'voided';
                   return (
@@ -794,7 +922,7 @@ export default function PosOrdersPage() {
                               : (sale.customerName || <span className="italic">Walk-in</span>)
                             }
                             {' · '}
-                            {sale.items.length} item{sale.items.length !== 1 ? 's' : ''}
+                            {sale.itemCount} item{sale.itemCount !== 1 ? 's' : ''}
                           </p>
                           <PayBadge method={sale.paymentMethod} />
                         </div>
@@ -825,7 +953,23 @@ export default function PosOrdersPage() {
 
         {/* ── Right: Order Detail (desktop) ── */}
         <div className="hidden lg:flex flex-1 overflow-hidden">
-          {selectedSale ? (
+          {detailLoading ? (
+            <div className="flex-1 flex flex-col items-center justify-center bg-white" aria-label="Loading receipt">
+              <Loader2 className="w-6 h-6 animate-spin text-[#C9A84C]" />
+              <p className="text-xs text-gray-400 mt-3">Opening receipt…</p>
+            </div>
+          ) : detailError ? (
+            <div className="flex-1 flex flex-col items-center justify-center bg-white px-8 text-center">
+              <AlertCircle className="w-9 h-9 text-red-300 mb-3" />
+              <p className="text-sm font-semibold text-gray-700">Receipt could not be opened</p>
+              <p className="text-xs text-gray-400 mt-1">{detailError}</p>
+              {selectedSaleId && sales.find(sale => sale._id === selectedSaleId) && (
+                <button onClick={() => handleSaleClick(sales.find(sale => sale._id === selectedSaleId)!)} className="mt-4 px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold">
+                  Try again
+                </button>
+              )}
+            </div>
+          ) : selectedSale ? (
             <OrderDetail key={selectedSale._id} sale={selectedSale} onUpdated={handleUpdated} currentUser={user} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
@@ -841,15 +985,35 @@ export default function PosOrdersPage() {
       </div>
 
       {/* ── Mobile: Slide-over detail ── */}
-      {showMobileDetail && selectedSale && (
+      {showMobileDetail && (
         <div className="fixed inset-0 z-50 lg:hidden flex flex-col bg-white">
-          <OrderDetail
-            key={selectedSale._id}
-            sale={selectedSale}
-            onClose={() => setShowMobileDetail(false)}
-            onUpdated={handleUpdated}
-            currentUser={user}
-          />
+          {detailError ? (
+            <div className="h-full flex flex-col items-center justify-center px-8 text-center">
+              <AlertCircle className="w-10 h-10 text-red-300 mb-3" />
+              <p className="text-sm font-semibold text-gray-700">Receipt could not be opened</p>
+              <p className="text-xs text-gray-400 mt-1">{detailError}</p>
+              <div className="flex items-center gap-3 mt-5">
+                <button onClick={() => setShowMobileDetail(false)} className="px-3 py-2 text-xs font-semibold text-gray-600">Close</button>
+                {selectedSaleId && sales.find(sale => sale._id === selectedSaleId) && (
+                  <button onClick={() => handleSaleClick(sales.find(sale => sale._id === selectedSaleId)!)} className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold">Try again</button>
+                )}
+              </div>
+            </div>
+          ) : detailLoading || !selectedSale ? (
+            <div className="h-full flex flex-col items-center justify-center">
+              <Loader2 className="w-7 h-7 animate-spin text-[#C9A84C]" />
+              <p className="text-sm text-gray-400 mt-3">Opening receipt…</p>
+              <button onClick={() => setShowMobileDetail(false)} className="mt-5 text-xs font-semibold text-gray-600">Cancel</button>
+            </div>
+          ) : (
+            <OrderDetail
+              key={selectedSale._id}
+              sale={selectedSale}
+              onClose={() => setShowMobileDetail(false)}
+              onUpdated={handleUpdated}
+              currentUser={user}
+            />
+          )}
         </div>
       )}
     </div>

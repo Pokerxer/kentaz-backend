@@ -682,7 +682,11 @@ function TagStudio() {
                 <div className="mb-6 px-4 py-3 bg-white border border-gray-200 rounded-xl flex flex-wrap items-center gap-3">
                   <PlugZap className="h-4 w-4 text-emerald-600" />
                   <label htmlFor="tag-printer" className="text-xs font-medium text-gray-500">
-                    Printer
+                    Printer · {bridge.printBackend === 'lprint'
+                      ? 'LPrint'
+                      : bridge.printBackend === 'winspool'
+                        ? 'Windows'
+                        : 'CUPS'}
                   </label>
                   <select
                     id="tag-printer"

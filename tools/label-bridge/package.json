@@ -1,6 +1,6 @@
 {
   "name": "kentaz-label-bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Sends Kentaz product tags to a USB thermal label printer as raw TSPL, bypassing the browser print dialog.",
   "main": "bridge.js",

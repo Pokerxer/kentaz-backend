@@ -63,7 +63,7 @@ type NavItem = {
 const navigation: NavItem[] = [
   { name: 'Dashboard',    href: '/dashboard',    icon: BarChart3,     roles: ['admin'] },
   { name: 'Point of Sale',href: '/pos/dashboard',icon: Monitor,       external: true },
-  { name: 'POS Sales',    href: '/pos/sales',    icon: Receipt,       external: true },
+  { name: 'POS Sales',    href: '/sales',        icon: Receipt,       external: true },
   { name: 'Products',     href: '/products',     icon: Package,       hasDropdown: true, roles: ['admin', 'staff'] },
   { name: 'Inventory',    href: '/inventory',    icon: Box,           roles: ['admin'] },
   { name: 'Purchases',    href: '/purchases',    icon: ShoppingBag,   roles: ['admin'] },

@@ -353,7 +353,7 @@ export default function PosDashboard() {
               <Play className="w-4 h-4" /> Open Register & Sell
             </button>
           )}
-          <Link href="/pos/sales" className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-xl text-sm font-semibold transition shadow-sm">
+          <Link href="/sales" className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-xl text-sm font-semibold transition shadow-sm">
             <Receipt className="w-4 h-4" /> Orders
           </Link>
           {currentSession && (
@@ -416,7 +416,7 @@ export default function PosDashboard() {
           <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-bold text-gray-900">Recent Transactions</h2>
-              <Link href="/pos/sales" className="text-xs text-[#C9A84C] font-semibold flex items-center gap-1 hover:underline">
+              <Link href="/sales" className="text-xs text-[#C9A84C] font-semibold flex items-center gap-1 hover:underline">
                 View all <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -438,7 +438,7 @@ export default function PosDashboard() {
                   return (
                     <Link
                       key={sale._id}
-                      href="/pos/sales"
+                      href="/sales"
                       className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition"
                     >
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${

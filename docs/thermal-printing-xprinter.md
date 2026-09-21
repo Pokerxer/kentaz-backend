@@ -60,8 +60,10 @@ nothing downstream that re-reads any of it. `SIZE` and `GAP` *are* the label.
 `tools/label-bridge` runs on the till, listens on `127.0.0.1` only, and writes
 these bytes to the Windows print queue with the datatype set to **RAW** — which
 tells the spooler to pass them through untouched rather than run them through
-the driver's renderer, the renderer that was doing the rotating. On
-macOS/Linux the same job goes out as `lp -o raw`.
+the driver's renderer, the renderer that was doing the rotating. On macOS/Linux
+it prefers an LPrint queue and submits the file as
+`application/vnd.tsc-tspl`; LPrint's TSPL driver copies that format
+byte-for-byte to the device. CUPS `lp -o raw` remains the automatic fallback.
 
 Setup and troubleshooting: [`tools/label-bridge/README.md`](../tools/label-bridge/README.md).
 

@@ -65,16 +65,32 @@ cmd /c "cd /d C:\kentaz-label-bridge && node bridge.js"
 
 ---
 
-## macOS / Linux
+## macOS / Linux — LPrint (recommended)
 
-The same, through CUPS:
+Install and configure LPrint first. It is built for label printers, accepts raw
+TSPL, keeps the queue moving through disconnects and out-of-media events, and
+does not ask a generic desktop driver to reinterpret the label.
+
+```sh
+# Confirm LPrint can see the printer, then add it using the matching TSPL driver.
+lprint devices
+lprint drivers
+lprint add -d kentaz-label -v 'DEVICE-URI-FROM-ABOVE' -m tspl_203dpi
+lprint printers
+```
+
+Use the exact driver reported by `lprint drivers` for the printer. The example
+name is illustrative; driver names vary by LPrint version and model. Then start
+the bridge:
 
 ```sh
 node bridge.js
 ```
 
-Printer names come from `lpstat -a`, and jobs go out via `lp -o raw`. Add the
-printer once in *System Settings → Printers & Scanners* first.
+The bridge discovers queues with `lprint printers` and submits tags with the
+explicit LPrint media type `application/vnd.tsc-tspl`, so LPrint invokes its
+raw TSPL path and preserves every byte. If LPrint is unavailable or has no
+configured queue, the bridge falls back to CUPS (`lp -o raw`) automatically.
 
 ---
 

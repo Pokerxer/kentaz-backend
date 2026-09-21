@@ -1380,7 +1380,7 @@ export default function PosPage() {
             <span className="text-sm font-medium">{user.name}</span>
           </div>
           <button
-            onClick={() => router.push('/pos/sales')}
+            onClick={() => router.push('/sales')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"
           >
             <History className="w-4 h-4" /> <span className="hidden sm:inline">Sales</span>
@@ -1966,8 +1966,8 @@ export default function PosPage() {
                 { icon: <FileText className="w-5 h-5" />, label: 'General Note', color: 'text-blue-600 bg-blue-50', action: () => { setNoteInput(orderNote); setNoteModal('general'); setShowActions(false); } },
                 { icon: <Users className="w-5 h-5" />, label: 'Customer Note', color: 'text-purple-600 bg-purple-50', action: () => { setNoteInput(''); setNoteModal('customer'); setShowActions(false); } },
                 { icon: <Gift className="w-5 h-5" />, label: 'Add Discount', color: 'text-green-600 bg-green-50', action: () => { setNumpadMode('disc'); setNumpadInput(''); setShowActions(false); setMobileView('cart'); } },
-                { icon: <ClipboardList className="w-5 h-5" />, label: 'Quotation', color: 'text-amber-600 bg-amber-50', action: () => { window.print(); setShowActions(false); } },
-                { icon: <RefreshCw className="w-5 h-5" />, label: 'Refund', color: 'text-orange-600 bg-orange-50', action: () => { router.push('/pos/sales'); setShowActions(false); } },
+                { icon: <ClipboardList className="w-5 h-5" />, label: 'Quotation', color: 'text-amber-600 bg-amber-50', action: () => { router.push('/sales'); setShowActions(false); } },
+                { icon: <RefreshCw className="w-5 h-5" />, label: 'Refund', color: 'text-orange-600 bg-orange-50', action: () => { router.push('/sales'); setShowActions(false); } },
                 { icon: <XCircle className="w-5 h-5" />, label: 'Cancel Order', color: 'text-red-600 bg-red-50', action: () => { setActiveCartItems([]); setSelectedCartItemIdx(null); setActiveCartDiscount(0); setActiveCartNote(''); setShowActions(false); } },
               ].map(({ icon, label, color, action }) => (
                 <button
@@ -2169,7 +2169,7 @@ export default function PosPage() {
                   icon: <Receipt className="w-5 h-5" />,
                   label: 'Orders',
                   sub: 'View session sales',
-                  action: () => { router.push('/pos/sales'); setShowMenu(false); },
+                  action: () => { router.push('/sales'); setShowMenu(false); },
                 },
                 {
                   icon: <Monitor className="w-5 h-5" />,

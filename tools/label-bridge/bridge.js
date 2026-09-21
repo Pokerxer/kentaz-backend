@@ -26,8 +26,9 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { renderJob, renderCalibration } = require('./tspl');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const PORT = Number(process.env.KENTAZ_BRIDGE_PORT || 9110);
+const TSPL_MIME_TYPE = 'application/vnd.tsc-tspl';
 
 /**
  * Optional shared secret. Loopback-only binding already means a remote attacker
@@ -147,7 +148,7 @@ async function rawPrintScript() {
  * rather than stdin keeps the payload away from PowerShell's own encoding
  * conversions, which mangle high bytes on the way in.
  */
-async function sendRaw(printer, payload) {
+async function sendRaw(printer, backend, payload) {
   const file = path.join(os.tmpdir(), `kentaz-label-${process.pid}-${tempCounter++}.prn`);
   await fs.promises.writeFile(file, payload, 'latin1');
   try {
@@ -156,6 +157,16 @@ async function sendRaw(printer, payload) {
       await run('powershell.exe', [
         '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-File', script, '-Printer', printer, '-File', file,
+      ]);
+    } else if (backend === 'lprint') {
+      // LPrint is a label-aware spooler. Naming its TSPL media type selects the
+      // driver's raw-file callback, which copies these bytes to the device
+      // unchanged instead of rasterising or rotating them.
+      await run('lprint', [
+        'submit', '-d', printer,
+        '-o', `document-format=${TSPL_MIME_TYPE}`,
+        '-t', 'Kentaz product tags',
+        file,
       ]);
     } else {
       // CUPS: `-o raw` is the same instruction — do not filter, do not render.
@@ -166,21 +177,45 @@ async function sendRaw(printer, payload) {
   }
 }
 
-async function listPrinters() {
+function lines(output) {
+  return output.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+async function listPrinterQueues() {
   try {
     if (isWindows) {
       const out = await run('powershell.exe', [
         '-NoProfile', '-NonInteractive', '-Command',
         'Get-CimInstance -ClassName Win32_Printer | Select-Object -ExpandProperty Name',
       ]);
-      return out.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      return { backend: 'winspool', printers: lines(out) };
     }
-    const out = await run('lpstat', ['-a']);
-    return out.split(/\r?\n/).map(line => line.split(/\s+/)[0]).filter(Boolean);
+
+    // LPrint owns a separate queue from the operating system's CUPS queues.
+    // Prefer it when it is installed and has a printer configured: unlike a
+    // generic queue it understands label-printer media and status recovery.
+    try {
+      const out = await run('lprint', ['printers']);
+      const printers = lines(out);
+      if (printers.length > 0) return { backend: 'lprint', printers };
+    } catch {
+      // Not installed, not running, or no accessible server. CUPS remains a
+      // valid raw transport and preserves the bridge's previous behaviour.
+    }
+
+    try {
+      const out = await run('lpstat', ['-a']);
+      return {
+        backend: 'cups',
+        printers: lines(out).map(line => line.split(/\s+/)[0]),
+      };
+    } catch {
+      // No queues, or no spooler running. An empty list is a legitimate answer;
+      // the admin page shows it as "no printers found" rather than an error.
+      return { backend: 'cups', printers: [] };
+    }
   } catch {
-    // No queues, or no spooler running. An empty list is a legitimate answer;
-    // the admin page shows it as "no printers found" rather than an error.
-    return [];
+    return { backend: isWindows ? 'winspool' : 'cups', printers: [] };
   }
 }
 
@@ -256,18 +291,18 @@ function validateLabel(label) {
 }
 
 async function resolvePrinter(requested) {
-  const printers = await listPrinters();
+  const { backend, printers } = await listPrinterQueues();
   if (requested) {
     // Matched case-insensitively: Windows queue names are displayed with the
     // casing the driver chose, and staff retype them.
     const hit = printers.find(name => name.toLowerCase() === String(requested).toLowerCase());
-    if (hit) return hit;
-    if (printers.length === 0) return String(requested); // no spooler listing; try anyway
+    if (hit) return { backend, printer: hit };
+    if (printers.length === 0) return { backend, printer: String(requested) }; // no spooler listing; try anyway
     throw new Error(`No printer named "${requested}". Available: ${printers.join(', ')}`);
   }
   const guess = guessLabelPrinter(printers);
   if (!guess) throw new Error('No printers are installed on this machine');
-  return guess;
+  return { backend, printer: guess };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -288,13 +323,14 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && url.pathname === '/health') {
-      const printers = await listPrinters();
+      const { backend, printers } = await listPrinterQueues();
       json(res, 200, {
         ok: true,
         name: 'kentaz-label-bridge',
         version: VERSION,
         platform: process.platform,
         requiresToken: Boolean(TOKEN),
+        printBackend: backend,
         printers,
         suggestedPrinter: guessLabelPrinter(printers),
       });
@@ -320,8 +356,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const printer = await resolvePrinter(body.printer);
-      await sendRaw(printer, job.tspl);
+      const { backend, printer } = await resolvePrinter(body.printer);
+      await sendRaw(printer, backend, job.tspl);
       json(res, 200, { ok: true, printer, printed: job.printed, warnings: job.warnings });
       return;
     }
@@ -329,8 +365,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/calibrate') {
       const body = await readBody(req);
       const label = validateLabel(body.label);
-      const printer = await resolvePrinter(body.printer);
-      await sendRaw(printer, renderCalibration(label));
+      const { backend, printer } = await resolvePrinter(body.printer);
+      await sendRaw(printer, backend, renderCalibration(label));
       json(res, 200, { ok: true, printer });
       return;
     }
@@ -346,13 +382,14 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Kentaz label bridge ${VERSION} listening on http://127.0.0.1:${PORT}`);
   console.log(`Platform: ${process.platform}${TOKEN ? ' · token required' : ''}`);
-  listPrinters().then(printers => {
+  listPrinterQueues().then(({ backend, printers }) => {
     if (printers.length === 0) {
       console.log('No printers found. Install the XPrinter driver, then restart this bridge.');
       return;
     }
     console.log('Printers:');
     for (const name of printers) console.log(`  - ${name}`);
+    console.log(`Print backend: ${backend}`);
     const guess = guessLabelPrinter(printers);
     if (guess) console.log(`Will default to: ${guess}`);
   });
